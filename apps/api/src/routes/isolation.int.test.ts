@@ -11,7 +11,7 @@ import {
 import { buildApp } from '../app.js';
 import { createAuth } from '../auth/auth.js';
 import { loadConfig } from '../config.js';
-import { branchStewards, invites, treeMembers, trees } from '../db/schema.js';
+import { branchStewards, invites, resetLinks, treeMembers, trees } from '../db/schema.js';
 import { createDeps } from '../deps.js';
 
 const config = loadConfig();
@@ -89,13 +89,21 @@ async function setup() {
 
 async function snapshot(treeId: string) {
   const [tree] = await db.select().from(trees).where(eq(trees.id, treeId));
+  const members = await db.select().from(treeMembers).where(eq(treeMembers.treeId, treeId));
+  const grants = await db.select().from(branchStewards).where(eq(branchStewards.treeId, treeId));
+  const inv = await db.select().from(invites).where(eq(invites.treeId, treeId));
+  const links = await db.select().from(resetLinks).where(eq(resetLinks.treeId, treeId));
   return {
     name: tree!.name,
     deletedAt: tree!.deletedAt,
-    members: (await db.select().from(treeMembers).where(eq(treeMembers.treeId, treeId))).length,
-    grants: (await db.select().from(branchStewards).where(eq(branchStewards.treeId, treeId)))
-      .length,
-    invites: (await db.select().from(invites).where(eq(invites.treeId, treeId))).length,
+    members: members
+      .map((m) => ({ userId: m.userId, role: m.role, personId: m.personId }))
+      .sort((x, y) => x.userId.localeCompare(y.userId)),
+    grants: grants.map((g) => g.id).sort(),
+    invites: inv
+      .map((i) => ({ id: i.id, revokedAt: i.revokedAt, usedAt: i.usedAt }))
+      .sort((x, y) => x.id.localeCompare(y.id)),
+    resetLinks: links.length,
   };
 }
 
@@ -156,10 +164,19 @@ describe('cross-tree isolation', () => {
     const { owner, member, treeId, ids } = await setup();
     const del = await call(app, 'DELETE', `/api/v1/trees/${treeId}`, { jar: owner.jar });
     expect(del.statusCode).toBe(204);
-    for (const route of routes(treeId, ids)) {
-      const res = await run(member.jar, route);
-      expect(res.statusCode, `${route[0]} ${route[1]}`).toBe(404);
+    const before = await snapshot(treeId);
+    // The owner too: a deleted tree is gone for everyone except restore (checked last).
+    for (const jar of [member.jar, owner.jar]) {
+      for (const route of routes(treeId, ids).filter((r) => !r[1].endsWith('/restore'))) {
+        const res = await run(jar, route);
+        expect(res.statusCode, `${route[0]} ${route[1]}`).toBe(404);
+        expect(res.json().error.code).toBe('NOT_FOUND');
+      }
+      expect(await snapshot(treeId)).toEqual(before);
     }
+    const restore = await run(member.jar, ['POST', `/api/v1/trees/${treeId}/restore`]);
+    expect(restore.statusCode).toBe(404);
+    expect(await snapshot(treeId)).toEqual(before);
   });
 
   it('answers 401 when not signed in', async () => {

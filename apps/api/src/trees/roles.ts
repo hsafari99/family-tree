@@ -11,7 +11,11 @@ export async function holdsTwoFactorRole(db: Queryable, userId: string): Promise
   return row?.held ?? false;
 }
 
-/** Account deletion is blocked while the user owns a non-deleted tree (spec §5). */
+/**
+ * Account deletion is blocked while the user owns a non-deleted tree (spec §5). An owner whose
+ * trees are all soft-deleted may delete their account, which leaves an ownerless soft-deleted
+ * tree: the phase 4 purge must not assume an owner exists.
+ */
 export async function ownsLiveTree(db: Queryable, userId: string): Promise<boolean> {
   const rows = await db
     .select({ id: trees.id })

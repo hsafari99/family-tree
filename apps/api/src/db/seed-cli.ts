@@ -21,7 +21,12 @@ if (config.NODE_ENV === 'production') {
   process.exit(1);
 }
 
-const emailArg = process.argv[2];
+const args = process.argv.slice(2).filter((a) => a !== '--');
+if (args.length > 1) {
+  console.error('Usage: pnpm seed [you@example.com]');
+  process.exit(1);
+}
+const emailArg = args[0];
 let ownerEmail: string | undefined;
 if (emailArg !== undefined) {
   const parsed = emailSchema.safeParse(emailArg);

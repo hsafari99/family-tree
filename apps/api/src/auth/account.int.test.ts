@@ -96,13 +96,45 @@ describe('/me requiresTwoFactor', () => {
   });
 });
 
+describe('/me after transfer with a second tree', () => {
+  it('keeps requiresTwoFactor true for the old owner', async () => {
+    const { owner, treeId } = await ownerWithTree(app);
+    const second = await call(app, 'POST', '/api/v1/trees', {
+      jar: owner.jar,
+      body: { name: 'Second', person: { givenName: 'Sol', surname: 'Two' } },
+    });
+    expect(second.statusCode).toBe(201);
+    const next = await userWith2fa(app, 'Nell');
+    await addMember(db, treeId, next.userId, 'editor', owner.userId);
+    const res = await call(app, 'POST', `/api/v1/trees/${treeId}/transfer`, {
+      jar: owner.jar,
+      body: { userId: next.userId },
+    });
+    expect(res.statusCode).toBe(204);
+    expect((await me(owner.jar)).requiresTwoFactor).toBe(true);
+  });
+});
+
 describe('account deletion', () => {
+  it('also guards the delete-user callback', async () => {
+    const user = await signUp(app);
+    const res = await call(app, 'GET', '/api/auth/delete-user/callback?token=x', {
+      jar: user.jar,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().code).toBe('PASSWORD_REQUIRED');
+    expect(await db.select().from(users).where(eq(users.id, user.userId))).toHaveLength(1);
+  });
+
   it('needs the right password', async () => {
     const user = await signUp(app);
     const none = await deleteUser(user.jar, {});
     expect(none.statusCode).toBe(400);
     expect(none.json().code).toBe('PASSWORD_REQUIRED');
-    expect((await deleteUser(user.jar, { password: 'wrong password!!' })).statusCode).toBe(400);
+    const wrong = await deleteUser(user.jar, { password: 'wrong password!!' });
+    expect(wrong.statusCode).toBe(400);
+    expect(wrong.json().code).toBe('INVALID_PASSWORD');
+    expect(wrong.json().code).not.toBe(none.json().code);
     expect(await db.select().from(users).where(eq(users.id, user.userId))).toHaveLength(1);
   });
 

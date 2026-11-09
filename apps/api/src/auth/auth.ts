@@ -124,7 +124,7 @@ export function createAuth({ config, db, rateLimitEnabled = true, log }: AuthOpt
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
         // Without a password Better Auth deletes any session younger than a day unchecked.
-        if (ctx.path === '/delete-user') {
+        if (ctx.path === '/delete-user' || ctx.path === '/delete-user/callback') {
           const password = (ctx.body as { password?: unknown } | undefined)?.password;
           if (typeof password !== 'string' || password === '') {
             throw APIError.from('BAD_REQUEST', {
