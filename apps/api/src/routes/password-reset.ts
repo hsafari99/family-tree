@@ -1,7 +1,8 @@
-import { resetWithCodeSchema } from '@family-tree/shared';
+import { resetWithCodeSchema, resetWithLinkSchema } from '@family-tree/shared';
 import { eq } from 'drizzle-orm';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import type { Auth } from '../auth/auth.js';
+import { consumeResetLink } from '../auth/reset-links.js';
 import { verifyAndConsumeSecondFactor } from '../auth/totp-reset.js';
 import type { Db } from '../db/client.js';
 import { users } from '../db/schema.js';
@@ -78,4 +79,15 @@ export const passwordResetRoutes: FastifyPluginAsync<{ auth: Auth; db: Db }> = a
       return reply.code(204).send();
     },
   );
+
+  app.post('/api/v1/password-reset/link', { preHandler: perIpLimit(10) }, async (req, reply) => {
+    const { token, newPassword } = parseBody(resetWithLinkSchema, req.body);
+    const ctx = await auth.$context;
+    // Hash first so a valid and an invalid token take the same time.
+    const newHash = await ctx.password.hash(newPassword);
+    const userId = await consumeResetLink(db, token);
+    if (!userId) throw invalidReset();
+    await applyNewPassword(userId, newHash);
+    return reply.code(204).send();
+  });
 };
