@@ -15,8 +15,13 @@ pnpm dev              # starts postgres, s3, api and web in Docker
 pnpm seed             # in a second terminal: loads a sample family
 ```
 
-- Web: http://localhost:5173
+- Web: http://localhost:5173 — open it at `localhost`, not `127.0.0.1`: the API only accepts
+  requests from the configured `WEB_ORIGIN` (`http://localhost:5173`).
 - API health: http://localhost:3000/api/v1/health
+- `pnpm dev` needs registry access only when `pnpm-lock.yaml` changed since the last container
+  install; otherwise the `install` service prints `deps up to date` and the stack starts offline.
+- The dev containers run as uid 1000 (the image's `node` user), so files they write into the repo
+  are owned by a host user with that uid.
 - If the `family_test` database is missing (a volume created before it was added), run `docker compose down -v` to recreate the volumes.
 
 Tests:

@@ -1,5 +1,10 @@
 name: family-tree
 
+# One dev image shared by install/api/web.
+x-dev: &dev
+  build: { context: ., dockerfile: docker/dev.Dockerfile }
+  image: family-tree-dev
+
 services:
   postgres:
     image: postgres:17-alpine
@@ -32,8 +37,12 @@ services:
       start_period: 10s
 
   install:
-    build: { context: ., dockerfile: docker/dev.Dockerfile }
-    command: pnpm install --frozen-lockfile
+    <<: *dev
+    # Only reinstall when pnpm-lock.yaml changed since the last successful install.
+    command: >-
+      sh -c 'if sha256sum -c --status node_modules/.lock-stamp 2>/dev/null;
+      then echo "deps up to date";
+      else pnpm install --frozen-lockfile && sha256sum pnpm-lock.yaml > node_modules/.lock-stamp; fi'
     volumes: &app-volumes
       - .:/app
       - nm_root:/app/node_modules
@@ -43,7 +52,7 @@ services:
       - pnpm_store:/pnpm-store
 
   api:
-    build: { context: ., dockerfile: docker/dev.Dockerfile }
+    <<: *dev
     command: pnpm --filter @family-tree/api dev
     env_file: .env.development
     environment:
@@ -57,7 +66,7 @@ services:
       s3: { condition: service_healthy }
 
   web:
-    build: { context: ., dockerfile: docker/dev.Dockerfile }
+    <<: *dev
     command: pnpm --filter @family-tree/web dev --host 0.0.0.0
     environment:
       VITE_API_PROXY_TARGET: http://api:3000
