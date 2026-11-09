@@ -9,3 +9,4 @@ coverage/
 # local tooling caches
 /graft/
 .claude/settings.local.json
+.vitest/
