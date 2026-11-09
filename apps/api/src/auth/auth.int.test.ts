@@ -15,6 +15,7 @@ import { loadConfig } from '../config.js';
 import { accounts } from '../db/schema.js';
 import { createDeps } from '../deps.js';
 import { createAuth } from './auth.js';
+import type { Config } from '../config.js';
 
 const config = loadConfig();
 const deps = createDeps(config);
@@ -112,7 +113,138 @@ describe('Better Auth email and password', () => {
   });
 });
 
+describe('adapter hardening', () => {
+  it('keeps the session token out of response bodies; the cookie still works', async () => {
+    const { jar, email, password, res } = await signUp(app);
+    expect(res.json()).not.toHaveProperty('token');
+    expect(res.headers['content-length']).toBe(String(Buffer.byteLength(res.body)));
+
+    const session = await call(app, 'GET', '/api/auth/get-session', { jar });
+    expect(session.statusCode).toBe(200);
+    expect(session.json().session).toBeDefined();
+    expect(session.json().session).not.toHaveProperty('token');
+
+    const signedIn = await signIn(app, { email, password });
+    expect(signedIn.res.statusCode).toBe(200);
+    expect(signedIn.res.json()).not.toHaveProperty('token');
+    expect((await me({ jar: signedIn.jar })).statusCode).toBe(200);
+  });
+
+  it('strips the token from two-factor verify responses', async () => {
+    const { jar, email, password } = await signUp(app);
+    const { rawSecret } = await enableTwoFactor(app, jar, password);
+    const pending = await signIn(app, { email, password });
+    const verified = await call(app, 'POST', '/api/auth/two-factor/verify-totp', {
+      jar: pending.jar,
+      body: { code: await totpNow(rawSecret) },
+    });
+    expect(verified.statusCode).toBe(200);
+    expect(verified.json()).not.toHaveProperty('token');
+    expect(verified.json().user.email).toBe(email);
+  });
+
+  it('answers an unknown /api/auth path with the standard 404 envelope', async () => {
+    const res = await call(app, 'GET', '/api/auth/does-not-exist');
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toEqual({ error: { code: 'NOT_FOUND', message: 'Not found' } });
+  });
+
+  it.each([
+    ['another origin', { origin: 'https://evil.example' }],
+    ['no Origin header', { origin: undefined }],
+  ])('refuses change-password with a valid session from %s', async (_label, headers) => {
+    const { jar, email } = await signUp(app);
+    const res = await call(app, 'POST', '/api/auth/change-password', {
+      jar,
+      body: { currentPassword: TEST_PASSWORD, newPassword: 'a brand new passphrase' },
+      headers,
+    });
+    expect(res.statusCode).toBe(403);
+    expect((await signIn(app, { email, password: TEST_PASSWORD })).res.statusCode).toBe(200);
+  });
+});
+
+describe('Better Auth logging', () => {
+  it('sends its messages to the given sink, filtered by LOG_LEVEL', async () => {
+    const lines: { level: string; obj: object; msg: string }[] = [];
+    const record = (level: string) => (obj: object, msg: string) => lines.push({ level, obj, msg });
+    const log = {
+      debug: record('debug'),
+      info: record('info'),
+      warn: record('warn'),
+      error: record('error'),
+    };
+    const logged = createAuth({ config: { ...config, LOG_LEVEL: 'warn' }, db: deps.db, log });
+    const ctx = await logged.$context;
+    ctx.logger.info('not at warn level');
+    ctx.logger.error('boom', new Error('detail'));
+    expect(lines).toEqual([
+      {
+        level: 'error',
+        msg: 'boom',
+        obj: { betterAuth: [expect.objectContaining({ name: 'Error', message: 'detail' })] },
+      },
+    ]);
+  });
+});
+
+describe('production cookies', () => {
+  it('uses a __Secure- session cookie with Secure, HttpOnly and SameSite=Lax', async () => {
+    const origin = 'https://family.example';
+    // Built directly: loadConfig rightly refuses the dev database URL and secret in production.
+    const prodConfig: Config = {
+      ...config,
+      NODE_ENV: 'production',
+      WEB_ORIGIN: origin,
+      AUTH_BASE_URL: origin,
+    };
+    const prodAuth = createAuth({ config: prodConfig, db: deps.db, rateLimitEnabled: false });
+    const prodApp = buildApp({ config: prodConfig, checks: deps.checks, auth: prodAuth });
+    try {
+      const res = await call(prodApp, 'POST', '/api/auth/sign-up/email', {
+        body: { email: uniqueEmail(), password: TEST_PASSWORD, name: 'Prod User' },
+        headers: { origin },
+      });
+      expect(res.statusCode).toBe(200);
+      const raw = res.headers['set-cookie'];
+      const lines = Array.isArray(raw) ? raw : [raw ?? ''];
+      const session = lines.find((l) => l.startsWith('__Secure-ft.session_token='));
+      expect(session).toBeDefined();
+      expect(session).toMatch(/;\s*Secure/i);
+      expect(session).toMatch(/;\s*HttpOnly/i);
+      expect(session).toMatch(/;\s*SameSite=Lax/i);
+      expect(lines.some((l) => l.startsWith('ft.session_token='))).toBe(false);
+    } finally {
+      await prodApp.close();
+    }
+  });
+});
+
 describe('Better Auth two-factor', () => {
+  it('locks the account after 5 wrong codes during sign-in, even for a correct code', async () => {
+    const { jar, email, password } = await signUp(app);
+    const { rawSecret } = await enableTwoFactor(app, jar, password);
+    const good = await totpNow(rawSecret);
+    const wrong = good === '000000' ? '111111' : '000000';
+
+    const pending = await signIn(app, { email, password });
+    for (let i = 0; i < 5; i++) {
+      const res = await call(app, 'POST', '/api/auth/two-factor/verify-totp', {
+        jar: pending.jar,
+        body: { code: wrong },
+      });
+      expect(res.statusCode).toBe(401);
+    }
+    const fresh = await signIn(app, { email, password });
+    const locked = await call(app, 'POST', '/api/auth/two-factor/verify-totp', {
+      jar: fresh.jar,
+      body: { code: await totpNow(rawSecret) },
+    });
+    expect(locked.statusCode).toBe(429);
+    expect(locked.json().code).toBe('ACCOUNT_TEMPORARILY_LOCKED');
+    expect((await me({ jar: fresh.jar })).statusCode).toBe(401);
+  });
+
   it('requires a TOTP code after sign-in once 2FA is on', async () => {
     const { jar, email, password } = await signUp(app);
     const { rawSecret } = await enableTwoFactor(app, jar, password);

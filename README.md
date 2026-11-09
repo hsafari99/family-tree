@@ -31,6 +31,16 @@ pnpm test             # unit tests (no Docker needed)
 pnpm test:int         # integration tests (needs `pnpm dev` or `docker compose up -d postgres s3`)
 ```
 
+## Known limitations
+
+- **Sign-up reveals registered emails.** Sign-up is open, and signing up with an email that
+  already has an account fails with 422, so anyone can learn whether an email is registered.
+  Sign-up is limited to 10 attempts per hour per IP. This is accepted because the app sends no
+  email, so there is no "check your inbox" flow that could hide the difference.
+- **Rate limits live in memory.** Both Fastify's and Better Auth's rate-limit counters are kept in
+  the API process, so they reset on restart and are not shared between instances. The API is
+  meant to run as a single instance; a second one would need a shared store first.
+
 ## License
 
 [AGPL-3.0](LICENSE)

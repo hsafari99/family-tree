@@ -8,14 +8,62 @@ import { accounts, sessions, twoFactors, users, verifications } from '../db/sche
 import { CLIENT_IP_HEADER } from './fastify-adapter.js';
 import { hashPassword, verifyPassword } from './password.js';
 
+type AuthLogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+/** Where Better Auth's log messages go: a pino logger (app.log or a child) fits. */
+export type AuthLogSink = Record<AuthLogLevel, (obj: object, msg: string) => void>;
+
 export interface AuthOptions {
   config: Config;
   db: Db;
   /** Tests can turn Better Auth's own rate limiter off. */
   rateLimitEnabled?: boolean;
+  /** Better Auth logs here instead of the console. */
+  log?: AuthLogSink;
 }
 
-export function createAuth({ config, db, rateLimitEnabled = true }: AuthOptions) {
+/** Spec §5: lock 2FA after this many consecutive failures (shared with the code-reset route). */
+export const TWO_FACTOR_MAX_FAILED_ATTEMPTS = 5;
+/** Better Auth's default lock duration (accountLockout.durationSeconds), stated explicitly. */
+export const TWO_FACTOR_LOCK_SECONDS = 15 * 60;
+
+/**
+ * A sink that forwards to a logger attached later. The auth instance is built before the
+ * Fastify app (and its logger) exists, so server.ts attaches app.log once it does; until
+ * then, warnings and errors go to the console.
+ */
+export function createAuthLogBridge() {
+  let target: AuthLogSink | undefined;
+  const forward =
+    (level: AuthLogLevel) =>
+    (obj: object, msg: string): void => {
+      if (target) target[level](obj, msg);
+      else if (level === 'error' || level === 'warn') console[level](msg, obj);
+    };
+  const sink: AuthLogSink = {
+    debug: forward('debug'),
+    info: forward('info'),
+    warn: forward('warn'),
+    error: forward('error'),
+  };
+  return {
+    sink,
+    attach: (logger: AuthLogSink) => {
+      target = logger;
+    },
+  };
+}
+
+function authLogLevel(level: Config['LOG_LEVEL']): AuthLogLevel {
+  if (level === 'trace' || level === 'debug') return 'debug';
+  if (level === 'info' || level === 'warn') return level;
+  return 'error';
+}
+
+const serialiseArg = (arg: unknown) =>
+  arg instanceof Error ? { name: arg.name, message: arg.message, stack: arg.stack } : arg;
+
+export function createAuth({ config, db, rateLimitEnabled = true, log }: AuthOptions) {
   return betterAuth({
     appName: 'Family Tree',
     baseURL: config.AUTH_BASE_URL,
@@ -23,6 +71,16 @@ export function createAuth({ config, db, rateLimitEnabled = true }: AuthOptions)
     secret: config.SESSION_SECRET,
     trustedOrigins: [config.WEB_ORIGIN],
     telemetry: { enabled: false },
+    logger: {
+      disabled: config.LOG_LEVEL === 'silent',
+      level: authLogLevel(config.LOG_LEVEL),
+      ...(log
+        ? {
+            log: (level: AuthLogLevel, message: string, ...args: unknown[]) =>
+              log[level](args.length > 0 ? { betterAuth: args.map(serialiseArg) } : {}, message),
+          }
+        : {}),
+    },
     database: drizzleAdapter(db, {
       provider: 'pg',
       schema: {
@@ -69,7 +127,17 @@ export function createAuth({ config, db, rateLimitEnabled = true }: AuthOptions)
     },
     // Spec §5: 8 one-time recovery codes. Better Auth stores them encrypted (the spec said
     // hashed; encrypted is accepted).
-    plugins: [twoFactor({ issuer: 'Family Tree', backupCodeOptions: { amount: 8 } })],
+    // Spec §5: lock 2FA for 15 minutes after 5 consecutive failures (Better Auth's default is 10).
+    plugins: [
+      twoFactor({
+        issuer: 'Family Tree',
+        backupCodeOptions: { amount: 8 },
+        accountLockout: {
+          maxFailedAttempts: TWO_FACTOR_MAX_FAILED_ATTEMPTS,
+          durationSeconds: TWO_FACTOR_LOCK_SECONDS,
+        },
+      }),
+    ],
   });
 }
 

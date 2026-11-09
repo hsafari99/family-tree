@@ -65,16 +65,44 @@ describe('originGuard', () => {
     expect(res.statusCode).toBe(200);
   });
 
-  it('is not fooled by a path that only starts like /api/v1', async () => {
+  it.each(['/api/%761/x', '/%61pi/v1/x'])(
+    'is not fooled by an encoded path (%s) from another origin',
+    async (url) => {
+      const res = await appWithRoutes().inject({
+        method: 'POST',
+        url,
+        headers: { origin: 'https://evil.example' },
+      });
+      expect(res.statusCode).toBe(403);
+    },
+  );
+
+  it('denies by default: a state-changing request to any non-auth route needs the origin', async () => {
     const plain = Fastify();
     try {
       const { originGuard } = await import('./origin-guard.js');
       plain.addHook('onRequest', originGuard('http://localhost:5173'));
       plain.post('/api/v10', async () => ({ ok: true }));
       const res = await plain.inject({ method: 'POST', url: '/api/v10' });
-      expect(res.statusCode).toBe(200);
+      expect(res.statusCode).toBe(403);
+      const ok = await plain.inject({
+        method: 'POST',
+        url: '/api/v10',
+        headers: { origin: 'http://localhost:5173' },
+      });
+      expect(ok.statusCode).toBe(200);
     } finally {
       await plain.close();
     }
+  });
+
+  it('never lets an unmatched route answer 200 to a foreign origin', async () => {
+    const res = await appWithRoutes().inject({
+      method: 'POST',
+      url: '/api/%762/x',
+      headers: { origin: 'https://evil.example' },
+    });
+    expect(res.statusCode).not.toBe(200);
+    expect([403, 404]).toContain(res.statusCode);
   });
 });

@@ -116,7 +116,7 @@ describe('buildApp', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/boom',
-      headers: { cookie: 'ft.session_token=secret-cookie-value' },
+      headers: { origin: 'http://localhost:5173', cookie: 'ft.session_token=secret-cookie-value' },
       payload: { email: 'ann@example.com', password: 'hunter2-hunter2' },
     });
     expect(res.statusCode).toBe(500);
@@ -177,7 +177,7 @@ describe('buildApp', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/echo',
-      headers: { 'content-type': 'application/json' },
+      headers: { origin: 'http://localhost:5173', 'content-type': 'application/json' },
       payload: '{not json',
     });
     expect(res.statusCode).toBe(400);

@@ -44,17 +44,25 @@ export async function call(
     jar,
     body,
     headers = {},
-  }: { jar?: CookieJar; body?: Payload; headers?: Record<string, string> } = {},
+  }: {
+    jar?: CookieJar;
+    body?: Payload;
+    /** Overrides; `undefined` removes a default header (e.g. `{ origin: undefined }`). */
+    headers?: Record<string, string | undefined>;
+  } = {},
 ): Promise<LightMyRequestResponse> {
+  const merged: Record<string, string | undefined> = {
+    origin: WEB_ORIGIN,
+    ...(method === 'POST' ? { 'content-type': 'application/json' } : {}),
+    ...(jar ? { cookie: jar.header() } : {}),
+    ...headers,
+  };
   const opts: InjectOptions = {
     method,
     url,
-    headers: {
-      origin: WEB_ORIGIN,
-      ...(method === 'POST' ? { 'content-type': 'application/json' } : {}),
-      ...(jar ? { cookie: jar.header() } : {}),
-      ...headers,
-    },
+    headers: Object.fromEntries(
+      Object.entries(merged).filter((e): e is [string, string] => e[1] !== undefined),
+    ),
     ...(method === 'POST' ? { payload: JSON.stringify(body ?? {}) } : {}),
   };
   const res = await app.inject(opts);
@@ -69,11 +77,13 @@ export function uniqueEmail(): string {
 export async function signUp(
   app: FastifyInstance,
   { email = uniqueEmail(), password = TEST_PASSWORD, name = 'Test User' } = {},
+  headers: Record<string, string> = {},
 ) {
   const jar = new CookieJar();
   const res = await call(app, 'POST', '/api/auth/sign-up/email', {
     jar,
     body: { email, password, name },
+    headers,
   });
   if (res.statusCode !== 200) throw new Error(`sign-up failed: ${res.statusCode} ${res.body}`);
   const userId = res.json().user.id as string;
