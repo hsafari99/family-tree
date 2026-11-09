@@ -243,4 +243,16 @@ describe('MembersPage', () => {
     await waitFor(() => expect(s.trees.callsTo('revokeSteward')).toHaveLength(1));
     await waitFor(() => expect(screen.queryByText(/looks after Cy Hale/)).not.toBeInTheDocument());
   });
+
+  it('uses a neutral message when a member, grant or invite no longer exists', async () => {
+    const s = setup();
+    renderAt(`/trees/${s.id}/members`, s);
+    await screen.findByText('a@example.com');
+    s.trees.failNext('removeMember', { code: 'NOT_FOUND', message: MESSAGES.notFound });
+    const row = rowOf('Invited By Me');
+    fireEvent.click(within(row).getByRole('button', { name: 'Remove' }));
+    fireEvent.click(within(row).getByRole('button', { name: 'Remove from tree' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(MESSAGES.itemGone);
+    expect(screen.queryByText(MESSAGES.notFound)).not.toBeInTheDocument();
+  });
 });

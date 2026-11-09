@@ -81,4 +81,14 @@ describe('MyTrees', () => {
     expect(screen.queryByText('Hale family')).not.toBeInTheDocument();
     expect(trees.callsTo('listTrees')).toHaveLength(0);
   });
+
+  it('shows the quota message when a restore would exceed the limit', async () => {
+    const { auth, trees } = setup();
+    const id = trees.addTree();
+    await trees.deleteTree(id);
+    trees.quotaLeft = 0;
+    renderAt('/', { auth, trees });
+    fireEvent.click(await screen.findByRole('button', { name: 'Restore' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(MESSAGES.quota);
+  });
 });

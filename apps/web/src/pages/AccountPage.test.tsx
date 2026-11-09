@@ -137,13 +137,19 @@ describe('AccountPage', () => {
     const { api } = signedIn();
     renderAt('/account', { auth: api });
     fireEvent.click(await screen.findByRole('button', { name: 'Turn on two-step verification' }));
-    expect(screen.getByRole('heading', { name: 'Turn on two-step verification' })).toHaveFocus();
+    // Focus moves in an effect after the step renders, so wait for it rather than assume it.
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Turn on two-step verification' })).toHaveFocus(),
+    );
     await enterPassword('Continue');
-    expect(
-      await screen.findByRole('heading', { name: 'Scan with your authenticator app' }),
-    ).toHaveFocus();
+    const scan = await screen.findByRole('heading', { name: 'Scan with your authenticator app' });
+    await waitFor(() => expect(scan).toHaveFocus());
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    expect(screen.getByRole('heading', { name: 'Two-step verification', level: 2 })).toHaveFocus();
+    await waitFor(() =>
+      expect(
+        screen.getByRole('heading', { name: 'Two-step verification', level: 2 }),
+      ).toHaveFocus(),
+    );
   });
 
   it('downloads the codes as a text file', async () => {

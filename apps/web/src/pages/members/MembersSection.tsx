@@ -1,11 +1,12 @@
 import { type InviteRole } from '@family-tree/shared';
 import { useState } from 'react';
+import type { AuthError } from '../../auth/api';
 import { ConfirmButton } from '../../components/ConfirmButton';
 import { FormError } from '../../components/forms';
 import { personName } from '../../trees/format';
 import { useTreesApi } from '../../trees/TreesApiContext';
 import { CopyLink } from './CopyLink';
-import type { SectionProps } from './types';
+import { actionMessage, type SectionProps } from './types';
 
 export function MembersSection({ treeId, detail, persons, members, me, reload }: SectionProps) {
   const api = useTreesApi();
@@ -23,12 +24,12 @@ export function MembersSection({ treeId, detail, persons, members, me, reload }:
   };
 
   async function act(
-    call: () => Promise<{ ok: true } | { ok: false; error: { message: string } }>,
+    call: () => Promise<{ ok: true } | { ok: false; error: AuthError }>,
     parts: Parameters<SectionProps['reload']>,
   ) {
     setError(null);
     const res = await call();
-    if (!res.ok) return setError(res.error.message);
+    if (!res.ok) return setError(actionMessage(res.error));
     await reload(...parts);
   }
 
@@ -36,7 +37,7 @@ export function MembersSection({ treeId, detail, persons, members, me, reload }:
     setError(null);
     setLink(null);
     const res = await api.createResetLink(treeId, userId);
-    if (!res.ok) return setError(res.error.message);
+    if (!res.ok) return setError(actionMessage(res.error));
     setLink({ name, url: `${window.location.origin}/reset/${res.data.token}` });
   }
 

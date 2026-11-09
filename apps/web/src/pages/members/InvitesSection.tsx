@@ -5,7 +5,7 @@ import { FormError } from '../../components/forms';
 import { personName } from '../../trees/format';
 import { useTreesApi } from '../../trees/TreesApiContext';
 import { CopyLink } from './CopyLink';
-import type { SectionProps } from './types';
+import { actionMessage, type SectionProps } from './types';
 
 export function InvitesSection({
   treeId,
@@ -50,7 +50,7 @@ export function InvitesSection({
       setError(
         res.error.code === 'FORBIDDEN'
           ? 'You can only invite people into your own branch'
-          : res.error.message,
+          : actionMessage(res.error),
       );
       return;
     }
@@ -61,7 +61,7 @@ export function InvitesSection({
   async function revoke(id: string) {
     setError(null);
     const res = await api.revokeInvite(treeId, id);
-    if (!res.ok) return setError(res.error.message);
+    if (!res.ok) return setError(actionMessage(res.error));
     await reload('invites');
   }
 

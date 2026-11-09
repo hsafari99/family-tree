@@ -32,6 +32,8 @@ export interface FakeDeletedTree {
   name: string;
   deletedAt: string;
   restoreUntil: string;
+  /** The viewer's role in the tree; only owners can restore it. */
+  role: TreeDetail['me']['role'];
   tree: FakeTree;
 }
 
@@ -41,6 +43,7 @@ const fail = (code: string, message: string): Result<never> => ({
   error: { code, message },
 });
 const notFound = () => fail('NOT_FOUND', MESSAGES.notFound);
+const forbidden = () => fail('FORBIDDEN', MESSAGES.forbidden);
 
 export function fakePerson(partial: Partial<PersonSummary> = {}): PersonSummary {
   return {
@@ -62,6 +65,8 @@ export class FakeTreesApi implements TreesApi {
   invitesByToken = new Map<string, InvitePreview & { treeId: string }>();
   /** How many more trees createTree allows before QUOTA_EXCEEDED. */
   quotaLeft = 3;
+  /** Whether the signed-in user has two-step verification; createTree refuses without it. */
+  twoFactorEnabled = true;
   calls: { method: Method; input: unknown }[] = [];
   private forced = new Map<Method, AuthError>();
   private pending = new Set<Method>();
@@ -164,6 +169,7 @@ export class FakeTreesApi implements TreesApi {
   async createTree(input: CreateTreeInput) {
     const forced = await this.enter('createTree', input);
     if (forced) return { ok: false as const, error: forced };
+    if (!this.twoFactorEnabled) return fail('TWO_FACTOR_REQUIRED', MESSAGES.twoFactorRequired);
     if (this.quotaLeft <= 0) return fail('QUOTA_EXCEEDED', MESSAGES.quota);
     this.quotaLeft -= 1;
     const person = fakePerson({
@@ -193,6 +199,7 @@ export class FakeTreesApi implements TreesApi {
     if (forced) return { ok: false as const, error: forced };
     const t = this.find(treeId);
     if (!t) return notFound();
+    if (!t.detail.capabilities.manageTree) return forbidden();
     if (input.name !== undefined) t.detail.tree.name = input.name;
     if (input.rootPersonId !== undefined) t.detail.tree.rootPersonId = input.rootPersonId;
     return ok(undefined);
@@ -203,13 +210,16 @@ export class FakeTreesApi implements TreesApi {
     if (forced) return { ok: false as const, error: forced };
     const t = this.find(treeId);
     if (!t) return notFound();
+    if (!t.detail.capabilities.manageTree) return forbidden();
     this.trees.delete(treeId);
+    this.quotaLeft += 1;
     const now = Date.now();
     this.deletedTrees.set(treeId, {
       id: treeId,
       name: t.detail.tree.name,
       deletedAt: new Date(now).toISOString(),
       restoreUntil: new Date(now + 30 * 86_400_000).toISOString(),
+      role: t.detail.me.role,
       tree: t,
     });
     return ok(undefined);
@@ -219,7 +229,9 @@ export class FakeTreesApi implements TreesApi {
     const forced = await this.enter('restoreTree', treeId);
     if (forced) return { ok: false as const, error: forced };
     const d = this.deletedTrees.get(treeId);
-    if (!d) return notFound();
+    if (!d || d.role !== 'owner') return notFound();
+    if (this.quotaLeft <= 0) return fail('QUOTA_EXCEEDED', MESSAGES.quota);
+    this.quotaLeft -= 1;
     this.deletedTrees.delete(treeId);
     this.trees.set(treeId, d.tree);
     return ok(undefined);
@@ -262,8 +274,10 @@ export class FakeTreesApi implements TreesApi {
     const forced = await this.enter('transferOwnership', { treeId, userId });
     if (forced) return { ok: false as const, error: forced };
     const t = this.find(treeId);
-    const target = t?.members.find((x) => x.userId === userId);
-    if (!t || !target) return notFound();
+    if (!t) return notFound();
+    if (!t.detail.capabilities.manageTree) return forbidden();
+    const target = t.members.find((x) => x.userId === userId);
+    if (!target) return notFound();
     for (const m of t.members) if (m.role === 'owner') m.role = 'editor';
     target.role = 'owner';
     t.detail.me.role = 'editor';
@@ -279,7 +293,10 @@ export class FakeTreesApi implements TreesApi {
   async createResetLink(treeId: string, userId: string) {
     const forced = await this.enter('createResetLink', { treeId, userId });
     if (forced) return { ok: false as const, error: forced };
-    const m = this.find(treeId)?.members.find((x) => x.userId === userId);
+    const t = this.find(treeId);
+    if (!t) return notFound();
+    if (!t.detail.capabilities.manageTree) return forbidden();
+    const m = t.members.find((x) => x.userId === userId);
     if (!m) return notFound();
     this.tokenCount += 1;
     const link: ResetLinkCreated = {
@@ -301,6 +318,7 @@ export class FakeTreesApi implements TreesApi {
     if (forced) return { ok: false as const, error: forced };
     const t = this.find(treeId);
     if (!t) return notFound();
+    if (!t.detail.capabilities.grantStewardship) return forbidden();
     if (
       t.stewards.some((s) => s.userId === input.userId && s.anchorPersonId === input.anchorPersonId)
     ) {
@@ -333,7 +351,10 @@ export class FakeTreesApi implements TreesApi {
     const forced = await this.enter('listInvites', treeId);
     if (forced) return { ok: false as const, error: forced };
     const t = this.find(treeId);
-    return t ? ok([...t.invites]) : notFound();
+    if (!t) return notFound();
+    const caps = t.detail.capabilities;
+    if (!caps.invite && !caps.manageTree) return forbidden();
+    return ok([...t.invites]);
   }
 
   async createInvite(treeId: string, input: CreateInviteInput) {
@@ -341,6 +362,7 @@ export class FakeTreesApi implements TreesApi {
     if (forced) return { ok: false as const, error: forced };
     const t = this.find(treeId);
     if (!t) return notFound();
+    if (!t.detail.capabilities.invite) return forbidden();
     this.tokenCount += 1;
     const created: CreatedInvite = {
       id: crypto.randomUUID(),

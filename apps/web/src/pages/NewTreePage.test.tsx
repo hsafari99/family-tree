@@ -1,4 +1,4 @@
-import { fireEvent, screen } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { MESSAGES } from '../auth/api';
 import { FakeAuthApi } from '../test/fake-auth';
@@ -89,5 +89,21 @@ describe('NewTreePage', () => {
   it('redirects to sign-in when signed out', async () => {
     renderAt('/trees/new');
     expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
+  });
+
+  it('re-reads the session and shows the message on TWO_FACTOR_REQUIRED', async () => {
+    const { auth, trees } = setup();
+    trees.failNext('createTree', {
+      code: 'TWO_FACTOR_REQUIRED',
+      message: MESSAGES.twoFactorRequired,
+    });
+    renderAt('/trees/new', { auth, trees });
+    await screen.findByLabelText('Tree name');
+    const before = auth.callsTo('getMe').length;
+    type('Tree name', 'Hale family');
+    type('Your first name', 'Ada');
+    fireEvent.click(screen.getByRole('button', { name: 'Start tree' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(MESSAGES.twoFactorRequired);
+    await waitFor(() => expect(auth.callsTo('getMe').length).toBeGreaterThan(before));
   });
 });

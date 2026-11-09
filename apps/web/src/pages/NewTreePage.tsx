@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
 import { Field, type FieldErrors, FormError, validateDeep } from '../components/forms';
 import { Page } from '../components/Page';
+import { parseYear } from '../trees/format';
 import { useTreesApi } from '../trees/TreesApiContext';
 import { TwoFactorSetup } from './TwoFactorSetup';
 
@@ -66,18 +67,23 @@ function NewTreeForm() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setServerError(null);
-    const year = values.birthYear.trim();
+    const yearNumber = parseYear(values.birthYear);
+    // Our own text for input that isn't a number at all (the schema's default is English jargon).
+    const yearBad = yearNumber !== undefined && Number.isNaN(yearNumber);
     const checked = validateDeep(createTreeSchema, {
       name: values.name,
       person: {
         givenName: values.givenName,
         surname: values.surname,
         sex: values.sex,
-        ...(year === '' ? {} : { birthYear: Number(year) }),
+        ...(yearNumber === undefined || yearBad ? {} : { birthYear: yearNumber }),
       },
     });
-    if (!checked.ok) {
-      setErrors(checked.errors);
+    if (!checked.ok || yearBad) {
+      setErrors({
+        ...(checked.ok ? {} : checked.errors),
+        ...(yearBad ? { 'person.birthYear': 'Enter a year, like 1990' } : {}),
+      });
       return;
     }
     setErrors({});

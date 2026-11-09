@@ -1,5 +1,5 @@
 import type { TreeList } from '@family-tree/shared';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { useTreesApi } from '../trees/TreesApiContext';
 
@@ -12,9 +12,18 @@ export function MyTrees() {
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const [restoring, setRestoring] = useState<string | null>(null);
 
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+
   const load = useCallback(async () => {
     setError(null);
     const res = await api.listTrees();
+    if (!alive.current) return;
     if (res.ok) setList(res.data);
     else setError(res.error.message);
   }, [api]);
@@ -27,6 +36,7 @@ export function MyTrees() {
     setRestoring(id);
     setRestoreError(null);
     const res = await api.restoreTree(id);
+    if (!alive.current) return;
     setRestoring(null);
     if (!res.ok) {
       setRestoreError(res.error.message);

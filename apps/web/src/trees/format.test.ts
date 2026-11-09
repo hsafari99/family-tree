@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fakePerson } from '../test/fake-trees';
-import { personName, personYears } from './format';
+import { parseYear, personName, personYears } from './format';
 
 describe('personName', () => {
   it('joins given, middle and surname, skipping blanks', () => {
@@ -22,5 +22,14 @@ describe('personYears', () => {
       'b. 1990',
     );
     expect(personYears(fakePerson({ birthYear: null, deathYear: null }))).toBe('');
+  });
+});
+
+describe('parseYear', () => {
+  it('is undefined for blank and NaN for anything that is not a finite number', () => {
+    expect(parseYear('  ')).toBeUndefined();
+    expect(parseYear(' 1990 ')).toBe(1990);
+    expect(parseYear('abc')).toBeNaN();
+    expect(parseYear('1e999')).toBeNaN();
   });
 });

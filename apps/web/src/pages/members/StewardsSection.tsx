@@ -4,7 +4,7 @@ import { ConfirmButton } from '../../components/ConfirmButton';
 import { FormError } from '../../components/forms';
 import { personName } from '../../trees/format';
 import { useTreesApi } from '../../trees/TreesApiContext';
-import type { SectionProps } from './types';
+import { actionMessage, type SectionProps } from './types';
 
 export function StewardsSection({
   treeId,
@@ -39,7 +39,7 @@ export function StewardsSection({
       setError(
         res.error.code === 'FORBIDDEN'
           ? 'You can only grant stewardship inside your own branch'
-          : res.error.message,
+          : actionMessage(res.error),
       );
       return;
     }
@@ -49,7 +49,7 @@ export function StewardsSection({
   async function revoke(id: string) {
     setError(null);
     const res = await api.revokeSteward(treeId, id);
-    if (!res.ok) return setError(res.error.message);
+    if (!res.ok) return setError(actionMessage(res.error));
     await reload('stewards');
   }
 

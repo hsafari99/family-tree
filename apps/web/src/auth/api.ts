@@ -61,6 +61,7 @@ export const MESSAGES = {
   forbidden: 'You don’t have permission to do that',
   notFound: 'This tree doesn’t exist or you don’t have access to it',
   conflict: 'That already exists',
+  itemGone: 'That item no longer exists. Refresh and try again.',
 } as const;
 
 /** The error code AuthProvider reacts to by re-reading the session. */

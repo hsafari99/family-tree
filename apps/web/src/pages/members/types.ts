@@ -1,3 +1,4 @@
+import { type AuthError, MESSAGES } from '../../auth/api';
 import type { Member, PersonSummary, TreeDetail } from '@family-tree/shared';
 
 export type Part = 'tree' | 'persons' | 'members' | 'stewards' | 'invites';
@@ -12,3 +13,7 @@ export interface SectionProps {
   me: string;
   reload: (...parts: Part[]) => Promise<void>;
 }
+
+/** The message for a failed action: a missing member, grant or invite isn't "this tree". */
+export const actionMessage = (e: AuthError) =>
+  e.code === 'NOT_FOUND' ? MESSAGES.itemGone : e.message;
