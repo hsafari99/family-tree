@@ -267,6 +267,12 @@ export class FakeTreesApi implements TreesApi {
     for (const m of t.members) if (m.role === 'owner') m.role = 'editor';
     target.role = 'owner';
     t.detail.me.role = 'editor';
+    t.detail.capabilities = {
+      editAnywhere: true,
+      manageTree: false,
+      invite: false,
+      grantStewardship: false,
+    };
     return ok(undefined);
   }
 

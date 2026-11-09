@@ -3,6 +3,7 @@ import { RequireAuth } from './auth/RequireAuth';
 import { AccountPage } from './pages/AccountPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { HomePage } from './pages/HomePage';
+import { MembersPage } from './pages/MembersPage';
 import { NewTreePage } from './pages/NewTreePage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { ResetLinkPage } from './pages/ResetLinkPage';
@@ -34,6 +35,14 @@ export function AppRoutes() {
         element={
           <RequireAuth>
             <NewTreePage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/trees/:treeId/members"
+        element={
+          <RequireAuth>
+            <MembersPage />
           </RequireAuth>
         }
       />

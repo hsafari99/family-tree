@@ -1,0 +1,246 @@
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { MESSAGES } from '../auth/api';
+import { FakeAuthApi } from '../test/fake-auth';
+import { FakeTreesApi, fakePerson } from '../test/fake-trees';
+import { renderAt } from '../test/render';
+
+const ada = fakePerson({ givenName: 'Ada', surname: 'Hale' });
+const bob = fakePerson({ givenName: 'Bob', surname: 'Hale' });
+const cy = fakePerson({ givenName: 'Cy', surname: 'Hale' });
+const dee = fakePerson({ givenName: 'Dee', surname: 'Hale' });
+
+const caps = (over: Partial<Record<string, boolean>> = {}) => ({
+  editAnywhere: false,
+  manageTree: false,
+  invite: false,
+  grantStewardship: false,
+  ...over,
+});
+
+function member(
+  over: { userId?: string; name: string; role: 'owner' | 'editor' | 'viewer' } & Record<
+    string,
+    unknown
+  >,
+) {
+  return { userId: crypto.randomUUID(), personId: null, invitedByUserId: null, ...over };
+}
+
+/** A signed-in user (`me`) looking at a tree seeded as the given role. */
+function setup(kind: 'owner' | 'editor' | 'steward' = 'owner') {
+  const auth = new FakeAuthApi();
+  const user = auth.addUser(
+    { email: 'me@example.com', name: 'Me', twoFactorEnabled: true },
+    { signedIn: true },
+  );
+  const trees = new FakeTreesApi();
+  const emails = kind === 'owner';
+  const mine = member({
+    userId: user.id,
+    name: 'Me',
+    role: kind === 'owner' ? 'owner' : kind === 'editor' ? 'editor' : 'viewer',
+    ...(emails ? { email: 'me@example.com', twoFactorEnabled: true } : {}),
+  });
+  const invitedByMe = member({
+    name: 'Invited By Me',
+    role: 'viewer',
+    invitedByUserId: user.id,
+    ...(emails ? { email: 'a@example.com', twoFactorEnabled: false } : {}),
+  });
+  const other = member({
+    name: 'Other Person',
+    role: 'editor',
+    ...(emails ? { email: 'b@example.com', twoFactorEnabled: true } : {}),
+  });
+  const detail =
+    kind === 'owner'
+      ? {
+          capabilities: caps({
+            editAnywhere: true,
+            manageTree: true,
+            invite: true,
+            grantStewardship: true,
+          }),
+        }
+      : kind === 'editor'
+        ? { capabilities: caps({ editAnywhere: true }) }
+        : {
+            capabilities: caps({ invite: true, grantStewardship: true }),
+            me: {
+              role: 'viewer' as const,
+              personId: null,
+              steward: {
+                grants: [{ id: crypto.randomUUID(), anchorPersonId: bob.id }],
+                active: true,
+              },
+            },
+          };
+  const id = trees.addTree({
+    name: 'Hale family',
+    role: kind === 'steward' ? 'viewer' : kind,
+    persons: [ada, bob, cy, dee],
+    members: [mine, invitedByMe, other],
+    detail,
+  });
+  return { auth, trees, id, user, mine, invitedByMe, other };
+}
+
+const rowOf = (name: string) => screen.getByText(name, { selector: 'td' }).closest('tr')!;
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe('MembersPage', () => {
+  it('owner: shows emails and role selects, changes a role, removes after confirming', async () => {
+    const s = setup();
+    renderAt(`/trees/${s.id}/members`, s);
+    expect(
+      await screen.findByRole('heading', { name: 'Members of Hale family' }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText('a@example.com')).toBeInTheDocument();
+    expect(screen.getByText('Me (you)')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Role for Me')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Role for Invited By Me'), {
+      target: { value: 'editor' },
+    });
+    await waitFor(() =>
+      expect(s.trees.callsTo('changeRole')).toEqual([
+        { treeId: s.id, userId: s.invitedByMe.userId, role: 'editor' },
+      ]),
+    );
+    const row = rowOf('Invited By Me');
+    fireEvent.click(within(row).getByRole('button', { name: 'Remove' }));
+    expect(s.trees.callsTo('removeMember')).toHaveLength(0);
+    fireEvent.click(within(row).getByRole('button', { name: 'Remove from tree' }));
+    await waitFor(() => expect(s.trees.callsTo('removeMember')).toHaveLength(1));
+    await waitFor(() => expect(screen.queryByText('Invited By Me')).not.toBeInTheDocument());
+  });
+
+  it('owner: Make owner only on 2FA rows, and the controls vanish after a transfer', async () => {
+    const s = setup();
+    renderAt(`/trees/${s.id}/members`, s);
+    await screen.findByText('a@example.com');
+    expect(
+      within(rowOf('Invited By Me')).queryByRole('button', { name: 'Make owner' }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(rowOf('Invited By Me')).getByText('Needs two-step verification to become owner'),
+    ).toBeInTheDocument();
+    const row = rowOf('Other Person');
+    fireEvent.click(within(row).getByRole('button', { name: 'Make owner' }));
+    fireEvent.click(within(row).getByRole('button', { name: 'Transfer ownership' }));
+    await waitFor(() => expect(s.trees.callsTo('transferOwnership')).toHaveLength(1));
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Make owner' })).not.toBeInTheDocument(),
+    );
+    expect(screen.queryByLabelText('Role for Other Person')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Invite someone' })).not.toBeInTheDocument();
+  });
+
+  it('owner: issues a reset link, copies it, and shows RESET_LINK_NOT_ALLOWED', async () => {
+    const s = setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    renderAt(`/trees/${s.id}/members`, s);
+    await screen.findByText('a@example.com');
+    fireEvent.click(within(rowOf('Invited By Me')).getByRole('button', { name: 'Reset link' }));
+    const input = (await screen.findByLabelText('Reset link')) as HTMLInputElement;
+    expect(input.value).toBe(`${window.location.origin}/reset/fake-reset-1`);
+    expect(
+      screen.getByText(/Send this link to Invited By Me yourself. It works once, for 24 hours./),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(input.value));
+    expect(await screen.findByText('Copied')).toBeInTheDocument();
+    s.trees.failNext('createResetLink', {
+      code: 'RESET_LINK_NOT_ALLOWED',
+      message: MESSAGES.resetNotAllowed,
+    });
+    fireEvent.click(within(rowOf('Invited By Me')).getByRole('button', { name: 'Reset link' }));
+    expect(await screen.findByText(MESSAGES.resetNotAllowed)).toBeInTheDocument();
+  });
+
+  it('editor: no role selects, Remove, invite form or email column', async () => {
+    const s = setup('editor');
+    renderAt(`/trees/${s.id}/members`, s);
+    await screen.findByText('Other Person', { selector: 'td' });
+    expect(screen.queryByRole('combobox', { name: /Role for/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remove' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Invite someone' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Email' })).not.toBeInTheDocument();
+    expect(s.trees.callsTo('listInvites')).toHaveLength(0);
+  });
+
+  it('active steward: controls only on rows they invited; invite form visible', async () => {
+    const s = setup('steward');
+    renderAt(`/trees/${s.id}/members`, s);
+    await screen.findByText('Other Person', { selector: 'td' });
+    expect(
+      within(rowOf('Invited By Me')).getByLabelText('Role for Invited By Me'),
+    ).toBeInTheDocument();
+    expect(
+      within(rowOf('Invited By Me')).getByRole('button', { name: 'Remove' }),
+    ).toBeInTheDocument();
+    expect(
+      within(rowOf('Other Person')).queryByRole('button', { name: 'Remove' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Make owner' })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Invite someone' })).toBeInTheDocument();
+    // A steward may only anchor stewardship in their own branch.
+    const anchors = within(screen.getByLabelText('Make them a steward of'));
+    expect(anchors.getByRole('option', { name: 'Bob Hale' })).toBeInTheDocument();
+    expect(anchors.queryByRole('option', { name: 'Cy Hale' })).not.toBeInTheDocument();
+  });
+
+  it('creates an invite, shows the link, lists it and revokes it', async () => {
+    const s = setup();
+    renderAt(`/trees/${s.id}/members`, s);
+    await screen.findByRole('heading', { name: 'Invite someone' });
+    fireEvent.click(screen.getByLabelText('Can add and edit'));
+    fireEvent.change(screen.getByLabelText('Make them a steward of'), {
+      target: { value: bob.id },
+    });
+    fireEvent.change(screen.getByLabelText('This invite is for'), { target: { value: cy.id } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create invite link' }));
+    const input = (await screen.findByLabelText('Invite link')) as HTMLInputElement;
+    expect(input.value).toBe(`${window.location.origin}/invite/fake-token-1`);
+    expect(screen.getByText(/You won't be able to see this link again/)).toBeInTheDocument();
+    expect(s.trees.callsTo('createInvite')).toEqual([
+      {
+        treeId: s.id,
+        input: { role: 'editor', stewardAnchorPersonId: bob.id, targetPersonId: cy.id },
+      },
+    ]);
+    const open = (await screen.findByRole('heading', { name: 'Open invites' })).parentElement!;
+    expect(await within(open).findByText(/steward of Bob Hale, for Cy Hale/)).toBeInTheDocument();
+    fireEvent.click(within(open).getByRole('button', { name: 'Revoke' }));
+    fireEvent.click(within(open).getByRole('button', { name: 'Revoke invite' }));
+    await waitFor(() => expect(s.trees.callsTo('revokeInvite')).toHaveLength(1));
+    expect(await within(open).findByText('No open invites.')).toBeInTheDocument();
+  });
+
+  it('grants and revokes stewardship', async () => {
+    const s = setup();
+    renderAt(`/trees/${s.id}/members`, s);
+    await screen.findByRole('heading', { name: 'Branch stewards' });
+    await screen.findByText('a@example.com');
+    fireEvent.change(screen.getByLabelText('Member'), { target: { value: s.other.userId } });
+    fireEvent.change(screen.getByLabelText('Branch of'), { target: { value: cy.id } });
+    fireEvent.click(screen.getByRole('button', { name: 'Make steward' }));
+    expect(
+      await screen.findByText(
+        /Other Person looks after Cy Hale's branch, granted by someone who left/,
+      ),
+    ).toBeInTheDocument();
+    expect(s.trees.callsTo('grantSteward')).toEqual([
+      { treeId: s.id, input: { userId: s.other.userId, anchorPersonId: cy.id } },
+    ]);
+    const item = screen.getByText(/looks after Cy Hale/).closest('li')!;
+    fireEvent.click(within(item).getByRole('button', { name: 'Revoke' }));
+    fireEvent.click(within(item).getByRole('button', { name: 'Revoke stewardship' }));
+    await waitFor(() => expect(s.trees.callsTo('revokeSteward')).toHaveLength(1));
+    await waitFor(() => expect(screen.queryByText(/looks after Cy Hale/)).not.toBeInTheDocument());
+  });
+});
