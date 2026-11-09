@@ -1,7 +1,9 @@
 import { PASSWORD_MIN, passwordSchema } from '@family-tree/shared';
-import { type FormEvent, useState } from 'react';
-import { Link } from 'react-router';
+import { type FormEvent, useEffect, useRef, useState } from 'react';
+import { Link, useNavigate } from 'react-router';
+import { MESSAGES } from '../auth/api';
 import { useAuth } from '../auth/AuthContext';
+import { ConfirmButton } from '../components/ConfirmButton';
 import { Field, type FieldErrors, FormError, Success, validate } from '../components/forms';
 import { Page } from '../components/Page';
 import { TwoFactorSetup } from './TwoFactorSetup';
@@ -22,7 +24,12 @@ export function AccountPage() {
         <dd>{user.twoFactorEnabled ? 'On' : 'Off'}</dd>
       </dl>
       <ChangePassword />
-      <TwoFactorSetup enabled={user.twoFactorEnabled} onChanged={refresh} />
+      <TwoFactorSetup
+        enabled={user.twoFactorEnabled}
+        canDisable={!user.requiresTwoFactor}
+        onChanged={refresh}
+      />
+      <DeleteAccount />
       <p>
         <Link to="/">Back to home</Link>
       </p>
@@ -97,6 +104,70 @@ function ChangePassword() {
           {pending ? 'Saving…' : 'Change password'}
         </button>
       </form>
+    </section>
+  );
+}
+
+function DeleteAccount() {
+  const { api, refresh } = useAuth();
+  const navigate = useNavigate();
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [fieldError, setFieldError] = useState<string | undefined>();
+  const [pending, setPending] = useState(false);
+  const deleted = useRef(false);
+
+  useEffect(
+    () => () => {
+      if (deleted.current) void refresh();
+    },
+    [refresh],
+  );
+
+  async function onConfirm() {
+    setError(null);
+    if (password === '') {
+      setFieldError(MESSAGES.passwordRequired);
+      return;
+    }
+    setFieldError(undefined);
+    setPending(true);
+    const res = await api.deleteAccount({ password });
+    setPending(false);
+    if (!res.ok) {
+      setError(res.error.message);
+      return;
+    }
+    // Leave first: once the user is null, RequireAuth would send this page to sign-in. The
+    // session is re-read when this section unmounts, i.e. once the navigation has committed.
+    deleted.current = true;
+    void navigate('/');
+  }
+
+  return (
+    <section aria-labelledby="delete-account-heading">
+      <h2 id="delete-account-heading">Delete account</h2>
+      <p>
+        This removes your login and your access to every tree. People you added stay in their trees.
+        If you own a tree, transfer it or delete it first.
+      </p>
+      <Field
+        label="Your password to confirm"
+        name="deletePassword"
+        type="password"
+        autoComplete="current-password"
+        value={password}
+        onChange={setPassword}
+        error={fieldError}
+      />
+      <FormError>{error}</FormError>
+      <ConfirmButton
+        label="Delete my account"
+        confirmLabel="Delete permanently"
+        danger
+        pending={pending}
+        onConfirm={() => void onConfirm()}
+      />
     </section>
   );
 }

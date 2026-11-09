@@ -61,4 +61,15 @@ describe('SignUpPage', () => {
     renderAt('/sign-up', { auth: api });
     expect(await screen.findByText('Signed in as Ada')).toBeInTheDocument();
   });
+
+  it('keeps next on the link to the other page', async () => {
+    renderAt('/sign-up?next=%2Finvite%2Fabc');
+    expect(await screen.findByRole('link', { name: 'Sign in' })).toHaveAttribute(
+      'href',
+      expect.stringContaining('next=%2Finvite%2Fabc'),
+    );
+    expect(screen.getByRole('link', { name: 'Sign in' }).getAttribute('href')).toMatch(
+      /^\/sign-in/,
+    );
+  });
 });

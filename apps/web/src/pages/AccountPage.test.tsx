@@ -4,10 +4,10 @@ import { MESSAGES } from '../auth/api';
 import { FAKE_SECRET, FAKE_TOTP, FakeAuthApi } from '../test/fake-auth';
 import { renderAt } from '../test/render';
 
-function signedIn({ twoFactorEnabled = false } = {}) {
+function signedIn({ twoFactorEnabled = false, requiresTwoFactor = false, ownsTrees = false } = {}) {
   const api = new FakeAuthApi();
   const user = api.addUser(
-    { email: 'ada@example.com', name: 'Ada', twoFactorEnabled },
+    { email: 'ada@example.com', name: 'Ada', twoFactorEnabled, requiresTwoFactor, ownsTrees },
     { signedIn: true },
   );
   return { api, user };
@@ -185,5 +185,62 @@ describe('AccountPage', () => {
     expect(await screen.findByText('Two-step verification is off.')).toBeInTheDocument();
     expect(status()).toHaveTextContent('Off');
     expect(screen.getByRole('button', { name: 'Turn on two-step verification' })).toBeVisible();
+  });
+
+  it('hides Turn off and explains why when 2FA is required', async () => {
+    const { api } = signedIn({ twoFactorEnabled: true, requiresTwoFactor: true });
+    renderAt('/account', { auth: api });
+    await screen.findByText('ada@example.com');
+    expect(screen.queryByRole('button', { name: 'Turn off two-step verification' })).toBeNull();
+    expect(
+      screen.getByText('Tree owners and branch stewards must keep two-step verification on.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Generate new recovery codes' })).toBeVisible();
+  });
+
+  describe('delete account', () => {
+    const typePassword = (value: string) =>
+      fireEvent.change(screen.getByLabelText('Your password to confirm'), { target: { value } });
+    const confirm = () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Delete my account' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Delete permanently' }));
+    };
+
+    it('deletes the account and ends on home, signed out', async () => {
+      const { api } = signedIn();
+      renderAt('/account', { auth: api });
+      await screen.findByText('ada@example.com');
+      typePassword('correct-horse');
+      confirm();
+      expect(await screen.findByRole('link', { name: 'Sign in' })).toBeInTheDocument();
+      expect(api.users.size).toBe(0);
+    });
+
+    it('shows the owns-trees message', async () => {
+      const { api } = signedIn({ ownsTrees: true });
+      renderAt('/account', { auth: api });
+      await screen.findByText('ada@example.com');
+      typePassword('correct-horse');
+      confirm();
+      expect(await screen.findByText(MESSAGES.ownsTrees)).toBeInTheDocument();
+    });
+
+    it('shows a wrong password', async () => {
+      const { api } = signedIn();
+      renderAt('/account', { auth: api });
+      await screen.findByText('ada@example.com');
+      typePassword('wrong-password');
+      confirm();
+      expect(await screen.findByText(MESSAGES.badPassword)).toBeInTheDocument();
+    });
+
+    it('asks for the password first, without calling the API', async () => {
+      const { api } = signedIn();
+      renderAt('/account', { auth: api });
+      await screen.findByText('ada@example.com');
+      confirm();
+      expect(await screen.findByText('Enter your password')).toBeInTheDocument();
+      expect(api.callsTo('deleteAccount')).toHaveLength(0);
+    });
   });
 });

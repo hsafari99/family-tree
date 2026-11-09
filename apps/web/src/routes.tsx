@@ -3,6 +3,7 @@ import { RequireAuth } from './auth/RequireAuth';
 import { AccountPage } from './pages/AccountPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { HomePage } from './pages/HomePage';
+import { InvitePage } from './pages/InvitePage';
 import { MembersPage } from './pages/MembersPage';
 import { NewTreePage } from './pages/NewTreePage';
 import { NotFoundPage } from './pages/NotFoundPage';
@@ -54,6 +55,7 @@ export function AppRoutes() {
           </RequireAuth>
         }
       />
+      <Route path="/invite/:token" element={<InvitePage />} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   );

@@ -18,9 +18,12 @@ const PROMPTS = {
 /** The Two-step verification section of the account page. */
 export function TwoFactorSetup({
   enabled,
+  canDisable = true,
   onChanged,
 }: {
   enabled: boolean;
+  /** False for owners and stewards, who must keep 2FA on. */
+  canDisable?: boolean;
   onChanged: () => Promise<void>;
 }) {
   const { api } = useAuth();
@@ -94,16 +97,22 @@ export function TwoFactorSetup({
                 >
                   Generate new recovery codes
                 </button>
-                <button
-                  type="button"
-                  className="danger"
-                  onClick={() => {
-                    setNotice(null);
-                    setStep({ kind: 'password', purpose: 'disable' });
-                  }}
-                >
-                  Turn off two-step verification
-                </button>
+                {canDisable ? (
+                  <button
+                    type="button"
+                    className="danger"
+                    onClick={() => {
+                      setNotice(null);
+                      setStep({ kind: 'password', purpose: 'disable' });
+                    }}
+                  >
+                    Turn off two-step verification
+                  </button>
+                ) : (
+                  <p className="hint">
+                    Tree owners and branch stewards must keep two-step verification on.
+                  </p>
+                )}
               </>
             ) : (
               <button

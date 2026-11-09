@@ -74,4 +74,15 @@ describe('SignInPage', () => {
     renderAt('/sign-in?next=%2Faccount', { auth: api });
     expect(await screen.findByRole('heading', { name: 'Account' })).toBeInTheDocument();
   });
+
+  it('keeps next on the link to the other page', async () => {
+    renderAt('/sign-in?next=%2Finvite%2Fabc');
+    expect(await screen.findByRole('link', { name: 'Create an account' })).toHaveAttribute(
+      'href',
+      expect.stringContaining('next=%2Finvite%2Fabc'),
+    );
+    expect(screen.getByRole('link', { name: 'Create an account' }).getAttribute('href')).toMatch(
+      /^\/sign-up/,
+    );
+  });
 });

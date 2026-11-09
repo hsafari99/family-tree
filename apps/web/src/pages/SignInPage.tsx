@@ -72,7 +72,10 @@ export function SignInPage() {
         <Link to="/forgot-password">Forgot password?</Link>
       </p>
       <p>
-        New here? <Link to="/sign-up">Create an account</Link>
+        New here?{' '}
+        <Link to={`/sign-up${next === '/' ? '' : `?next=${encodeURIComponent(next)}`}`}>
+          Create an account
+        </Link>
       </p>
     </Page>
   );
