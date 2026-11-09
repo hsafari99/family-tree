@@ -12,11 +12,12 @@ import type { FastifyPluginAsync } from 'fastify';
 import type { Auth } from '../auth/auth.js';
 import { requireSession } from '../auth/session-guard.js';
 import type { Config } from '../config.js';
-import type { Db, Queryable } from '../db/client.js';
+import type { Db } from '../db/client.js';
 import { persons, treeMembers, trees } from '../db/schema.js';
 import { AppError, idParam, notFound, parseBody } from '../errors.js';
 import { can, TREE } from '../permissions/can.js';
 import { authorize, loadAccess } from '../trees/access.js';
+import { lockUserTrees, ownedLiveTreeCount } from '../trees/quota.js';
 
 export interface TreeRouteOptions {
   auth: Auth;
@@ -25,21 +26,6 @@ export interface TreeRouteOptions {
 }
 
 const RESTORE_MS = TREE_RESTORE_DAYS * 86_400_000;
-
-async function ownedLiveTreeCount(db: Queryable, userId: string): Promise<number> {
-  const [row] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(treeMembers)
-    .innerJoin(trees, eq(trees.id, treeMembers.treeId))
-    .where(
-      and(eq(treeMembers.userId, userId), eq(treeMembers.role, 'owner'), isNull(trees.deletedAt)),
-    );
-  return row?.n ?? 0;
-}
-
-/** Serialises one user's tree creates and restores, so two at once can't both pass the limit. */
-const lockUserTrees = (db: Queryable, userId: string) =>
-  db.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`trees:${userId}`}, 0))`);
 
 export const treesRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
   app,
@@ -145,31 +131,35 @@ export const treesRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
     const access = await loadAccess(db, idParam(req.params, 'treeId'), req.user!.id);
     const input = parseBody(updateTreeSchema, req.body);
     if (input.name !== undefined) authorize(access, 'tree.rename', TREE);
-    if (input.rootPersonId !== undefined) {
-      authorize(access, 'tree.changeRoot', TREE);
-      const [p] = await db
-        .select({ id: persons.id })
-        .from(persons)
-        .where(
-          and(
-            eq(persons.treeId, access.treeId),
-            eq(persons.id, input.rootPersonId),
-            isNull(persons.deletedAt),
-          ),
-        );
-      if (!p) {
-        throw new AppError('VALIDATION', 400, 'Some fields are invalid', {
-          rootPersonId: ['Choose a person in this tree'],
-        });
+    if (input.rootPersonId !== undefined) authorize(access, 'tree.changeRoot', TREE);
+    await db.transaction(async (tx) => {
+      if (input.rootPersonId !== undefined) {
+        // FOR SHARE keeps the person from being soft-deleted until the root is updated.
+        const [p] = await tx
+          .select({ id: persons.id })
+          .from(persons)
+          .where(
+            and(
+              eq(persons.treeId, access.treeId),
+              eq(persons.id, input.rootPersonId),
+              isNull(persons.deletedAt),
+            ),
+          )
+          .for('share');
+        if (!p) {
+          throw new AppError('VALIDATION', 400, 'Some fields are invalid', {
+            rootPersonId: ['Choose a person in this tree'],
+          });
+        }
       }
-    }
-    await db
-      .update(trees)
-      .set({
-        ...(input.name === undefined ? {} : { name: input.name }),
-        ...(input.rootPersonId === undefined ? {} : { rootPersonId: input.rootPersonId }),
-      })
-      .where(eq(trees.id, access.treeId));
+      await tx
+        .update(trees)
+        .set({
+          ...(input.name === undefined ? {} : { name: input.name }),
+          ...(input.rootPersonId === undefined ? {} : { rootPersonId: input.rootPersonId }),
+        })
+        .where(eq(trees.id, access.treeId));
+    });
     return reply.code(204).send();
   });
 

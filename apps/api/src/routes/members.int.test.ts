@@ -5,7 +5,7 @@ import { addGrant, addMember, ownerWithTree, userWith2fa } from '../../test/tree
 import { buildApp } from '../app.js';
 import { createAuth } from '../auth/auth.js';
 import { loadConfig } from '../config.js';
-import { branchStewards, invites, resetLinks, treeMembers } from '../db/schema.js';
+import { branchStewards, invites, resetLinks, treeMembers, trees, users } from '../db/schema.js';
 import { createDeps } from '../deps.js';
 import { hashToken, newToken } from '../security/tokens.js';
 
@@ -158,6 +158,89 @@ describe('POST transfer', () => {
     expect(owners).toHaveLength(1);
     const d = (await call(app, 'GET', `/api/v1/trees/${treeId}`, { jar: owner.jar })).json();
     expect(d.capabilities.manageTree).toBe(false);
+  });
+});
+
+describe('transfer limits and steward edge cases', () => {
+  it('refuses a transfer to a member who already owns the maximum number of trees', async () => {
+    const { owner, treeId, S } = await setup();
+    for (let i = 0; i < config.MAX_TREES_PER_USER; i++) {
+      const [t] = await db
+        .insert(trees)
+        .values({ name: `Full ${i}` })
+        .returning();
+      await db.insert(treeMembers).values({ treeId: t!.id, userId: S.userId, role: 'owner' });
+    }
+    const res = await call(app, 'POST', `/api/v1/trees/${treeId}/transfer`, {
+      jar: owner.jar,
+      body: { userId: S.userId },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe('QUOTA_EXCEEDED');
+    expect(await roleOf(treeId, owner.userId)).toBe('owner');
+  });
+
+  it('a steward without 2FA cannot change the role of a member they invited', async () => {
+    const { treeId, S, W } = await setup();
+    await db.update(users).set({ twoFactorEnabled: false }).where(eq(users.id, S.userId));
+    const res = await call(app, 'PATCH', `${members(treeId)}/${W.userId}`, {
+      jar: S.jar,
+      body: { role: 'editor' },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(await roleOf(treeId, W.userId)).toBe('viewer');
+  });
+
+  it('removing a steward also removes grants that steward made', async () => {
+    const { owner, treeId, rootId, S, W, grant } = await setup();
+    const child = await addGrant(db, treeId, W.userId, rootId, S.userId, grant.id);
+    const res = await call(app, 'DELETE', `${members(treeId)}/${S.userId}`, { jar: owner.jar });
+    expect(res.statusCode).toBe(204);
+    expect(await db.select().from(branchStewards).where(eq(branchStewards.id, child.id))).toEqual(
+      [],
+    );
+  });
+});
+
+describe('owner reset links are re-checked on use', () => {
+  const issue = async (jar: CookieJar, treeId: string, userId: string) =>
+    (
+      await call(app, 'POST', `/api/v1/trees/${treeId}/members/${userId}/reset-link`, { jar })
+    ).json().token as string;
+  const redeem = (token: string) =>
+    call(app, 'POST', '/api/v1/password-reset/link', {
+      body: { token, newPassword: 'a brand new passphrase' },
+    });
+  const expectInvalid = async (token: string) => {
+    const res = await redeem(token);
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('INVALID_RESET');
+  };
+
+  it('fails if the target has since joined another owner’s tree', async () => {
+    const { owner, treeId, V } = await setup();
+    const token = await issue(owner.jar, treeId, V.userId);
+    const other = await ownerWithTree(app, 'Other');
+    await addMember(db, other.treeId, V.userId, 'viewer');
+    await expectInvalid(token);
+  });
+
+  it('fails if the target has since enabled 2FA', async () => {
+    const { owner, treeId, V } = await setup();
+    const token = await issue(owner.jar, treeId, V.userId);
+    await db.update(users).set({ twoFactorEnabled: true }).where(eq(users.id, V.userId));
+    await expectInvalid(token);
+  });
+
+  it('fails if the issuer no longer owns the tree', async () => {
+    const { owner, treeId, V, S } = await setup();
+    const token = await issue(owner.jar, treeId, V.userId);
+    const t = await call(app, 'POST', `/api/v1/trees/${treeId}/transfer`, {
+      jar: owner.jar,
+      body: { userId: S.userId },
+    });
+    expect(t.statusCode).toBe(204);
+    await expectInvalid(token);
   });
 });
 

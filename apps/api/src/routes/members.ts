@@ -9,6 +9,7 @@ import { AppError, idParam, notFound, parseBody } from '../errors.js';
 import { can, TREE } from '../permissions/can.js';
 import { extraLimit } from '../security/limits.js';
 import { authorize, loadAccess } from '../trees/access.js';
+import { lockUserTrees, ownedLiveTreeCount } from '../trees/quota.js';
 import type { TreeRouteOptions } from './trees.js';
 
 const resetNotAllowed = () =>
@@ -34,7 +35,10 @@ async function loadMember(db: Queryable, treeId: string, userId: string) {
   return m;
 }
 
-export const membersRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, { auth, db }) => {
+export const membersRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
+  app,
+  { auth, db, config },
+) => {
   app.addHook('preHandler', requireSession(auth));
 
   app.get('/api/v1/trees/:treeId/members', async (req) => {
@@ -106,15 +110,38 @@ export const membersRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, {
         userId: ['Choose another member'],
       });
     }
-    const target = await loadMember(db, access.treeId, userId);
-    if (!target.twoFactorEnabled) {
-      throw new AppError(
-        'TWO_FACTOR_REQUIRED',
-        403,
-        'The new owner needs to turn on two-step verification first',
-      );
-    }
+    await loadMember(db, access.treeId, userId);
     await db.transaction(async (tx) => {
+      // The new owner's quota, serialised with their creates and restores.
+      await lockUserTrees(tx, userId);
+      // Lock the caller's row and confirm they are still the owner (a concurrent transfer loses).
+      const [me] = await tx
+        .select({ role: treeMembers.role })
+        .from(treeMembers)
+        .where(and(eq(treeMembers.treeId, access.treeId), eq(treeMembers.userId, access.userId)))
+        .for('update');
+      if (me?.role !== 'owner') throw notFound();
+      const [target] = await tx
+        .select({ twoFactorEnabled: users.twoFactorEnabled })
+        .from(treeMembers)
+        .innerJoin(users, eq(users.id, treeMembers.userId))
+        .where(and(eq(treeMembers.treeId, access.treeId), eq(treeMembers.userId, userId)))
+        .for('update', { of: treeMembers });
+      if (!target) throw notFound();
+      if (!target.twoFactorEnabled) {
+        throw new AppError(
+          'TWO_FACTOR_REQUIRED',
+          403,
+          'The new owner needs to turn on two-step verification first',
+        );
+      }
+      if ((await ownedLiveTreeCount(tx, userId)) >= config.MAX_TREES_PER_USER) {
+        throw new AppError(
+          'QUOTA_EXCEEDED',
+          403,
+          `You can own at most ${config.MAX_TREES_PER_USER} trees`,
+        );
+      }
       // Grants the new owner made as a steward become owner-made (parent null),
       // so deleting the new owner's own grants below doesn't cascade to them.
       const ownGrants = tx
