@@ -1,7 +1,7 @@
 import { type FuzzyDate, sortYear } from '@family-tree/shared';
 import { eq } from 'drizzle-orm';
 import type { Db } from './client.js';
-import { parentChild, persons, residences, trees, unions } from './schema.js';
+import { parentChild, persons, residences, treeMembers, trees, unions } from './schema.js';
 
 export const SEED_TREE_NAME = 'Sample family (seed)';
 
@@ -14,7 +14,10 @@ const year = (y: number, qualifier: FuzzyDate['qualifier'] = 'exact'): FuzzyDate
   date1: String(y).padStart(4, '0'),
 });
 
-export async function seedSampleFamily(db: Db): Promise<{ treeId: string; rootPersonId: string }> {
+export async function seedSampleFamily(
+  db: Db,
+  { ownerUserId }: { ownerUserId?: string } = {},
+): Promise<{ treeId: string; rootPersonId: string }> {
   return db.transaction(async (tx) => {
     // Dev only: deletes any tree named SEED_TREE_NAME, so re-seeding replaces the sample family.
     await tx.delete(trees).where(eq(trees.name, SEED_TREE_NAME));
@@ -28,6 +31,7 @@ export async function seedSampleFamily(db: Db): Promise<{ treeId: string; rootPe
         .values({
           ...p,
           treeId,
+          ...(ownerUserId ? { createdBy: ownerUserId } : {}),
           birthSortYear: p.birthDate ? sortYear(p.birthDate) : null,
           deathSortYear: p.deathDate ? sortYear(p.deathDate) : null,
         })
@@ -164,6 +168,11 @@ export async function seedSampleFamily(db: Db): Promise<{ treeId: string; rootPe
     ]);
 
     await tx.update(trees).set({ rootPersonId: leo.id }).where(eq(trees.id, treeId));
+    if (ownerUserId) {
+      await tx
+        .insert(treeMembers)
+        .values({ treeId, userId: ownerUserId, role: 'owner', personId: leo.id });
+    }
     return { treeId, rootPersonId: leo.id };
   });
 }

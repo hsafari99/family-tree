@@ -13,6 +13,7 @@ Requirements: Docker with Compose v2, Node 24, and pnpm via `corepack enable`.
 pnpm install          # host install, for editor support and running tests
 pnpm dev              # starts postgres, s3, api and web in Docker
 pnpm seed             # in a second terminal: loads a sample family
+pnpm seed you@example.com   # same, owned by that user (sign up first)
 ```
 
 - Web: http://localhost:5173 — open it at `localhost`, not `127.0.0.1`: the API only accepts
