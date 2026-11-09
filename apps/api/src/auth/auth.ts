@@ -1,12 +1,14 @@
 import { PASSWORD_MAX, PASSWORD_MIN } from '@family-tree/shared';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
+import { APIError, createAuthMiddleware, getSessionFromCtx } from 'better-auth/api';
 import { twoFactor } from 'better-auth/plugins';
 import type { Config } from '../config.js';
 import type { Db } from '../db/client.js';
 import { safeError } from '../errors.js';
 import { accounts, sessions, twoFactors, users, verifications } from '../db/schema.js';
 import { CLIENT_IP_HEADER } from './fastify-adapter.js';
+import { holdsTwoFactorRole, ownsLiveTree } from '../trees/roles.js';
 import { hashPassword, verifyPassword } from './password.js';
 
 type AuthLogLevel = 'debug' | 'info' | 'warn' | 'error';
@@ -104,6 +106,44 @@ export function createAuth({ config, db, rateLimitEnabled = true, log }: AuthOpt
       requireEmailVerification: false,
       revokeSessionsOnPasswordReset: true,
       password: { hash: hashPassword, verify: verifyPassword },
+    },
+    user: {
+      deleteUser: {
+        enabled: true,
+        // Spec §5: transfer or delete owned trees first.
+        beforeDelete: async (user) => {
+          if (await ownsLiveTree(db, user.id)) {
+            throw APIError.from('FORBIDDEN', {
+              code: 'OWNS_TREES',
+              message: 'Transfer or delete the trees you own first',
+            });
+          }
+        },
+      },
+    },
+    hooks: {
+      before: createAuthMiddleware(async (ctx) => {
+        // Without a password Better Auth deletes any session younger than a day unchecked.
+        if (ctx.path === '/delete-user') {
+          const password = (ctx.body as { password?: unknown } | undefined)?.password;
+          if (typeof password !== 'string' || password === '') {
+            throw APIError.from('BAD_REQUEST', {
+              code: 'PASSWORD_REQUIRED',
+              message: 'Enter your password',
+            });
+          }
+        }
+        // Spec §5: owners and stewards can't turn 2FA off.
+        if (ctx.path === '/two-factor/disable') {
+          const session = await getSessionFromCtx(ctx);
+          if (session && (await holdsTwoFactorRole(db, session.user.id))) {
+            throw APIError.from('FORBIDDEN', {
+              code: 'TWO_FACTOR_REQUIRED_FOR_ROLE',
+              message: 'Tree owners and stewards must keep two-step verification on',
+            });
+          }
+        }
+      }),
     },
     emailVerification: { sendOnSignUp: false },
     // cookieCache stays off: with it, a revoked session would keep working until the cache expires.

@@ -76,7 +76,7 @@ export function buildApp({ config, checks, auth, db, rateLimitMax = 300, logStre
   app.register(healthRoutes, { checks });
   if (auth) {
     app.register(authRoutes, { auth });
-    app.register(meRoutes, { auth });
+    app.register(meRoutes, { auth, db });
     app.register(passwordResetRoutes, { auth, db });
     app.register(treesRoutes, { auth, db, config });
     app.register(membersRoutes, { auth, db, config });
