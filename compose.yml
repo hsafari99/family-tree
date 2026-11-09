@@ -31,6 +31,47 @@ services:
       retries: 30
       start_period: 10s
 
+  install:
+    build: { context: ., dockerfile: docker/dev.Dockerfile }
+    command: pnpm install --frozen-lockfile
+    volumes: &app-volumes
+      - .:/app
+      - nm_root:/app/node_modules
+      - nm_api:/app/apps/api/node_modules
+      - nm_web:/app/apps/web/node_modules
+      - nm_shared:/app/packages/shared/node_modules
+      - pnpm_store:/pnpm-store
+
+  api:
+    build: { context: ., dockerfile: docker/dev.Dockerfile }
+    command: pnpm --filter @family-tree/api dev
+    env_file: .env.development
+    environment:
+      DATABASE_URL: postgres://family:dev-only-pw@postgres:5432/family
+      S3_ENDPOINT: http://s3:8333
+    ports: ['127.0.0.1:3000:3000']
+    volumes: *app-volumes
+    depends_on:
+      install: { condition: service_completed_successfully }
+      postgres: { condition: service_healthy }
+      s3: { condition: service_healthy }
+
+  web:
+    build: { context: ., dockerfile: docker/dev.Dockerfile }
+    command: pnpm --filter @family-tree/web dev --host 0.0.0.0
+    environment:
+      VITE_API_PROXY_TARGET: http://api:3000
+    ports: ['127.0.0.1:5173:5173']
+    volumes: *app-volumes
+    depends_on:
+      install: { condition: service_completed_successfully }
+      api: { condition: service_started }
+
 volumes:
   pgdata:
   s3data:
+  nm_root:
+  nm_api:
+  nm_web:
+  nm_shared:
+  pnpm_store:
