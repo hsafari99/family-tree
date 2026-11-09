@@ -62,23 +62,31 @@ export const stewardsRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, 
     if (member.role === 'owner') throw invalid('userId', 'The owner already has full access');
 
     // The parent is the actor's own effective grant in this tree (never taken from the request).
-    let parentGrantId: string | null = null;
-    if (access.role !== 'owner') {
-      const parent = grantCovering(access, anchorPersonId);
-      if (!parent) throw forbidden();
-      parentGrantId = parent.id;
-    }
-    const [row] = await db
-      .insert(branchStewards)
-      .values({
-        treeId: access.treeId,
-        userId,
-        anchorPersonId,
-        grantedByUserId: access.userId,
-        parentGrantId,
-      })
-      .onConflictDoNothing()
-      .returning({ id: branchStewards.id });
+    const parentId = access.role === 'owner' ? null : grantCovering(access, anchorPersonId)?.id;
+    if (parentId === undefined) throw forbidden();
+    const row = await db.transaction(async (tx) => {
+      if (parentId !== null) {
+        // Lock the parent so a concurrent revoke can't delete it before our insert.
+        const [parent] = await tx
+          .select({ id: branchStewards.id })
+          .from(branchStewards)
+          .where(and(eq(branchStewards.id, parentId), eq(branchStewards.treeId, access.treeId)))
+          .for('share');
+        if (!parent) throw forbidden();
+      }
+      const [r] = await tx
+        .insert(branchStewards)
+        .values({
+          treeId: access.treeId,
+          userId,
+          anchorPersonId,
+          grantedByUserId: access.userId,
+          parentGrantId: parentId,
+        })
+        .onConflictDoNothing()
+        .returning({ id: branchStewards.id });
+      return r;
+    });
     if (!row) throw new AppError('CONFLICT', 409, 'They already look after this branch');
     return reply.code(201).send({ id: row.id });
   });

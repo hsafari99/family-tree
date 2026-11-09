@@ -199,13 +199,25 @@ export const invitesRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, {
         if (!inv || inv.role === 'owner' || inv.createdByUserId === userId) throw invalidInvite();
 
         // Re-authorise the creator now (decision 3). loadAccess also 404s a deleted tree.
-        const creator = await loadAccess(tx, inv.treeId, inv.createdByUserId).catch(() => null);
+        const creator = await loadAccess(tx, inv.treeId, inv.createdByUserId).catch(
+          (e: unknown) => {
+            if (e instanceof AppError && e.statusCode === 404) return null;
+            throw e;
+          },
+        );
         const spec = {
           kind: 'invite' as const,
           role: inv.role,
           stewardAnchorPersonId: inv.stewardAnchorPersonId,
+          targetPersonId: inv.targetPersonId,
         };
         if (!creator || !can(creator, 'invite.create', spec)) throw invalidInvite();
+        if (
+          inv.stewardAnchorPersonId &&
+          !(await livePerson(tx, inv.treeId, inv.stewardAnchorPersonId))
+        ) {
+          throw invalidInvite();
+        }
 
         // Serialise accepts per tree so two invites targeting the same person can't both
         // pass `claimable` and then hit tree_members_person_uq (a 500).
@@ -229,8 +241,8 @@ export const invitesRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, {
             personId,
             invitedByUserId: inv.createdByUserId,
           });
-        } else {
-          // Only ever raise (spec §5).
+        } else if (existing.role !== 'owner') {
+          // Only ever raise (spec §5). The owner's row is never touched.
           const role = ROLE_RANK[inv.role] > ROLE_RANK[existing.role] ? inv.role : existing.role;
           await tx
             .update(treeMembers)
@@ -238,6 +250,18 @@ export const invitesRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, {
             .where(and(eq(treeMembers.treeId, inv.treeId), eq(treeMembers.userId, userId)));
         }
         if (inv.stewardAnchorPersonId && existing?.role !== 'owner') {
+          let parentGrantId: string | null = null;
+          if (creator.role !== 'owner') {
+            parentGrantId = grantCovering(creator, inv.stewardAnchorPersonId)?.id ?? null;
+            if (!parentGrantId) throw invalidInvite();
+            // Lock the parent so a concurrent revoke can't delete it before our insert.
+            const [parent] = await tx
+              .select({ id: branchStewards.id })
+              .from(branchStewards)
+              .where(eq(branchStewards.id, parentGrantId))
+              .for('share');
+            if (!parent) throw invalidInvite();
+          }
           await tx
             .insert(branchStewards)
             .values({
@@ -245,10 +269,7 @@ export const invitesRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, {
               userId,
               anchorPersonId: inv.stewardAnchorPersonId,
               grantedByUserId: creator.userId,
-              parentGrantId:
-                creator.role === 'owner'
-                  ? null
-                  : (grantCovering(creator, inv.stewardAnchorPersonId)?.id ?? null),
+              parentGrantId,
             })
             .onConflictDoNothing();
         }

@@ -120,6 +120,7 @@ export const treesRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
           kind: 'invite',
           role: 'viewer',
           stewardAnchorPersonId: null,
+          targetPersonId: null,
         }),
         grantStewardship: access.role === 'owner' || access.grants.length > 0,
       },

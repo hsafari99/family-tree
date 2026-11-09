@@ -47,17 +47,27 @@ const ROWS: Row[] = [
   ['relation.delete', { kind: 'people', personIds: [IN] }, [true, false, false, true, true]],
   [
     'invite.create',
-    { kind: 'invite', role: 'editor', stewardAnchorPersonId: null },
+    { kind: 'invite', role: 'editor', stewardAnchorPersonId: null, targetPersonId: null },
     [true, false, false, true, true],
   ],
   [
     'invite.create',
-    { kind: 'invite', role: 'viewer', stewardAnchorPersonId: IN },
+    { kind: 'invite', role: 'viewer', stewardAnchorPersonId: IN, targetPersonId: null },
     [true, false, false, true, true],
   ],
   [
     'invite.create',
-    { kind: 'invite', role: 'viewer', stewardAnchorPersonId: OUT },
+    { kind: 'invite', role: 'viewer', stewardAnchorPersonId: OUT, targetPersonId: null },
+    [true, false, false, false, false],
+  ],
+  [
+    'invite.create',
+    { kind: 'invite', role: 'viewer', stewardAnchorPersonId: null, targetPersonId: IN },
+    [true, false, false, true, true],
+  ],
+  [
+    'invite.create',
+    { kind: 'invite', role: 'viewer', stewardAnchorPersonId: null, targetPersonId: OUT },
     [true, false, false, false, false],
   ],
   ['steward.grant', { kind: 'anchor', personId: IN }, [true, false, false, true, true]],

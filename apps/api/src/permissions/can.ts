@@ -44,7 +44,12 @@ export interface Targets {
   'person.delete': PeopleTarget;
   /** Both ends of the relation. */
   'relation.delete': PeopleTarget;
-  'invite.create': { kind: 'invite'; role: InviteRole; stewardAnchorPersonId: string | null };
+  'invite.create': {
+    kind: 'invite';
+    role: InviteRole;
+    stewardAnchorPersonId: string | null;
+    targetPersonId: string | null;
+  };
   'invite.revoke': { kind: 'ownInvite'; createdByUserId: string };
   'steward.grant': { kind: 'anchor'; personId: string };
   'steward.revoke': { kind: 'grant'; grantedByUserId: string | null };
@@ -90,7 +95,9 @@ const RULES: { [A in Action]: (actor: Actor, target: Targets[A]) => boolean } = 
   'relation.delete': deletePeople,
   'invite.create': (a, t) =>
     isOwner(a) ||
-    (isSteward(a) && (t.stewardAnchorPersonId === null || inScope(a, t.stewardAnchorPersonId))),
+    (isSteward(a) &&
+      (t.stewardAnchorPersonId === null || inScope(a, t.stewardAnchorPersonId)) &&
+      (t.targetPersonId === null || inScope(a, t.targetPersonId))),
   'invite.revoke': (a, t) => isOwner(a) || (isSteward(a) && t.createdByUserId === a.userId),
   'steward.grant': (a, t) => isOwner(a) || inScope(a, t.personId),
   'steward.revoke': (a, t) => isOwner(a) || (isSteward(a) && t.grantedByUserId === a.userId),

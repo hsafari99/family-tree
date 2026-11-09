@@ -188,3 +188,47 @@ async function addMemberUser(treeId: string, invitedBy: string) {
   await addMember(db, treeId, u.userId, 'viewer', invitedBy);
   return u;
 }
+
+describe('review fixes', () => {
+  it('gives a non-member 404 everywhere', async () => {
+    const { owner, treeId, robert, S1 } = await setup();
+    const g = (
+      await call(app, 'POST', url(treeId), {
+        jar: owner.jar,
+        body: { userId: S1.userId, anchorPersonId: robert.id },
+      })
+    ).json().id as string;
+    const X = await signUp(app, { name: 'Xena' });
+    expect((await call(app, 'GET', url(treeId), { jar: X.jar })).statusCode).toBe(404);
+    expect(
+      (
+        await call(app, 'POST', url(treeId), {
+          jar: X.jar,
+          body: { userId: S1.userId, anchorPersonId: robert.id },
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect((await call(app, 'DELETE', `${url(treeId)}/${g}`, { jar: X.jar })).statusCode).toBe(404);
+  });
+
+  it('refuses an editor, and a steward without 2FA, on revoke', async () => {
+    const { owner, treeId, robert, leo, S1, S3, E } = await setup();
+    const post = async (jar: typeof owner.jar, userId: string, anchorPersonId: string) =>
+      (await call(app, 'POST', url(treeId), { jar, body: { userId, anchorPersonId } })).json()
+        .id as string;
+    const g1 = await post(owner.jar, S1.userId, robert.id);
+    expect((await call(app, 'DELETE', `${url(treeId)}/${g1}`, { jar: E.jar })).statusCode).toBe(
+      403,
+    );
+    // S3 has no 2FA: a grant the owner made on their behalf is not effective, so they can't revoke.
+    const g3 = await post(owner.jar, S3.userId, leo.id);
+    await db
+      .update(branchStewards)
+      .set({ grantedByUserId: S3.userId })
+      .where(eq(branchStewards.id, g1));
+    expect((await call(app, 'DELETE', `${url(treeId)}/${g1}`, { jar: S3.jar })).statusCode).toBe(
+      403,
+    );
+    expect(g3).toBeDefined();
+  });
+});

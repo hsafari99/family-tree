@@ -12,7 +12,7 @@ import {
 import { buildApp } from '../app.js';
 import { createAuth } from '../auth/auth.js';
 import { loadConfig } from '../config.js';
-import { branchStewards, invites, treeMembers } from '../db/schema.js';
+import { branchStewards, invites, persons, treeMembers } from '../db/schema.js';
 import { createDeps } from '../deps.js';
 import { hashToken } from '../security/tokens.js';
 
@@ -303,5 +303,72 @@ describe('POST invites/accept', () => {
     const [a, b] = [await signUp(app, { name: 'A' }), await signUp(app, { name: 'B' })];
     const res = await Promise.all([accept(a.jar, token), accept(b.jar, token)]);
     expect(res.map((r) => r.statusCode).sort()).toEqual([200, 400]);
+    const winner = res[0]!.statusCode === 200 ? a : b;
+    const members = await db.select().from(treeMembers).where(eq(treeMembers.treeId, treeId));
+    expect(members.filter((m) => [a.userId, b.userId].includes(m.userId))).toHaveLength(1);
+    expect(await memberOf(treeId, winner.userId)).toBeDefined();
+    const [inv] = await db
+      .select()
+      .from(invites)
+      .where(eq(invites.tokenHash, hashToken(token)));
+    expect(inv?.usedByUserId).toBe(winner.userId);
+  });
+});
+
+describe('review fixes', () => {
+  it('refuses a steward invite whose anchor was deleted', async () => {
+    const { owner, treeId, leo } = await setup();
+    const { token } = (
+      await create(treeId, owner.jar, { role: 'viewer', stewardAnchorPersonId: leo.id })
+    ).json();
+    await db.update(persons).set({ deletedAt: new Date() }).where(eq(persons.id, leo.id));
+    const N = await signUp(app, { name: 'Newt' });
+    const res = await accept(N.jar, token);
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('INVALID_INVITE');
+    expect(await memberOf(treeId, N.userId)).toBeUndefined();
+  });
+
+  it('does not touch the owner row on accept', async () => {
+    const { owner, treeId, S, leo } = await setup();
+    const token = (await create(treeId, S.jar, { role: 'editor', targetPersonId: leo.id })).json()
+      .token as string;
+    const before = await memberOf(treeId, owner.userId);
+    expect((await accept(owner.jar, token)).statusCode).toBe(200);
+    expect(await memberOf(treeId, owner.userId)).toEqual(before);
+  });
+
+  it('limits a steward to targets in their scope', async () => {
+    const { treeId, S, george, leo } = await setup();
+    expect(
+      (await create(treeId, S.jar, { role: 'viewer', targetPersonId: george.id })).statusCode,
+    ).toBe(403);
+    expect(
+      (await create(treeId, S.jar, { role: 'viewer', targetPersonId: leo.id })).statusCode,
+    ).toBe(201);
+  });
+
+  it('gives a non-member 404 everywhere', async () => {
+    const { owner, treeId } = await setup();
+    const id = (await create(treeId, owner.jar, { role: 'viewer' })).json().id as string;
+    const X = await signUp(app, { name: 'Xena' });
+    expect((await call(app, 'GET', url(treeId), { jar: X.jar })).statusCode).toBe(404);
+    expect((await create(treeId, X.jar, { role: 'viewer' })).statusCode).toBe(404);
+    expect((await call(app, 'DELETE', `${url(treeId)}/${id}`, { jar: X.jar })).statusCode).toBe(
+      404,
+    );
+  });
+
+  it('gives a steward without 2FA no invite powers', async () => {
+    const { owner, treeId, robert } = await setup();
+    const T = await signUp(app, { name: 'Tess' });
+    await addMember(db, treeId, T.userId, 'viewer', owner.userId);
+    await addGrant(db, treeId, T.userId, robert.id, owner.userId);
+    const id = (await create(treeId, owner.jar, { role: 'viewer' })).json().id as string;
+    expect((await create(treeId, T.jar, { role: 'viewer' })).statusCode).toBe(403);
+    expect((await call(app, 'GET', url(treeId), { jar: T.jar })).statusCode).toBe(403);
+    expect((await call(app, 'DELETE', `${url(treeId)}/${id}`, { jar: T.jar })).statusCode).toBe(
+      403,
+    );
   });
 });
