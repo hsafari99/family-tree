@@ -8,6 +8,7 @@ import { authRoutes } from './auth/fastify-adapter.js';
 import type { Config } from './config.js';
 import { AppError, safeError } from './errors.js';
 import { healthRoutes, type HealthChecks } from './routes/health.js';
+import { invitesRoutes } from './routes/invites.js';
 import { membersRoutes } from './routes/members.js';
 import { stewardsRoutes } from './routes/stewards.js';
 import { meRoutes } from './routes/me.js';
@@ -80,6 +81,7 @@ export function buildApp({ config, checks, auth, db, rateLimitMax = 300, logStre
     app.register(treesRoutes, { auth, db, config });
     app.register(membersRoutes, { auth, db, config });
     app.register(stewardsRoutes, { auth, db, config });
+    app.register(invitesRoutes, { auth, db, config });
   }
 
   app.setNotFoundHandler((_req, reply) => {
