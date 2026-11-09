@@ -31,6 +31,32 @@ pnpm test             # unit tests (no Docker needed)
 pnpm test:int         # integration tests (needs `pnpm dev` or `docker compose up -d postgres s3`)
 ```
 
+## Accounts and two-step verification (dev)
+
+- Create an account at http://localhost:5173/sign-up. No email is ever sent, so there is no verification step.
+- Turn on two-step verification under **Account**: scan the QR code with any authenticator app (Google Authenticator, Authy, 1Password…) and save the 8 recovery codes it shows once.
+- Forgot your password? Use **Forgot password?** with your email plus a current authenticator code or a recovery code.
+- No authenticator? In development, print a one-time reset link (valid 24 hours) with:
+
+  ```bash
+  pnpm reset-link you@example.com
+  ```
+
+  In a later phase, tree owners will create these links in the app.
+
+## Known limitations
+
+- **Sign-up reveals registered emails.** Sign-up is open, and signing up with an email that
+  already has an account fails with 422, so anyone can learn whether an email is registered.
+  Sign-up is limited to 10 attempts per hour per IP. This is accepted because the app sends no
+  email, so there is no "check your inbox" flow that could hide the difference.
+- **Reset-with-code can be held at its limit.** Anyone who knows an email can keep that
+  account's reset-with-code route answering 429 (5 attempts per 15 minutes per email). Sign-in is
+  unaffected, since reset failures don't count toward the 2FA lockout.
+- **Rate limits live in memory.** Both Fastify's and Better Auth's rate-limit counters are kept in
+  the API process, so they reset on restart and are not shared between instances. The API is
+  meant to run as a single instance; a second one would need a shared store first.
+
 ## License
 
 [AGPL-3.0](LICENSE)

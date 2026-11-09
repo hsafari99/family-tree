@@ -12,6 +12,14 @@ function isLocalHost(hostname: string): boolean {
 }
 
 const bool = z.enum(['true', 'false']).transform((v) => v === 'true');
+// Browsers send Origin without path or trailing slash; anything else silently breaks CORS.
+const bareOrigin = () =>
+  z
+    .url()
+    .refine(
+      (u) => URL.canParse(u) && new URL(u).origin === u,
+      'Must be a bare origin, e.g. https://example.com',
+    );
 
 export const configSchema = z
   .object({
@@ -22,10 +30,12 @@ export const configSchema = z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
       .default('info'),
     DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
-    // Browsers send Origin without path or trailing slash; anything else silently breaks CORS.
-    WEB_ORIGIN: z
-      .url()
-      .refine((u) => new URL(u).origin === u, 'Must be a bare origin, e.g. https://example.com'),
+    WEB_ORIGIN: bareOrigin(),
+    // Public origin Better Auth builds its URLs from (it appends /api/auth itself).
+    AUTH_BASE_URL: bareOrigin(),
+    // Number of trusted proxy hops in front of the API (0 = none). The client IP is taken that
+    // many hops from the right of X-Forwarded-For, so extra entries a client adds are ignored.
+    TRUST_PROXY: z.coerce.number().int().min(0).max(5).default(0),
     SESSION_SECRET: z.string().min(32),
     S3_ENDPOINT: z.url(),
     S3_REGION: z.string().min(1),
@@ -50,7 +60,7 @@ export const configSchema = z
         });
       }
     }
-    for (const key of ['S3_ENDPOINT', 'WEB_ORIGIN'] as const) {
+    for (const key of ['S3_ENDPOINT', 'WEB_ORIGIN', 'AUTH_BASE_URL'] as const) {
       // Field-level errors are already reported; superRefine still runs, so don't throw here.
       if (!URL.canParse(config[key])) continue;
       const url = new URL(config[key]);
