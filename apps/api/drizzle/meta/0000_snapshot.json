@@ -1,5 +1,5 @@
 {
-  "id": "d41250e7-efff-40aa-a678-15799121d5ec",
+  "id": "725e3ec9-58da-4c08-bfad-ae1985b10439",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -80,6 +80,7 @@
             }
           ],
           "isUnique": true,
+          "where": "\"parent_child\".\"deleted_at\" is null",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -89,6 +90,21 @@
           "columns": [
             {
               "expression": "child_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "parent_child_tree_idx": {
+          "name": "parent_child_tree_idx",
+          "columns": [
+            {
+              "expression": "tree_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -114,27 +130,31 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "parent_child_union_id_unions_id_fk": {
-          "name": "parent_child_union_id_unions_id_fk",
+        "parent_child_union_fk": {
+          "name": "parent_child_union_fk",
           "tableFrom": "parent_child",
           "tableTo": "unions",
           "columnsFrom": [
+            "tree_id",
             "union_id"
           ],
           "columnsTo": [
+            "tree_id",
             "id"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "parent_child_child_id_persons_id_fk": {
-          "name": "parent_child_child_id_persons_id_fk",
+        "parent_child_child_fk": {
+          "name": "parent_child_child_fk",
           "tableFrom": "parent_child",
           "tableTo": "persons",
           "columnsFrom": [
+            "tree_id",
             "child_id"
           ],
           "columnsTo": [
+            "tree_id",
             "id"
           ],
           "onDelete": "cascade",
@@ -324,6 +344,48 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "persons_tree_birth_year_idx": {
+          "name": "persons_tree_birth_year_idx",
+          "columns": [
+            {
+              "expression": "tree_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "birth_sort_year",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "persons_tree_death_year_idx": {
+          "name": "persons_tree_death_year_idx",
+          "columns": [
+            {
+              "expression": "tree_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "death_sort_year",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -342,7 +404,16 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "persons_tree_id_uq": {
+          "name": "persons_tree_id_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tree_id",
+            "id"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -424,6 +495,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "residences_tree_idx": {
+          "name": "residences_tree_idx",
+          "columns": [
+            {
+              "expression": "tree_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -440,14 +526,16 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "residences_person_id_persons_id_fk": {
-          "name": "residences_person_id_persons_id_fk",
+        "residences_person_fk": {
+          "name": "residences_person_fk",
           "tableFrom": "residences",
           "tableTo": "persons",
           "columnsFrom": [
+            "tree_id",
             "person_id"
           ],
           "columnsTo": [
+            "tree_id",
             "id"
           ],
           "onDelete": "cascade",
@@ -506,14 +594,16 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "trees_root_person_id_persons_id_fk": {
-          "name": "trees_root_person_id_persons_id_fk",
+        "trees_root_person_fk": {
+          "name": "trees_root_person_fk",
           "tableFrom": "trees",
           "tableTo": "persons",
           "columnsFrom": [
+            "id",
             "root_person_id"
           ],
           "columnsTo": [
+            "tree_id",
             "id"
           ],
           "onDelete": "no action",
@@ -665,27 +755,31 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "unions_partner_a_id_persons_id_fk": {
-          "name": "unions_partner_a_id_persons_id_fk",
+        "unions_partner_a_fk": {
+          "name": "unions_partner_a_fk",
           "tableFrom": "unions",
           "tableTo": "persons",
           "columnsFrom": [
+            "tree_id",
             "partner_a_id"
           ],
           "columnsTo": [
+            "tree_id",
             "id"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "unions_partner_b_id_persons_id_fk": {
-          "name": "unions_partner_b_id_persons_id_fk",
+        "unions_partner_b_fk": {
+          "name": "unions_partner_b_fk",
           "tableFrom": "unions",
           "tableTo": "persons",
           "columnsFrom": [
+            "tree_id",
             "partner_b_id"
           ],
           "columnsTo": [
+            "tree_id",
             "id"
           ],
           "onDelete": "cascade",
@@ -693,12 +787,25 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "unions_tree_id_uq": {
+          "name": "unions_tree_id_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tree_id",
+            "id"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {
         "unions_has_partner": {
           "name": "unions_has_partner",
           "value": "\"unions\".\"partner_a_id\" is not null or \"unions\".\"partner_b_id\" is not null"
+        },
+        "unions_distinct_partners": {
+          "name": "unions_distinct_partners",
+          "value": "\"unions\".\"partner_a_id\" is null or \"unions\".\"partner_b_id\" is null or \"unions\".\"partner_a_id\" <> \"unions\".\"partner_b_id\""
         }
       },
       "isRLSEnabled": false

@@ -38,7 +38,8 @@ CREATE TABLE "persons" (
 	"version" integer DEFAULT 1 NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"deleted_at" timestamp with time zone
+	"deleted_at" timestamp with time zone,
+	CONSTRAINT "persons_tree_id_uq" UNIQUE("tree_id","id")
 );
 --> statement-breakpoint
 CREATE TABLE "residences" (
@@ -74,23 +75,29 @@ CREATE TABLE "unions" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"deleted_at" timestamp with time zone,
-	CONSTRAINT "unions_has_partner" CHECK ("unions"."partner_a_id" is not null or "unions"."partner_b_id" is not null)
+	CONSTRAINT "unions_tree_id_uq" UNIQUE("tree_id","id"),
+	CONSTRAINT "unions_has_partner" CHECK ("unions"."partner_a_id" is not null or "unions"."partner_b_id" is not null),
+	CONSTRAINT "unions_distinct_partners" CHECK ("unions"."partner_a_id" is null or "unions"."partner_b_id" is null or "unions"."partner_a_id" <> "unions"."partner_b_id")
 );
 --> statement-breakpoint
 ALTER TABLE "parent_child" ADD CONSTRAINT "parent_child_tree_id_trees_id_fk" FOREIGN KEY ("tree_id") REFERENCES "public"."trees"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "parent_child" ADD CONSTRAINT "parent_child_union_id_unions_id_fk" FOREIGN KEY ("union_id") REFERENCES "public"."unions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "parent_child" ADD CONSTRAINT "parent_child_child_id_persons_id_fk" FOREIGN KEY ("child_id") REFERENCES "public"."persons"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "parent_child" ADD CONSTRAINT "parent_child_union_fk" FOREIGN KEY ("tree_id","union_id") REFERENCES "public"."unions"("tree_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "parent_child" ADD CONSTRAINT "parent_child_child_fk" FOREIGN KEY ("tree_id","child_id") REFERENCES "public"."persons"("tree_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "persons" ADD CONSTRAINT "persons_tree_id_trees_id_fk" FOREIGN KEY ("tree_id") REFERENCES "public"."trees"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "residences" ADD CONSTRAINT "residences_tree_id_trees_id_fk" FOREIGN KEY ("tree_id") REFERENCES "public"."trees"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "residences" ADD CONSTRAINT "residences_person_id_persons_id_fk" FOREIGN KEY ("person_id") REFERENCES "public"."persons"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "trees" ADD CONSTRAINT "trees_root_person_id_persons_id_fk" FOREIGN KEY ("root_person_id") REFERENCES "public"."persons"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "residences" ADD CONSTRAINT "residences_person_fk" FOREIGN KEY ("tree_id","person_id") REFERENCES "public"."persons"("tree_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "trees" ADD CONSTRAINT "trees_root_person_fk" FOREIGN KEY ("id","root_person_id") REFERENCES "public"."persons"("tree_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "unions" ADD CONSTRAINT "unions_tree_id_trees_id_fk" FOREIGN KEY ("tree_id") REFERENCES "public"."trees"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "unions" ADD CONSTRAINT "unions_partner_a_id_persons_id_fk" FOREIGN KEY ("partner_a_id") REFERENCES "public"."persons"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "unions" ADD CONSTRAINT "unions_partner_b_id_persons_id_fk" FOREIGN KEY ("partner_b_id") REFERENCES "public"."persons"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-CREATE UNIQUE INDEX "parent_child_union_child_uq" ON "parent_child" USING btree ("union_id","child_id");--> statement-breakpoint
+ALTER TABLE "unions" ADD CONSTRAINT "unions_partner_a_fk" FOREIGN KEY ("tree_id","partner_a_id") REFERENCES "public"."persons"("tree_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "unions" ADD CONSTRAINT "unions_partner_b_fk" FOREIGN KEY ("tree_id","partner_b_id") REFERENCES "public"."persons"("tree_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "parent_child_union_child_uq" ON "parent_child" USING btree ("union_id","child_id") WHERE "parent_child"."deleted_at" is null;--> statement-breakpoint
 CREATE INDEX "parent_child_child_idx" ON "parent_child" USING btree ("child_id");--> statement-breakpoint
+CREATE INDEX "parent_child_tree_idx" ON "parent_child" USING btree ("tree_id");--> statement-breakpoint
 CREATE INDEX "persons_tree_idx" ON "persons" USING btree ("tree_id");--> statement-breakpoint
+CREATE INDEX "persons_tree_birth_year_idx" ON "persons" USING btree ("tree_id","birth_sort_year");--> statement-breakpoint
+CREATE INDEX "persons_tree_death_year_idx" ON "persons" USING btree ("tree_id","death_sort_year");--> statement-breakpoint
 CREATE INDEX "residences_person_idx" ON "residences" USING btree ("person_id");--> statement-breakpoint
+CREATE INDEX "residences_tree_idx" ON "residences" USING btree ("tree_id");--> statement-breakpoint
 CREATE INDEX "unions_tree_idx" ON "unions" USING btree ("tree_id");--> statement-breakpoint
 CREATE INDEX "unions_partner_a_idx" ON "unions" USING btree ("partner_a_id");--> statement-breakpoint
 CREATE INDEX "unions_partner_b_idx" ON "unions" USING btree ("partner_b_id");
