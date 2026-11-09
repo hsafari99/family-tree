@@ -1,0 +1,6 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Committed development-only values"
+paths = ['''^\.env\.development$''', '''^docker/seaweedfs/s3\.dev\.json$''']
