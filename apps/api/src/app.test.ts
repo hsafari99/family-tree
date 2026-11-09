@@ -2,6 +2,7 @@ import { Writable } from 'node:stream';
 import { afterEach, describe, expect, it } from 'vitest';
 import { testConfig } from '../test/test-config.js';
 import { buildApp } from './app.js';
+import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { AppError } from './errors.js';
 
 const checks = { checkDb: async () => {}, checkStorage: async () => {} };
@@ -125,6 +126,25 @@ describe('buildApp', () => {
     expect(log).not.toContain('hunter2');
     expect(log).not.toContain('ann@example.com');
     expect(log).not.toContain('secret-cookie-value');
+  });
+
+  it('keeps database query parameters out of the error log', async () => {
+    const sink = logSink();
+    app = buildApp({ config: testConfig({ LOG_LEVEL: 'info' }), checks, logStream: sink.stream });
+    app.get('/db-fail', async () => {
+      throw new DrizzleQueryError(
+        'select * from "users" where "email" = $1',
+        ['ann@example.com', 'secret-token-value'],
+        Object.assign(new Error('connection reset'), { code: '08006' }),
+      );
+    });
+    const res = await app.inject({ method: 'GET', url: '/db-fail' });
+    expect(res.statusCode).toBe(500);
+    const log = sink.text();
+    expect(log).toContain('Failed query: select * from');
+    expect(log).toContain('08006');
+    expect(log).not.toContain('ann@example.com');
+    expect(log).not.toContain('secret-token-value');
   });
 
   it('maps a thrown 404 error to NOT_FOUND', async () => {

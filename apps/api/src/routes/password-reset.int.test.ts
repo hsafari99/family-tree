@@ -11,6 +11,7 @@ import {
 } from '../../test/auth-helpers.js';
 import { buildApp } from '../app.js';
 import { createAuth } from '../auth/auth.js';
+import { createResetLink } from '../auth/reset-links.js';
 import { loadConfig } from '../config.js';
 import { accounts, twoFactors } from '../db/schema.js';
 import { createDeps } from '../deps.js';
@@ -163,6 +164,49 @@ describe('POST /api/v1/password-reset/totp', () => {
     });
     expect(res.statusCode).toBe(429);
     expect(res.json().error.code).toBe('RATE_LIMITED');
+  });
+
+  it.each([
+    ['IPv6 addresses in one /64', '2001:db8:1:2::1', '2001:db8:1:2:ffff:ffff:ffff:ffff'],
+    ['an IPv4-mapped address and its IPv4 form', '::ffff:203.0.113.99', '203.0.113.99'],
+  ])('counts %s as one client', async (_label, first, second) => {
+    for (let i = 0; i < 20; i++) {
+      const res = await resetTotp(
+        { email: uniqueEmail(), code: '123456', newPassword: NEW_PASSWORD },
+        { ip: i % 2 === 0 ? first : second },
+      );
+      expect(res.statusCode).toBe(400);
+    }
+    const res = await resetTotp(
+      { email: uniqueEmail(), code: '123456', newPassword: NEW_PASSWORD },
+      { ip: second },
+    );
+    expect(res.statusCode).toBe(429);
+  });
+
+  it('spends a recovery code once under 4 concurrent resets', async () => {
+    const { email, backupCodes } = await userWith2fa();
+    const code = backupCodes[0]!;
+    const results = await Promise.all(
+      [0, 1, 2, 3].map(() => resetTotp({ email, code, newPassword: NEW_PASSWORD })),
+    );
+    expect(results.map((r) => r.statusCode).sort()).toEqual([204, 400, 400, 400]);
+  });
+
+  it('spends outstanding reset links on success', async () => {
+    const { email, userId, rawSecret } = await userWith2fa();
+    const { token } = await createResetLink(deps.db, { userId, createdByUserId: null });
+    const ok = await resetTotp({
+      email,
+      code: await totpNow(rawSecret),
+      newPassword: NEW_PASSWORD,
+    });
+    expect(ok.statusCode).toBe(204);
+    const link = await call(app, 'POST', '/api/v1/password-reset/link', {
+      body: { token, newPassword: 'an attacker passphrase' },
+    });
+    expect(link.statusCode).toBe(400);
+    expect(link.json()).toEqual({ error: INVALID });
   });
 
   it('caps one IP at 20 attempts in 15 minutes across emails', async () => {

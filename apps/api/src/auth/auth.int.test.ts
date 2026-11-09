@@ -1,5 +1,6 @@
 import { apiErrorSchema, meResponseSchema } from '@family-tree/shared';
 import { eq } from 'drizzle-orm';
+import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { afterAll, describe, expect, it } from 'vitest';
 import {
   call,
@@ -178,6 +179,11 @@ describe('Better Auth logging', () => {
     const ctx = await logged.$context;
     ctx.logger.info('not at warn level');
     ctx.logger.error('boom', new Error('detail'));
+    ctx.logger.error(
+      'query',
+      new DrizzleQueryError('select 1 where x = $1', ['secret-param-value'], new Error('pg')),
+    );
+    expect(JSON.stringify(lines.pop())).not.toContain('secret-param-value');
     expect(lines).toEqual([
       {
         level: 'error',

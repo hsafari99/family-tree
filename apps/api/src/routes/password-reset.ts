@@ -1,11 +1,12 @@
 import { resetWithCodeSchema, resetWithLinkSchema } from '@family-tree/shared';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
+import { normalizeIP } from '@fastify/rate-limit';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import type { Auth } from '../auth/auth.js';
 import { consumeResetLink } from '../auth/reset-links.js';
 import { verifyAndConsumeSecondFactor } from '../auth/totp-reset.js';
 import type { Db } from '../db/client.js';
-import { users } from '../db/schema.js';
+import { resetLinks, users } from '../db/schema.js';
 import { AppError, parseBody } from '../errors.js';
 
 const invalidReset = () => new AppError('INVALID_RESET', 400, 'Email or code is incorrect');
@@ -15,8 +16,15 @@ function normalisedEmailOrIp(req: FastifyRequest): string {
   const email = (req.body as { email?: unknown } | undefined)?.email;
   return typeof email === 'string' && email.trim() !== ''
     ? `email:${email.trim().toLowerCase()}`
-    : `ip:${req.ip}`;
+    : `ip:${clientKey(req)}`;
 }
+
+/**
+ * The rate-limit key for a client: IPv6 addresses collapse to their /64 (and IPv4-mapped
+ * addresses to plain IPv4), as @fastify/rate-limit's default key does. A raw req.ip would give
+ * one IPv6 client 2^64 separate buckets.
+ */
+const clientKey = (req: FastifyRequest) => normalizeIP(req.ip);
 
 const RATE_LIMITED = () => new AppError('RATE_LIMITED', 429, 'Too many requests, try again later');
 
@@ -24,11 +32,18 @@ export const passwordResetRoutes: FastifyPluginAsync<{ auth: Auth; db: Db }> = a
   app,
   { auth, db },
 ) => {
-  /** Sets the new password (already hashed) and signs the user out everywhere. */
+  /**
+   * Sets the new password (already hashed), signs the user out everywhere and spends any other
+   * outstanding reset links, so an older link can't undo this reset.
+   */
   async function applyNewPassword(userId: string, hash: string) {
     const ctx = await auth.$context;
     await ctx.internalAdapter.updatePassword(userId, hash);
     await ctx.internalAdapter.deleteUserSessions(userId);
+    await db
+      .update(resetLinks)
+      .set({ usedAt: sql`now()` })
+      .where(and(eq(resetLinks.userId, userId), isNull(resetLinks.usedAt)));
   }
 
   /**
@@ -40,7 +55,7 @@ export const passwordResetRoutes: FastifyPluginAsync<{ auth: Auth; db: Db }> = a
     const check = app.createRateLimit({
       max,
       timeWindow: '15 minutes',
-      keyGenerator: (req) => `reset-ip:${req.routeOptions.url}:${req.ip}`,
+      keyGenerator: (req) => `reset-ip:${req.routeOptions.url}:${clientKey(req)}`,
     });
     return async (req: FastifyRequest) => {
       const result = await check(req);

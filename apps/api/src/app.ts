@@ -6,7 +6,7 @@ import Fastify, { type FastifyError } from 'fastify';
 import type { Auth } from './auth/auth.js';
 import { authRoutes } from './auth/fastify-adapter.js';
 import type { Config } from './config.js';
-import { AppError } from './errors.js';
+import { AppError, safeError } from './errors.js';
 import { healthRoutes, type HealthChecks } from './routes/health.js';
 import { meRoutes } from './routes/me.js';
 import { passwordResetRoutes } from './routes/password-reset.js';
@@ -83,7 +83,7 @@ export function buildApp({ config, checks, auth, db, rateLimitMax = 300, logStre
       return reply.code(status).send(body);
     };
     if (err instanceof AppError) {
-      if (err.statusCode >= 500) req.log.error(err);
+      if (err.statusCode >= 500) req.log.error({ err: safeError(err) });
       return send(err.statusCode, {
         code: err.code,
         message: err.message,
@@ -99,7 +99,7 @@ export function buildApp({ config, checks, auth, db, rateLimitMax = 300, logStre
         message: 'Request could not be processed',
       });
     }
-    req.log.error(err);
+    req.log.error({ err: safeError(err) });
     return send(500, { code: 'INTERNAL', message: 'Something went wrong' });
   });
 

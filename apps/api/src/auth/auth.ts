@@ -4,6 +4,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { twoFactor } from 'better-auth/plugins';
 import type { Config } from '../config.js';
 import type { Db } from '../db/client.js';
+import { safeError } from '../errors.js';
 import { accounts, sessions, twoFactors, users, verifications } from '../db/schema.js';
 import { CLIENT_IP_HEADER } from './fastify-adapter.js';
 import { hashPassword, verifyPassword } from './password.js';
@@ -60,8 +61,12 @@ function authLogLevel(level: Config['LOG_LEVEL']): AuthLogLevel {
   return 'error';
 }
 
-const serialiseArg = (arg: unknown) =>
-  arg instanceof Error ? { name: arg.name, message: arg.message, stack: arg.stack } : arg;
+const serialiseArg = (arg: unknown) => {
+  const safe = safeError(arg);
+  return safe instanceof Error
+    ? { name: safe.name, message: safe.message, stack: safe.stack }
+    : safe;
+};
 
 export function createAuth({ config, db, rateLimitEnabled = true, log }: AuthOptions) {
   return betterAuth({

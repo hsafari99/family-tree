@@ -37,6 +37,9 @@ pnpm test:int         # integration tests (needs `pnpm dev` or `docker compose u
   already has an account fails with 422, so anyone can learn whether an email is registered.
   Sign-up is limited to 10 attempts per hour per IP. This is accepted because the app sends no
   email, so there is no "check your inbox" flow that could hide the difference.
+- **Reset-with-code can be held at its limit.** Anyone who knows an email can keep that
+  account's reset-with-code route answering 429 (5 attempts per 15 minutes per email). Sign-in is
+  unaffected, since reset failures don't count toward the 2FA lockout.
 - **Rate limits live in memory.** Both Fastify's and Better Auth's rate-limit counters are kept in
   the API process, so they reset on restart and are not shared between instances. The API is
   meant to run as a single instance; a second one would need a shared store first.

@@ -88,13 +88,31 @@ describe('reset links', () => {
     expect(res.json()).toEqual(INVALID);
   });
 
-  it('lets exactly one of two concurrent redemptions win', async () => {
+  it('lets exactly one of several concurrent redemptions win', async () => {
     const { userId } = await signUp(app);
     const { token } = await createResetLink(deps.db, { userId, createdByUserId: null });
-    const results = await Promise.all([redeem(token), redeem(token)]);
-    expect(results.map((r) => r.statusCode).sort()).toEqual([204, 400]);
-    const direct = await Promise.all([consumeResetLink(deps.db, token)]);
-    expect(direct).toEqual([null]);
+    // All requests start before any is awaited, so they race for the same row.
+    const pending = [redeem(token), redeem(token), redeem(token), redeem(token)];
+    const results = await Promise.all(pending);
+    expect(results.map((r) => r.statusCode).sort()).toEqual([204, 400, 400, 400]);
+    expect(await consumeResetLink(deps.db, token)).toBeNull();
+  });
+
+  it("spends the user's other outstanding links when one is redeemed", async () => {
+    const { userId } = await signUp(app);
+    const first = await createResetLink(deps.db, { userId, createdByUserId: null });
+    const second = await createResetLink(deps.db, { userId, createdByUserId: null });
+    const other = await signUp(app);
+    const unrelated = await createResetLink(deps.db, {
+      userId: other.userId,
+      createdByUserId: null,
+    });
+
+    expect((await redeem(first.token)).statusCode).toBe(204);
+    const stale = await redeem(second.token);
+    expect(stale.statusCode).toBe(400);
+    expect(stale.json()).toEqual(INVALID);
+    expect((await redeem(unrelated.token)).statusCode).toBe(204);
   });
 
   it('limits one IP to 10 redemptions in 15 minutes', async () => {
