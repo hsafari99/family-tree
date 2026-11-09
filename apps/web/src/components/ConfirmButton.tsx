@@ -6,12 +6,15 @@ export function ConfirmButton({
   confirmLabel,
   onConfirm,
   pending = false,
+  disabled = false,
   danger = false,
 }: {
   label: string;
   confirmLabel: string;
   onConfirm: () => void;
   pending?: boolean;
+  /** Stops the first click (the confirm step itself is not affected). */
+  disabled?: boolean;
   danger?: boolean;
 }) {
   const [asking, setAsking] = useState(false);
@@ -33,7 +36,7 @@ export function ConfirmButton({
         ref={startRef}
         type="button"
         className={cls}
-        disabled={pending}
+        disabled={pending || disabled}
         onClick={() => setAsking(true)}
       >
         {label}
