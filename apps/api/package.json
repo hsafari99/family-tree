@@ -1,0 +1,37 @@
+{
+  "name": "@family-tree/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "dist",
+    "drizzle"
+  ],
+  "scripts": {
+    "dev": "NODE_OPTIONS=--conditions=development tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:int": "vitest run --config vitest.int.config.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:seed": "NODE_OPTIONS=--conditions=development tsx src/db/seed-cli.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "3.1164.0",
+    "@family-tree/shared": "workspace:*",
+    "@fastify/cors": "11.4.1",
+    "@fastify/helmet": "13.2.0",
+    "drizzle-orm": "0.45.4",
+    "fastify": "5.12.8",
+    "postgres": "4.1.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "drizzle-kit": "0.31.11",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "vitest": "5.1.0"
+  }
+}
