@@ -7,17 +7,38 @@ type State =
 
 const LABELS = { db: 'Database', storage: 'Storage' } as const;
 
-export function HealthStatus({ load = getHealth }: { load?: () => Promise<HealthResponse> }) {
+export const HEALTH_TIMEOUT_MS = 5000;
+
+export function HealthStatus({
+  load = getHealth,
+}: {
+  load?: (signal: AbortSignal) => Promise<HealthResponse>;
+}) {
   const [state, setState] = useState<State>({ kind: 'loading' });
 
   useEffect(() => {
-    let active = true;
-    load().then(
-      (health) => active && setState({ kind: 'ready', health }),
-      () => active && setState({ kind: 'unreachable' }),
-    );
+    const controller = new AbortController();
+    // Cleared on unmount, so this only fires while mounted. It sets the state itself
+    // rather than relying on `load` to reject when the signal aborts.
+    const timeout = setTimeout(() => {
+      controller.abort(new DOMException('Health check timed out', 'TimeoutError'));
+      setState({ kind: 'unreachable' });
+    }, HEALTH_TIMEOUT_MS);
+
+    load(controller.signal)
+      .then(
+        (health) => {
+          if (!controller.signal.aborted) setState({ kind: 'ready', health });
+        },
+        () => {
+          if (!controller.signal.aborted) setState({ kind: 'unreachable' });
+        },
+      )
+      .finally(() => clearTimeout(timeout));
+
     return () => {
-      active = false;
+      clearTimeout(timeout);
+      controller.abort();
     };
   }, [load]);
 

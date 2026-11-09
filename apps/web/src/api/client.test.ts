@@ -3,6 +3,8 @@ import { getHealth } from './client';
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+  vi.resetModules();
 });
 
 const respond = (status: number, body: unknown) =>
@@ -28,5 +30,27 @@ describe('getHealth', () => {
   it('throws on a malformed body', async () => {
     respond(200, { hello: 'world' });
     await expect(getHealth()).rejects.toThrow();
+  });
+
+  it('calls the health endpoint with credentials and the given signal', async () => {
+    respond(200, { status: 'ok', checks: { db: 'ok', storage: 'ok' } });
+    const controller = new AbortController();
+    await getHealth(controller.signal);
+    expect(fetch).toHaveBeenCalledWith('/api/v1/health', {
+      credentials: 'include',
+      signal: controller.signal,
+    });
+  });
+
+  it('prefixes VITE_API_BASE_URL without doubling a trailing slash', async () => {
+    vi.stubEnv('VITE_API_BASE_URL', 'https://api.example.com/');
+    vi.resetModules();
+    const { getHealth: getHealthWithBase } = await import('./client');
+    respond(200, { status: 'ok', checks: { db: 'ok', storage: 'ok' } });
+    await getHealthWithBase();
+    expect(fetch).toHaveBeenCalledWith('https://api.example.com/api/v1/health', {
+      credentials: 'include',
+      signal: undefined,
+    });
   });
 });

@@ -1,6 +1,12 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
-import { HealthStatus } from './HealthStatus';
+import type { HealthResponse } from '@family-tree/shared';
+import { act, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { HEALTH_TIMEOUT_MS, HealthStatus } from './HealthStatus';
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 describe('HealthStatus', () => {
   it('shows a loading state first', () => {
@@ -35,5 +41,42 @@ describe('HealthStatus', () => {
       />,
     );
     expect(await screen.findByText('Cannot reach the API')).toBeInTheDocument();
+  });
+
+  it('aborts the request and ignores a late result after unmount', async () => {
+    let resolve!: (h: HealthResponse) => void;
+    let signal!: AbortSignal;
+    const consoleError = vi.spyOn(console, 'error');
+    const { unmount } = render(
+      <HealthStatus
+        load={(s) => {
+          signal = s;
+          return new Promise((r) => (resolve = r));
+        }}
+      />,
+    );
+    unmount();
+    expect(signal.aborted).toBe(true);
+    await act(async () => resolve({ status: 'ok', checks: { db: 'ok', storage: 'ok' } }));
+    expect(consoleError).not.toHaveBeenCalled();
+  });
+
+  it('gives up after the timeout when the API never answers', async () => {
+    vi.useFakeTimers();
+    let signal!: AbortSignal;
+    render(
+      <HealthStatus
+        load={(s) => {
+          signal = s;
+          return new Promise(() => {});
+        }}
+      />,
+    );
+    expect(screen.getByText(/checking/i)).toBeInTheDocument();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(HEALTH_TIMEOUT_MS);
+    });
+    expect(screen.getByText('Cannot reach the API')).toBeInTheDocument();
+    expect(signal.aborted).toBe(true);
   });
 });
