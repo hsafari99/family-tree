@@ -12,6 +12,7 @@ export const meRoutes: FastifyPluginAsync<{ auth: Auth }> = async (app, { auth }
         name: user.name,
         email: user.email,
         twoFactorEnabled: user.twoFactorEnabled ?? false,
+        requiresTwoFactor: false,
       },
     };
     return body;

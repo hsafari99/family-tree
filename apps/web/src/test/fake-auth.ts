@@ -13,6 +13,7 @@ interface FakeUser {
   email: string;
   password: string;
   twoFactorEnabled: boolean;
+  requiresTwoFactor: boolean;
   twoFactorPending: boolean;
   recoveryCodes: string[];
 }
@@ -52,6 +53,7 @@ export class FakeAuthApi implements AuthApi {
       name: 'Ada Lovelace',
       password: 'correct-horse',
       twoFactorEnabled: false,
+      requiresTwoFactor: false,
       twoFactorPending: false,
       recoveryCodes: [],
       ...input,
@@ -99,7 +101,13 @@ export class FakeAuthApi implements AuthApi {
   }
 
   private toSession(u: FakeUser): SessionUser {
-    return { id: u.id, name: u.name, email: u.email, twoFactorEnabled: u.twoFactorEnabled };
+    return {
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      twoFactorEnabled: u.twoFactorEnabled,
+      requiresTwoFactor: u.requiresTwoFactor,
+    };
   }
 
   async getMe() {
