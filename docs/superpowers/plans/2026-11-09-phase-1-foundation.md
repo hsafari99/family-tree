@@ -109,7 +109,7 @@ family-tree/
   "scripts": {
     "dev": "docker compose up --build",
     "down": "docker compose down",
-    "seed": "docker compose exec api pnpm db:seed",
+    "seed": "docker compose exec api pnpm --filter @family-tree/api db:seed",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
@@ -651,8 +651,8 @@ export default defineConfig({
 });
 ```
 
-Run: `pnpm install`
-Expected: success.
+Run: `pnpm install && readlink apps/api/node_modules/@family-tree/shared`
+Expected: the install succeeds, and `readlink` prints a path pointing to `packages/shared`, meaning it's a symlink. If it prints nothing, it's an injected copy, and dev and test would read stale shared source. In that case add `dedupeInjectedDeps: true` to `pnpm-workspace.yaml` and re-install.
 
 - [ ] **Step 2: Write the failing tests** in `apps/api/src/config.test.ts`
 
@@ -696,7 +696,8 @@ describe('loadConfig', () => {
   });
 
   it('names the missing variable in the error', () => {
-    const { DATABASE_URL: _omit, ...env } = devEnv;
+    const env: Record<string, string | undefined> = { ...devEnv };
+    delete env.DATABASE_URL;
     expect(() => loadConfig(env)).toThrowError(ConfigError);
     expect(() => loadConfig(env)).toThrowError(/DATABASE_URL/);
   });
@@ -1521,7 +1522,10 @@ async function newTree() {
 describe('schema constraints', () => {
   it('rejects a union with no partners', async () => {
     const tree = await newTree();
-    await expect(db.insert(unions).values({ treeId: tree.id })).rejects.toThrow(/unions_has_partner/);
+    // Drizzle 0.45 wraps driver errors in DrizzleQueryError; the constraint name is on `cause`.
+    await expect(db.insert(unions).values({ treeId: tree.id })).rejects.toMatchObject({
+      cause: { constraint_name: 'unions_has_partner' },
+    });
     await db.delete(trees).where(eq(trees.id, tree.id));
   });
 
@@ -1562,7 +1566,7 @@ describe('schema constraints', () => {
 - [ ] **Step 6: Run the integration tests**
 
 Run: `docker compose up -d --wait postgres s3 && pnpm test:int`
-Expected: all 4 tests PASS. Global setup migrates `family_test` and creates the `family-photos-test` bucket. If the first test fails because the error message doesn't contain the constraint name, assert `.rejects.toThrow()` and additionally check `err.cause?.constraint_name === 'unions_has_partner'`. Drizzle 0.45 wraps driver errors, and the constraint name is on `cause`.
+Expected: all 4 tests PASS. Global setup migrates `family_test` and creates the `family-photos-test` bucket.
 
 - [ ] **Step 7: Commit**
 
@@ -1934,6 +1938,7 @@ git commit -m "feat(api): idempotent sample-family seed covering remarriage, hal
     "@testing-library/dom": "10.4.2",
     "@testing-library/jest-dom": "7.0.1",
     "@testing-library/react": "16.3.3",
+    "@types/node": "24.19.2",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.3.0",
@@ -1954,7 +1959,7 @@ git commit -m "feat(api): idempotent sample-family seed covering remarriage, hal
     "moduleResolution": "Bundler",
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
-    "types": ["vite/client"]
+    "types": ["vite/client", "node"]
   },
   "include": ["src", "vite.config.ts"]
 }
@@ -2199,7 +2204,7 @@ body {
 
 - [ ] **Step 5: Run the tests and check they pass**
 
-Run: `pnpm --filter @family-tree/web test && pnpm --filter @family-tree/web typecheck && pnpm lint`
+Run: `pnpm format && pnpm --filter @family-tree/web test && pnpm --filter @family-tree/web typecheck && pnpm lint`
 Expected: PASS, 7 web tests.
 
 - [ ] **Step 6: Commit**
@@ -2445,7 +2450,7 @@ jobs:
 
 - [ ] **Step 2: Run CI's checks locally**
 
-Run: `pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm test:int && pnpm build`
+Run: `pnpm format && pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm test:int && pnpm build`
 Expected: every command exits 0. `pnpm build` builds `shared`, then `api` and `web`.
 
 Run, if gitleaks is installed: `docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest detect --source /repo --config /repo/.gitleaks.toml`

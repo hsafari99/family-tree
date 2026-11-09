@@ -27,7 +27,7 @@ GEDCOM import, translations/RTL, a map of places, co-owners, free-form card drag
         ▼
  Caddy (TLS) ──► Fastify API (TypeScript)    Hetzner VPS, Docker Compose
                      │             │
-                PostgreSQL     S3-compatible storage (R2 in prod, MinIO in dev)
+                PostgreSQL     S3-compatible storage (R2 in prod, SeaweedFS in dev)
 ```
 
 ### Repository layout (monorepo, pnpm workspaces)
@@ -40,10 +40,10 @@ GEDCOM import, translations/RTL, a map of places, co-owners, free-form card drag
 | | Dev (local) | Prod |
 |---|---|---|
 | Run | `docker compose up` | `docker compose -f compose.yml -f compose.prod.yml up -d` |
-| Services | api (hot reload), web (Vite), postgres, minio | api, postgres, caddy |
+| Services | api (hot reload), web (Vite), postgres, seaweedfs (S3) | api, postgres, caddy |
 | Frontend | Vite dev server | Static build on Cloudflare Pages at `family.cortextechservices.com` |
 | API | `localhost` | `api.family.cortextechservices.com` |
-| Photos | MinIO, stored in a Docker volume | Cloudflare R2, private bucket |
+| Photos | SeaweedFS (S3-compatible; MinIO no longer publishes images), stored in a Docker volume | Cloudflare R2, private bucket |
 | Config | `.env.development` (committed, safe values) | `.env.production` (never committed); `.env.production.example` is committed |
 
 - The API validates its config with Zod at startup and refuses to start on missing or invalid values. In prod it rejects dev secrets and `localhost` endpoints.
@@ -259,14 +259,14 @@ Development follows TDD.
   - graph-to-layout transformation
   - delete-preview computation
   - config validation
-- **Integration tests:** real PostgreSQL and MinIO in Docker. They cover every endpoint, including cross-tree isolation tests, the invite lifecycle, TOTP and reset flows, quotas and photo processing (the EXIF stripping is verified).
+- **Integration tests:** real PostgreSQL and SeaweedFS in Docker. They cover every endpoint, including cross-tree isolation tests, the invite lifecycle, TOTP and reset flows, quotas and photo processing (the EXIF stripping is verified).
 - **End-to-end tests (Playwright):** sign up → create tree → add parents, a partner and children → create an invite → second user joins as steward → steward edits and deletes in their branch → owner previews and restores from Trash.
 - **CI (GitHub Actions):** lint, type-check, unit, integration and E2E tests, and Docker image build on every push.
 
 ## 10. Deployment
 
 1. CI builds the API image and pushes it to GHCR.
-2. On the VPS: `docker compose pull && docker compose up -d`. Migrations run at startup with drizzle-kit, and the health check on `/health` gates readiness.
+2. On the VPS: `docker compose pull && docker compose up -d`. Migrations run at startup with drizzle-kit, and the health check on `/api/v1/health` gates readiness.
 3. The frontend is deployed with `wrangler pages deploy`.
 4. DNS: `family.cortextechservices.com` points to Cloudflare Pages, and `api.family.cortextechservices.com` points to the VPS.
 5. `docs/self-hosting.md` documents the same steps for other people.
@@ -283,7 +283,7 @@ Estimated cost: Hetzner CX22 at about €4–5 a month. Cloudflare Pages is free
   3. Trees, members, invites, stewards, `can()`, the branch CTE, cross-tree isolation tests, and owner-issued reset links with the "belongs to no other tree" rule.
   4. Persons, unions, parent–child links, residences, fuzzy dates, optimistic concurrency, audit log, deletion, Trash, restore, the tree purge job.
   5. Graph endpoint and canvas: React Flow, ELK, focus and full views, person cards, adding people with the duplicate check.
-  6. Photos (sharp, MinIO and R2, signed URLs, quotas), search with `pg_trgm`, the relationship path and kinship wording.
+  6. Photos (sharp, SeaweedFS and R2, signed URLs, quotas), search with `pg_trgm`, the relationship path and kinship wording.
   7. GEDCOM and ZIP export, production compose with Caddy, backups, deployment, `self-hosting.md`, the full E2E suite.
 - **At the end of every phase:**
   - Automated tests pass.
