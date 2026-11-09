@@ -16,6 +16,7 @@ const year = (y: number, qualifier: FuzzyDate['qualifier'] = 'exact'): FuzzyDate
 
 export async function seedSampleFamily(db: Db): Promise<{ treeId: string; rootPersonId: string }> {
   return db.transaction(async (tx) => {
+    // Dev only: deletes any tree named SEED_TREE_NAME, so re-seeding replaces the sample family.
     await tx.delete(trees).where(eq(trees.name, SEED_TREE_NAME));
     const [tree] = await tx.insert(trees).values({ name: SEED_TREE_NAME }).returning();
     if (!tree) throw new Error('Failed to create seed tree');

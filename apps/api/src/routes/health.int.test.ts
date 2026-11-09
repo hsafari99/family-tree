@@ -22,10 +22,13 @@ describe('health against real Postgres and S3', () => {
   it('reports storage error for a bucket that does not exist', async () => {
     const broken = createDeps({ ...config, S3_BUCKET: 'bucket-that-does-not-exist' });
     const brokenApp = buildApp({ config, checks: broken.checks });
-    const res = await brokenApp.inject({ method: 'GET', url: '/api/v1/health' });
-    expect(res.statusCode).toBe(503);
-    expect(res.json().checks).toEqual({ db: 'ok', storage: 'error' });
-    await brokenApp.close();
-    await broken.close();
+    try {
+      const res = await brokenApp.inject({ method: 'GET', url: '/api/v1/health' });
+      expect(res.statusCode).toBe(503);
+      expect(res.json().checks).toEqual({ db: 'ok', storage: 'error' });
+    } finally {
+      await brokenApp.close();
+      await broken.close();
+    }
   });
 });

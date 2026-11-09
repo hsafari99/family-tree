@@ -17,6 +17,7 @@ pnpm seed             # in a second terminal: loads a sample family
 
 - Web: http://localhost:5173
 - API health: http://localhost:3000/api/v1/health
+- If the `family_test` database is missing (a volume created before it was added), run `docker compose down -v` to recreate the volumes.
 
 Tests:
 
