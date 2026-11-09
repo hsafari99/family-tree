@@ -59,7 +59,7 @@ All primary keys are UUIDs. Every tree-scoped table has a `tree_id`. Every soft-
 | `users` (and other Better Auth tables) | email, password hash (Argon2id), Google account link, TOTP secret, recovery codes (hashed) |
 | `trees` | id, name, `root_person_id` (default focus; the owner can change it), created_at, deleted_at |
 | `tree_members` | tree_id, user_id, role (`owner` \| `editor` \| `viewer`), `person_id` (the user's own card, nullable), `invited_by`. This table is the **single source of truth for ownership**: a partial unique index allows exactly one `owner` row per tree. |
-| `branch_stewards` | tree_id, user_id, `anchor_person_id`, `granted_by` (user id; null means granted by the owner) |
+| `branch_stewards` | id, tree_id, user_id, `anchor_person_id`, `granted_by_user_id`, `parent_grant_id` (the granter's grant this one derives from; null means granted by the owner) |
 | `persons` | given_name, middle_name, surname, maiden_name, nickname, sex, birth_date, birth_place, death_date, death_place, cause_of_death, is_living, occupation, education, biography, notes, primary_photo_id, sibling_order, version, created_by, updated_by |
 | `unions` | partner_a_id (nullable), partner_b_id (nullable), type (`marriage` \| `partnership`), status (`married` \| `partners` \| `divorced` \| `separated` \| `widowed`), start_date, end_date |
 | `parent_child` | union_id, child_id, kind (`biological` \| `adoptive` \| `step` \| `foster`) |
@@ -72,7 +72,8 @@ All primary keys are UUIDs. Every tree-scoped table has a `tree_id`. Every soft-
 
 ### Rules
 - **Children belong to unions, never to a single person.** A single known parent is a union with one partner left empty. Half-siblings are children of different unions that share one partner.
-- **Every union has at least one partner** (enforced with a CHECK constraint). A child with both parents unknown simply has no `parent_child` row.
+- **Every union has at least one partner** (enforced with a CHECK constraint). A child with both parents unknown simply has no `parent_child` row. When a union is soft-deleted because its last partner was deleted, that partner's id is kept on the union, so the CHECK still holds and restore stays simple.
+- **The root person can't be deleted.** The owner has to choose a new `root_person_id` first.
 - **All `parent_child` kinds count as parent and child links.** That covers biological, adoptive, step and foster, for branch membership, the descendant cascade, the relationship path and layout alike.
 - **Disconnected people are computed, not stored.** A non-deleted person counts as disconnected when they can't be reached from `trees.root_person_id` through any relation. The tree page lists them under "Disconnected people".
 - **Fuzzy dates** are stored as `{ qualifier: exact|about|before|after|between, date1, date2?, precision: day|month|year }` plus a derived `sort_year` column used for indexing, sorting and range filters.
@@ -99,13 +100,16 @@ All primary keys are UUIDs. Every tree-scoped table has a `tree_id`. Every soft-
 The branch is computed with a recursive CTE whenever it's needed, so it grows automatically. A person can be in more than one branch.
 
 ### Steward scope
-- **Effective scope.** For a grant made by the owner, the steward's effective scope is `branch(anchor)`. For a grant made by another steward S, it is `branch(anchor) ∩ effective scope of S`, applied recursively. A steward can therefore never pass on more than they hold, even as the tree grows. If S's grant is removed, the grants S made are removed with it.
-- **Granting.** A steward may grant stewardship only on an anchor inside their own effective scope.
+- **Effective scope, per grant.** A grant made by the owner has the scope `branch(anchor)`. A grant made by a steward has the scope `branch(anchor) ∩ scope of its parent grant`, applied recursively through `parent_grant_id`. A steward's total scope is the union of all their grants. Nobody can pass on more than they hold, even as the tree grows.
+- **Granting.** A steward may grant stewardship only on an anchor inside the scope of one of their own grants, which becomes the new grant's `parent_grant_id`.
+- **Revoking.** The owner can revoke any grant, and a steward can revoke grants they made. Revoking a grant also revokes every grant derived from it.
 - **2FA.** A steward grant only takes effect once the steward has TOTP enrolled. Until then they act with their base role.
 - **People.** A steward can add, edit and delete people inside their scope.
 - **Relations.**
   - Adding or editing a relation (a union or a parent–child link) needs **at least one** end inside the scope.
   - Deleting a relation needs **both** ends inside the scope. Otherwise only the owner can delete it, so a steward can't cut your marriage from her side.
+  - The ends of a union are its partners. The ends of a parent–child link are the child and every non-empty partner of its union.
+- **Deleting a person.** The same rule applies here. A steward can't delete a person who has a union with a partner outside their scope, because that would end the relation indirectly. Only the owner can.
 - **Cascade deletes.** If a delete preview includes any person outside the steward's scope, the steward's delete is blocked. The preview says "includes N people outside your branch, ask the owner".
 
 ### Permission matrix
@@ -118,7 +122,9 @@ The branch is computed with a recursive CTE whenever it's needed, so it grows au
 | Delete people or relations (to Trash) | ✅ | ✅ | ❌ | ❌ |
 | Restore from Trash | ✅ | ❌ | ❌ | ❌ |
 | Create viewer and editor invites | ✅ | ✅ | ❌ | ❌ |
-| Grant stewardship | ✅ | ✅ (anchor inside own branch) | ❌ | ❌ |
+| Grant stewardship | ✅ | ✅ (anchor inside own effective scope) | ❌ | ❌ |
+| Revoke stewardship | ✅ (any) | ✅ (only grants they made) | ❌ | ❌ |
+| Change root person | ✅ | ❌ | ❌ | ❌ |
 | Change or remove members, revoke invites | ✅ | Only people they invited: switch them between viewer and editor, remove them, revoke their own invites | ❌ | ❌ |
 | Empty Trash permanently, delete tree, transfer ownership, export | ✅ | ❌ | ❌ | ❌ |
 
@@ -156,6 +162,7 @@ The branch is computed with a recursive CTE whenever it's needed, so it grows au
     - Ownership can only be transferred to a member who already has TOTP.
     - A steward grant takes effect only after enrolment (see §4).
   - Enrolling shows 8 one-time recovery codes, once.
+  - Owners and stewards can't turn TOTP off. They can only move it to a new device by re-enrolling, which needs a current code or a recovery code.
 - **Password reset without email:**
   - With TOTP: email plus a current TOTP code, or a recovery code.
   - Without TOTP: a tree owner creates a one-time reset link for the member, valid for 24 hours. This is allowed **only if the target account belongs to no tree other than trees that same owner owns.** That stops one family's owner from taking over an account that holds access to another family's tree. Anyone else has to use TOTP or recovery codes.
@@ -170,7 +177,7 @@ The branch is computed with a recursive CTE whenever it's needed, so it grows au
 1. **Auth:** sign in, sign up, Google, TOTP enrolment and challenge, recovery codes, password reset. Opening an invite link lands here, then goes straight into the tree.
 2. **My trees:** owned and shared trees, and "Start a new tree". Starting a tree asks for the user's own details first and makes that person the root and default focus.
 3. **Tree page:**
-   - Top bar: search, a Focus/Full switch, a depth slider (1–3), "How are we related?", Members, and Trash (owner only).
+   - Top bar: search, a Focus/Full switch, a depth slider (1–3), "How are we related?", Members, a "Disconnected people" badge (shown only when there are any), and Trash (owner only).
    - Canvas with pan, zoom and a minimap.
    - Side panel for the selected person. On mobile it becomes a bottom sheet.
 4. **Members:** members and roles, stewards and their anchors, open invites, and "Create invite link".
@@ -211,7 +218,9 @@ English only. All interface text lives in one message catalog so translations ca
   - `GET /trees/:id/search?q=&filters`
   - `GET /trees/:id/relationship?from=&to=`
   - `POST /trees/:id/persons/:pid/delete-preview` and `POST .../delete`, where `mode` is `person` or `descendants`
-  - `POST /trash/:batchId/restore`
+  - `POST /trash/:batchId/restore` and `DELETE /trash/:batchId`, which erases the batch permanently
+  - `PATCH /trees/:id` to rename the tree or change `root_person_id`, `DELETE /trees/:id` to soft-delete it, and `POST /trees/:id/restore`
+  - `GET /trees/:id/disconnected`
   - `POST /trees/:id/unions/:uid/delete` and `POST /trees/:id/parent-child/:pcid/delete` for deleting relations
   - `GET /trees/:id/export`, which returns one ZIP containing `tree.ged` (GEDCOM 5.5.1) and a `photos/` folder
 - **Error format:** `{ error: { code, message, details? } }`. Codes include `VALIDATION`, `NOT_FOUND`, `FORBIDDEN` (only within a tree the user can see), `CONFLICT`, `RATE_LIMITED` and `QUOTA_EXCEEDED`.
@@ -270,8 +279,8 @@ Estimated cost: Hetzner CX22 at about €4–5 a month. Cloudflare Pages is free
 - Google sign-in is wired in when the author creates the OAuth client. Until then, email and password sign-in works on its own, and Google sign-in is disabled by config.
 - The work is built in sequential phases, each with its own plan, and each ends with software that runs locally under `docker compose up`:
   1. Monorepo, config validation, Docker dev environment, DB schema and migrations, seed script, CI skeleton.
-  2. Auth: email and password, TOTP, recovery codes, rate limiting, reset links. Google sign-in is added when the client ID exists.
-  3. Trees, members, invites, stewards, `can()`, the branch CTE, cross-tree isolation tests.
+  2. Auth: email and password, TOTP, recovery codes, rate limiting, and the token mechanics for reset links. Google sign-in is added when the client ID exists.
+  3. Trees, members, invites, stewards, `can()`, the branch CTE, cross-tree isolation tests, and owner-issued reset links with the "belongs to no other tree" rule.
   4. Persons, unions, parent–child links, residences, fuzzy dates, optimistic concurrency, audit log, deletion, Trash, restore, the tree purge job.
   5. Graph endpoint and canvas: React Flow, ELK, focus and full views, person cards, adding people with the duplicate check.
   6. Photos (sharp, MinIO and R2, signed URLs, quotas), search with `pg_trgm`, the relationship path and kinship wording.
