@@ -1,0 +1,8 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Committed fake values used only in development and tests"
+# The last entry is a historical fake test value (an earlier config.test.ts SESSION_SECRET)
+# that remains in git history; it was never a real secret.
+regexes = ['''dev-only''', '''test-only''', '''k3J9xQ2vL8mN4pR7tW1yZ6bC5dF0gH2jK4lM8nP3qS''']

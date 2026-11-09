@@ -662,7 +662,7 @@ import { ConfigError, loadConfig } from './config.js';
 
 const devEnv = {
   NODE_ENV: 'development',
-  DATABASE_URL: 'postgres://family:family@localhost:5432/family',
+  DATABASE_URL: 'postgres://family:dev-only-pw@localhost:5432/family',
   WEB_ORIGIN: 'http://localhost:5173',
   SESSION_SECRET: 'dev-only-session-secret-change-me-0000000000',
   S3_ENDPOINT: 'http://localhost:8333',
@@ -678,7 +678,7 @@ const prodEnv = {
   NODE_ENV: 'production',
   DATABASE_URL: 'postgres://family:Str0ngPassw0rd@postgres:5432/family',
   WEB_ORIGIN: 'https://family.cortextechservices.com',
-  SESSION_SECRET: 'k3J9xQ2vL8mN4pR7tW1yZ6bC5dF0gH2jK4lM8nP3qS',
+  SESSION_SECRET: 'test-only-prod-like-session-secret-0123456789abcdef',
   S3_ENDPOINT: 'https://0123456789abcdef.r2.cloudflarestorage.com',
   S3_REGION: 'auto',
   S3_BUCKET: 'family-photos',
@@ -812,7 +812,7 @@ import { loadConfig, type Config } from '../src/config.js';
 export function testConfig(overrides: Record<string, string> = {}): Config {
   return loadConfig({
     NODE_ENV: 'test',
-    DATABASE_URL: 'postgres://family:family@localhost:5432/family_test',
+    DATABASE_URL: 'postgres://family:dev-only-pw@localhost:5432/family_test',
     WEB_ORIGIN: 'http://localhost:5173',
     SESSION_SECRET: 'dev-only-session-secret-change-me-0000000000',
     S3_ENDPOINT: 'http://localhost:8333',
@@ -1074,8 +1074,8 @@ git commit -m "feat(api): fastify app with security headers, CORS, error envelop
 NODE_ENV=development
 PORT=3000
 LOG_LEVEL=debug
-DATABASE_URL=postgres://family:family@localhost:5432/family
-TEST_DATABASE_URL=postgres://family:family@localhost:5432/family_test
+DATABASE_URL=postgres://family:dev-only-pw@localhost:5432/family
+TEST_DATABASE_URL=postgres://family:dev-only-pw@localhost:5432/family_test
 WEB_ORIGIN=http://localhost:5173
 SESSION_SECRET=dev-only-session-secret-change-me-0000000000
 S3_ENDPOINT=http://localhost:8333
@@ -1127,7 +1127,7 @@ services:
     image: postgres:17-alpine
     environment:
       POSTGRES_USER: family
-      POSTGRES_PASSWORD: family
+      POSTGRES_PASSWORD: dev-only-pw
       POSTGRES_DB: family
     ports: ['127.0.0.1:5432:5432']
     volumes:
@@ -2259,7 +2259,7 @@ WORKDIR /app
     command: pnpm --filter @family-tree/api dev
     env_file: .env.development
     environment:
-      DATABASE_URL: postgres://family:family@postgres:5432/family
+      DATABASE_URL: postgres://family:dev-only-pw@postgres:5432/family
       S3_ENDPOINT: http://s3:8333
     ports: ['127.0.0.1:3000:3000']
     volumes: *app-volumes
@@ -2506,3 +2506,14 @@ Phase 1 — what to try yourself (about 10 minutes)
 ```
 
 - [ ] **Step 4: Report the results**, with test counts, screenshots and any differences from this plan. Wait for the author's approval before starting phase 2.
+
+---
+
+## Carry-forward notes for later phases (from batch 2 review)
+
+- Replace the 4xx→`BAD_REQUEST` mapping with an `AppError(code, status, message)` class and a status-to-code map before adding `FORBIDDEN`, `CONFLICT` and `RATE_LIMITED` (phases 2–3). Only messages from `AppError` reach clients.
+- Set Fastify `trustProxy` when Caddy is in front (phase 7), so `req.ip` is the real client for rate limiting.
+- Put `/api/v1/health` under the rate limiter when `@fastify/rate-limit` is added (phase 2).
+- The logger's `redact` paths don't match Fastify's default serializers. Revisit them when sessions arrive (phase 2): redact cookies and `set-cookie`, and make sure error logs carry no personal data.
+- **Schema code in Task 7 is out of date.** After the batch 3 review, `apps/api/src/db/schema.ts` gained composite `(tree_id, …)` foreign keys for tree isolation, a partial unique index on live `parent_child` rows, a `unions_distinct_partners` CHECK and sort-year indexes. The code in the repo is the source of truth, not this plan's Task 7 snippet.
+- The root-person FK only blocks *hard* deletes. The phase 4 soft-delete code must refuse to soft-delete `trees.root_person_id` (spec §3).

@@ -1,0 +1,18 @@
+import { loadConfig, type Config } from '../src/config.js';
+
+export function testConfig(overrides: Record<string, string> = {}): Config {
+  return loadConfig({
+    NODE_ENV: 'test',
+    DATABASE_URL: 'postgres://family:dev-only-pw@localhost:5432/family_test',
+    WEB_ORIGIN: 'http://localhost:5173',
+    SESSION_SECRET: 'dev-only-session-secret-change-me-0000000000',
+    S3_ENDPOINT: 'http://localhost:8333',
+    S3_REGION: 'us-east-1',
+    S3_BUCKET: 'family-photos-test',
+    S3_ACCESS_KEY_ID: 'dev-only-access-key',
+    S3_SECRET_ACCESS_KEY: 'dev-only-secret-key',
+    S3_FORCE_PATH_STYLE: 'true',
+    LOG_LEVEL: 'silent',
+    ...overrides,
+  });
+}

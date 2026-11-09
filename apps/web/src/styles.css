@@ -1,0 +1,26 @@
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, sans-serif;
+}
+body {
+  margin: 0;
+}
+.app {
+  max-width: 40rem;
+  margin: 4rem auto;
+  padding: 0 1rem;
+}
+.subtitle {
+  opacity: 0.7;
+}
+.status {
+  padding: 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid currentColor;
+}
+.status--ok {
+  color: #1a7f37;
+}
+.status--bad {
+  color: #cf222e;
+}

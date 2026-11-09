@@ -1,0 +1,90 @@
+name: family-tree
+
+# One dev image shared by install/api/web.
+x-dev: &dev
+  build: { context: ., dockerfile: docker/dev.Dockerfile }
+  image: family-tree-dev
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: family
+      POSTGRES_PASSWORD: dev-only-pw
+      POSTGRES_DB: family
+    ports: ['127.0.0.1:5432:5432']
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U family -d family']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  s3:
+    image: chrislusf/seaweedfs:4.00
+    command: server -s3 -s3.config=/etc/seaweedfs/s3.json -dir=/data -volume.max=10
+    ports: ['127.0.0.1:8333:8333']
+    volumes:
+      - s3data:/data
+      - ./docker/seaweedfs/s3.dev.json:/etc/seaweedfs/s3.json:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'nc -z 127.0.0.1 8333']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+
+  install:
+    <<: *dev
+    # Only reinstall when the lockfile, any package.json or the workspace config changed
+    # since the last successful install (or a package node_modules volume is empty).
+    command: >-
+      sh -c 'files="pnpm-lock.yaml pnpm-workspace.yaml package.json apps/*/package.json packages/*/package.json";
+      if sha256sum -c --status node_modules/.lock-stamp 2>/dev/null
+      && [ -e apps/api/node_modules/fastify ] && [ -e apps/web/node_modules/react ]
+      && [ -e packages/shared/node_modules/zod ];
+      then echo "deps up to date";
+      else pnpm install --frozen-lockfile && sha256sum $$files > node_modules/.lock-stamp; fi'
+    volumes: &app-volumes
+      - .:/app
+      - nm_root:/app/node_modules
+      - nm_api:/app/apps/api/node_modules
+      - nm_web:/app/apps/web/node_modules
+      - nm_shared:/app/packages/shared/node_modules
+      - pnpm_store:/pnpm-store
+
+  api:
+    <<: *dev
+    command: pnpm --filter @family-tree/api dev
+    env_file: .env.development
+    environment:
+      DATABASE_URL: postgres://family:dev-only-pw@postgres:5432/family
+      S3_ENDPOINT: http://s3:8333
+    ports: ['127.0.0.1:3000:3000']
+    volumes: *app-volumes
+    depends_on:
+      install: { condition: service_completed_successfully }
+      postgres: { condition: service_healthy }
+      s3: { condition: service_healthy }
+
+  web:
+    <<: *dev
+    command: pnpm --filter @family-tree/web dev --host 0.0.0.0
+    environment:
+      API_PROXY_TARGET: http://api:3000
+    ports: ['127.0.0.1:5173:5173']
+    volumes: *app-volumes
+    depends_on:
+      install: { condition: service_completed_successfully }
+      api: { condition: service_started }
+
+volumes:
+  pgdata:
+  s3data:
+  nm_root:
+  nm_api:
+  nm_web:
+  nm_shared:
+  pnpm_store:

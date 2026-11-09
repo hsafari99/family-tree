@@ -1,0 +1,89 @@
+import { z } from 'zod';
+
+/** Every committed dev value contains this marker so production can refuse it. */
+export const DEV_ONLY_MARKER = 'dev-only';
+/** Markers (compared case-insensitively) that must never reach production. */
+const FORBIDDEN_IN_PRODUCTION = [DEV_ONLY_MARKER, 'change_me'];
+const LOCAL_HOSTS = new Set(['localhost', '::1', '[::1]', '0.0.0.0', 's3', 'host.docker.internal']);
+
+function isLocalHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/\.$/, '');
+  return LOCAL_HOSTS.has(host) || host.startsWith('127.') || host.endsWith('.localhost');
+}
+
+const bool = z.enum(['true', 'false']).transform((v) => v === 'true');
+
+export const configSchema = z
+  .object({
+    NODE_ENV: z.enum(['development', 'test', 'production']),
+    PORT: z.coerce.number().int().min(1).max(65535).default(3000),
+    HOST: z.string().min(1).default('0.0.0.0'),
+    LOG_LEVEL: z
+      .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
+      .default('info'),
+    DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
+    // Browsers send Origin without path or trailing slash; anything else silently breaks CORS.
+    WEB_ORIGIN: z
+      .url()
+      .refine((u) => new URL(u).origin === u, 'Must be a bare origin, e.g. https://example.com'),
+    SESSION_SECRET: z.string().min(32),
+    S3_ENDPOINT: z.url(),
+    S3_REGION: z.string().min(1),
+    S3_BUCKET: z.string().min(3),
+    S3_ACCESS_KEY_ID: z.string().min(1),
+    S3_SECRET_ACCESS_KEY: z.string().min(1),
+    S3_FORCE_PATH_STYLE: bool.default(false),
+    S3_CREATE_BUCKET: bool.default(false),
+  })
+  .superRefine((config, ctx) => {
+    if (config.NODE_ENV !== 'production') return;
+
+    for (const [key, value] of Object.entries(config)) {
+      if (
+        typeof value === 'string' &&
+        FORBIDDEN_IN_PRODUCTION.some((marker) => value.toLowerCase().includes(marker))
+      ) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [key],
+          message: 'Development or placeholder value not allowed in production',
+        });
+      }
+    }
+    for (const key of ['S3_ENDPOINT', 'WEB_ORIGIN'] as const) {
+      // Field-level errors are already reported; superRefine still runs, so don't throw here.
+      if (!URL.canParse(config[key])) continue;
+      const url = new URL(config[key]);
+      if (url.protocol !== 'https:') {
+        ctx.addIssue({ code: 'custom', path: [key], message: 'Must use https in production' });
+      }
+      if (isLocalHost(url.hostname)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [key],
+          message: 'Must not point to a local host in production',
+        });
+      }
+    }
+    if (config.S3_CREATE_BUCKET) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['S3_CREATE_BUCKET'],
+        message: 'Must be false in production',
+      });
+    }
+  });
+
+export type Config = z.infer<typeof configSchema>;
+
+export class ConfigError extends Error {
+  override name = 'ConfigError';
+}
+
+export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
+  const result = configSchema.safeParse(env);
+  if (!result.success) {
+    throw new ConfigError(`Invalid configuration:\n${z.prettifyError(result.error)}`);
+  }
+  return result.data;
+}
