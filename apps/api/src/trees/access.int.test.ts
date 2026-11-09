@@ -5,7 +5,7 @@ import { addGrant, addMember, addPerson, family } from '../../test/tree-helpers.
 import { buildApp } from '../app.js';
 import { createAuth } from '../auth/auth.js';
 import { loadConfig } from '../config.js';
-import { treeMembers, trees, users } from '../db/schema.js';
+import { branchStewards, treeMembers, trees, users } from '../db/schema.js';
 import { createDeps } from '../deps.js';
 import { AppError } from '../errors.js';
 import { authorize, grantCovering, loadAccess } from './access.js';
@@ -137,6 +137,49 @@ describe('loadAccess', () => {
     expect(scope.has(h.zoe.id)).toBe(true);
     expect(scope.has(h.laura.id)).toBe(false);
     expect(scope.has(h.george.id)).toBe(false);
+  });
+
+  it('a three-level derived chain is the intersection of all three branches', async () => {
+    const h = await haleTree();
+    const [s1, s2, s3] = [await newUser(true), await newUser(true), await newUser(true)];
+    await addMember(db, h.treeId, s1, 'viewer', h.owner);
+    await addMember(db, h.treeId, s2, 'viewer', s1);
+    await addMember(db, h.treeId, s3, 'viewer', s2);
+    const g1 = await addGrant(db, h.treeId, s1, h.robert.id, h.owner);
+    const g2 = await addGrant(db, h.treeId, s2, h.laura.id, s1, g1.id);
+    await addGrant(db, h.treeId, s3, h.leo.id, s2, g2.id);
+    const scope = (await loadAccess(db, h.treeId, s3)).grants[0]!.scope;
+    const b1 = await branchPersonIds(db, h.treeId, h.robert.id, s1);
+    const b2 = await branchPersonIds(db, h.treeId, h.laura.id, s2);
+    const b3 = await branchPersonIds(db, h.treeId, h.leo.id, s3);
+    const expected = [...b3].filter((id) => b1.has(id) && b2.has(id)).sort();
+    expect([...scope].sort()).toEqual(expected);
+    expect(scope.has(h.zoe.id)).toBe(true);
+    expect(scope.has(h.george.id)).toBe(false);
+    expect(scope.has(h.robert.id)).toBe(false);
+  });
+
+  it('a cyclic grant chain terminates and gives that grant no scope', async () => {
+    const h = await haleTree();
+    const [s1, s2] = [await newUser(true), await newUser(true)];
+    await addMember(db, h.treeId, s1, 'viewer', h.owner);
+    await addMember(db, h.treeId, s2, 'viewer', s1);
+    const g1 = await addGrant(db, h.treeId, s1, h.robert.id, h.owner);
+    const g2 = await addGrant(db, h.treeId, s2, h.laura.id, s1, g1.id);
+    await db
+      .update(branchStewards)
+      .set({ parentGrantId: g2.id })
+      .where(eq(branchStewards.id, g1.id));
+    const a2 = await loadAccess(db, h.treeId, s2);
+    expect(a2.heldGrants).toHaveLength(1);
+    expect(a2.grants).toHaveLength(0);
+    expect((await loadAccess(db, h.treeId, s1)).grants).toHaveLength(0);
+    // a self-referencing grant
+    await db
+      .update(branchStewards)
+      .set({ parentGrantId: g2.id })
+      .where(eq(branchStewards.id, g2.id));
+    expect((await loadAccess(db, h.treeId, s2)).grants).toHaveLength(0);
   });
 
   it('grantCovering finds the grant containing a person', async () => {

@@ -5,7 +5,7 @@ import type { Queryable } from '../db/client.js';
  * Person ids in the branch of `anchorId` (spec §4), live rows only. Twin of branchOf() in
  * packages/shared; both are tested against BRANCH_CASES.
  *  1–3: the anchor's ancestors and all their descendants, via live parent_child links of live
- *       unions (any kind: biological, adoptive, step, foster);
+ *       unions between live people (any kind: biological, adoptive, step, foster);
  *  4:   partners (in live unions) of those people, unless the partner has parents recorded;
  *  5:   live people the steward created.
  * UNION (not UNION ALL) in the recursive parts makes cycles in bad data terminate.
@@ -18,6 +18,8 @@ export function branchQuery(treeId: string, anchorId: string, stewardUserId: str
         from parent_child pc
         join unions u on u.id = pc.union_id and u.deleted_at is null
         cross join lateral (values (u.partner_a_id), (u.partner_b_id)) as p(parent_id)
+        join persons cp on cp.id = pc.child_id and cp.deleted_at is null
+        join persons pp on pp.id = p.parent_id and pp.deleted_at is null
         where pc.tree_id = ${treeId} and pc.deleted_at is null and p.parent_id is not null
       ),
       ancestors(id) as (

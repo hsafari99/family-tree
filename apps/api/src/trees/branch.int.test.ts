@@ -123,6 +123,44 @@ describe('branchPersonIds: what only SQL can check', () => {
     expect(keys).not.toContain('helen');
   });
 
+  it('a soft-deleted union excludes the partner side', async () => {
+    const t = await load(hale);
+    const [u] = await db
+      .select({ id: unions.id })
+      .from(unions)
+      .where(eq(unions.partnerBId, t.pid.get('anna')!));
+    await db.update(unions).set({ deletedAt: new Date() }).where(eq(unions.id, u!.id));
+    const keys = t.toKeys(await branchPersonIds(db, t.treeId, t.pid.get('robert')!, null));
+    expect(keys).toContain('david');
+    expect(keys).not.toContain('anna');
+    expect(keys).not.toContain('emma');
+  });
+
+  it('a soft-deleted partner is not pulled in by rule 4', async () => {
+    const t = await load(hale);
+    await db
+      .update(persons)
+      .set({ deletedAt: new Date() })
+      .where(eq(persons.id, t.pid.get('anna')!));
+    const keys = t.toKeys(await branchPersonIds(db, t.treeId, t.pid.get('robert')!, null));
+    expect(keys).not.toContain('anna');
+    expect(keys).toContain('emma');
+  });
+
+  it('does not walk through a soft-deleted parent to their ancestors', async () => {
+    const t = await load(hale);
+    await db
+      .update(persons)
+      .set({ deletedAt: new Date() })
+      .where(eq(persons.id, t.pid.get('david')!));
+    const keys = t.toKeys(await branchPersonIds(db, t.treeId, t.pid.get('leo')!, null));
+    expect(keys).not.toContain('robert');
+    expect(keys).not.toContain('margaret');
+    expect(keys).not.toContain('susan');
+    expect(keys).toContain('laura');
+    expect(keys).toContain('george');
+  });
+
   it('never includes people from another tree', async () => {
     const t = await load(hale);
     const other = await newTree();

@@ -26,6 +26,8 @@ export function extraLimit(
   const check = app.createRateLimit({
     max,
     timeWindow,
+    // by: 'user' falls back to the per-IP bucket when there is no req.user, so routes using it
+    // must require a session first.
     keyGenerator: (req) =>
       `${name}:${by === 'user' && req.user ? `u:${req.user.id}` : `ip:${clientKey(req)}`}`,
   });

@@ -82,6 +82,12 @@ describe('can: rules that depend on who made something', () => {
     expect(can(editorSteward, 'invite.revoke', t)).toBe(false);
     expect(can(editor, 'invite.revoke', t)).toBe(false);
   });
+  it('invite.revoke: a former steward (no active grants) cannot revoke their own invite', () => {
+    const former: Actor = { userId: 'steward', role: 'viewer', grants: [] };
+    expect(can(former, 'invite.revoke', { kind: 'ownInvite', createdByUserId: 'steward' })).toBe(
+      false,
+    );
+  });
   it('steward.revoke: owner any, a steward only grants they made', () => {
     const mine = { kind: 'grant', grantedByUserId: 'steward' } as const;
     const ownerMade = { kind: 'grant', grantedByUserId: 'owner' } as const;

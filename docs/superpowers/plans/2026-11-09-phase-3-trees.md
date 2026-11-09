@@ -813,7 +813,7 @@ export const branchStewards = pgTable(
       name: 'branch_stewards_anchor_fk',
       columns: [t.treeId, t.anchorPersonId],
       foreignColumns: [persons.treeId, persons.id],
-    }),
+    }).onDelete('cascade'),
     unique('branch_stewards_user_anchor_uq').on(t.treeId, t.userId, t.anchorPersonId),
     index('branch_stewards_parent_idx').on(t.parentGrantId),
   ],
@@ -1174,12 +1174,18 @@ describe('can: permission matrix (spec §4)', () => {
 });
 
 describe('can: rules that depend on who made something', () => {
-  it('invite.revoke: owner any, others only their own', () => {
+  it('invite.revoke: owner any; a steward with an active grant only their own', () => {
     const t = { kind: 'ownInvite', createdByUserId: 'steward' } as const;
     expect(can(owner, 'invite.revoke', t)).toBe(true);
     expect(can(steward, 'invite.revoke', t)).toBe(true);
     expect(can(editorSteward, 'invite.revoke', t)).toBe(false);
     expect(can(editor, 'invite.revoke', t)).toBe(false);
+  });
+  it('invite.revoke: a former steward (no active grants) cannot revoke their own invite', () => {
+    const former: Actor = { userId: 'steward', role: 'viewer', grants: [] };
+    expect(can(former, 'invite.revoke', { kind: 'ownInvite', createdByUserId: 'steward' })).toBe(
+      false,
+    );
   });
   it('steward.revoke: owner any, a steward only grants they made', () => {
     const mine = { kind: 'grant', grantedByUserId: 'steward' } as const;
@@ -1305,7 +1311,7 @@ const RULES: { [A in Action]: (actor: Actor, target: Targets[A]) => boolean } = 
   'invite.create': (a, t) =>
     isOwner(a) ||
     (isSteward(a) && (t.stewardAnchorPersonId === null || inScope(a, t.stewardAnchorPersonId))),
-  'invite.revoke': (a, t) => isOwner(a) || t.createdByUserId === a.userId,
+  'invite.revoke': (a, t) => isOwner(a) || (isSteward(a) && t.createdByUserId === a.userId),
   'steward.grant': (a, t) => isOwner(a) || inScope(a, t.personId),
   'steward.revoke': (a, t) => isOwner(a) || (isSteward(a) && t.grantedByUserId === a.userId),
   'member.changeRole': manageMember,
@@ -3184,3 +3190,4 @@ export function createTreesApi({ baseUrl }: { baseUrl: string }): TreesApi {
 - **Performance:**
   - `loadAccess` computes each steward grant's scope on every request: one CTE per chain link. That's fine for family-sized trees.
   - If profiling shows it hurting, cache scopes per request or materialise them.
+- **Person erase (Phase 4):** it must null `tree_members.person_id` and clear invite anchor/target refs first (NO ACTION FKs). Erasing a grant's anchor cascades and revokes that grant and its derived grants.

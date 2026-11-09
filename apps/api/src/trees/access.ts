@@ -72,22 +72,51 @@ export async function loadAccess(
       if (!p) branches.set(key, (p = branchPersonIds(db, treeId, anchor, user)));
       return p;
     };
+    // One query for every chain. UNION (not UNION ALL) makes a looping parent chain terminate;
+    // the walk below then treats any cycle as invalid. The join stays inside this tree.
+    const rows = (await db.execute(sql`
+      with recursive chain as (
+        select id as root_id, id, user_id, anchor_person_id, parent_grant_id
+        from branch_stewards where tree_id = ${treeId} and user_id = ${userId}
+        union
+        select c.root_id, b.id, b.user_id, b.anchor_person_id, b.parent_grant_id
+        from branch_stewards b join chain c on b.id = c.parent_grant_id
+        where b.tree_id = ${treeId}
+      )
+      select root_id, id, user_id, anchor_person_id, parent_grant_id from chain
+    `)) as unknown as {
+      root_id: string;
+      id: string;
+      user_id: string;
+      anchor_person_id: string;
+      parent_grant_id: string | null;
+    }[];
+    const byRoot = new Map<string, Map<string, (typeof rows)[number]>>();
+    for (const r of rows) {
+      let m = byRoot.get(r.root_id);
+      if (!m) byRoot.set(r.root_id, (m = new Map()));
+      m.set(r.id, r);
+    }
     for (const g of held) {
-      const chain = (await db.execute(sql`
-        with recursive chain as (
-          select id, user_id, anchor_person_id, parent_grant_id from branch_stewards where id = ${g.id}
-          union all
-          select b.id, b.user_id, b.anchor_person_id, b.parent_grant_id
-          from branch_stewards b join chain c on b.id = c.parent_grant_id
-        )
-        select user_id, anchor_person_id from chain
-      `)) as unknown as { user_id: string; anchor_person_id: string }[];
+      const links = byRoot.get(g.id);
+      const seen = new Set<string>();
       let scope: Set<string> | undefined;
-      for (const link of chain) {
+      let cyclic = false;
+      for (
+        let link = links?.get(g.id);
+        link;
+        link = link.parent_grant_id ? links?.get(link.parent_grant_id) : undefined
+      ) {
+        if (seen.has(link.id)) {
+          cyclic = true;
+          break;
+        }
+        seen.add(link.id);
         const b = await branch(link.anchor_person_id, link.user_id);
         scope = scope ? new Set([...scope].filter((id) => b.has(id))) : b;
       }
-      grants.push({ id: g.id, anchorPersonId: g.anchorPersonId, scope: scope ?? new Set() });
+      // A cyclic chain is corrupt data: that grant confers nothing.
+      if (!cyclic && scope) grants.push({ id: g.id, anchorPersonId: g.anchorPersonId, scope });
     }
   }
 

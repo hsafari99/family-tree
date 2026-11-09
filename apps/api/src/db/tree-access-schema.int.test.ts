@@ -73,7 +73,9 @@ describe('tree access schema', () => {
     const tree = await newTree();
     const [a, b, c, d] = [await newUser(), await newUser(), await newUser(), await newUser()];
     await member(tree.id, a.id, 'owner');
-    await expect(member(tree.id, b.id, 'owner')).rejects.toThrow();
+    await expect(member(tree.id, b.id, 'owner')).rejects.toMatchObject({
+      cause: { constraint_name: 'tree_members_one_owner_uq' },
+    });
     await member(tree.id, b.id, 'editor');
     await member(tree.id, c.id, 'editor');
     await member(tree.id, d.id, 'viewer');
@@ -84,7 +86,9 @@ describe('tree access schema', () => {
     const [a, b] = [await newUser(), await newUser()];
     const p = await newPerson(tree.id);
     await member(tree.id, a.id, 'owner', p.id);
-    await expect(member(tree.id, b.id, 'viewer', p.id)).rejects.toThrow();
+    await expect(member(tree.id, b.id, 'viewer', p.id)).rejects.toMatchObject({
+      cause: { constraint_name: 'tree_members_person_uq' },
+    });
   });
 
   it('rejects a person card from another tree', async () => {
@@ -92,7 +96,9 @@ describe('tree access schema', () => {
     const other = await newTree();
     const u = await newUser();
     const p = await newPerson(other.id);
-    await expect(member(tree.id, u.id, 'owner', p.id)).rejects.toThrow();
+    await expect(member(tree.id, u.id, 'owner', p.id)).rejects.toMatchObject({
+      cause: { constraint_name: 'tree_members_person_fk' },
+    });
   });
 
   it('deletes a member’s grants with the member', async () => {
@@ -133,7 +139,7 @@ describe('tree access schema', () => {
         createdByUserId: u.id,
         expiresAt: new Date(Date.now() + 1000),
       }),
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ cause: { constraint_name: 'invites_not_owner' } });
   });
 
   it('removes members, grants and invites with the tree', async () => {

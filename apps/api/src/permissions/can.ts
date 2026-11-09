@@ -91,7 +91,7 @@ const RULES: { [A in Action]: (actor: Actor, target: Targets[A]) => boolean } = 
   'invite.create': (a, t) =>
     isOwner(a) ||
     (isSteward(a) && (t.stewardAnchorPersonId === null || inScope(a, t.stewardAnchorPersonId))),
-  'invite.revoke': (a, t) => isOwner(a) || t.createdByUserId === a.userId,
+  'invite.revoke': (a, t) => isOwner(a) || (isSteward(a) && t.createdByUserId === a.userId),
   'steward.grant': (a, t) => isOwner(a) || inScope(a, t.personId),
   'steward.revoke': (a, t) => isOwner(a) || (isSteward(a) && t.grantedByUserId === a.userId),
   'member.changeRole': manageMember,
