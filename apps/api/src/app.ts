@@ -10,6 +10,7 @@ import { AppError, safeError } from './errors.js';
 import { healthRoutes, type HealthChecks } from './routes/health.js';
 import { meRoutes } from './routes/me.js';
 import { passwordResetRoutes } from './routes/password-reset.js';
+import { treesRoutes } from './routes/trees.js';
 import type { Db } from './db/client.js';
 import { originGuard } from './security/origin-guard.js';
 
@@ -55,7 +56,11 @@ export function buildApp({ config, checks, auth, db, rateLimitMax = 300, logStre
   });
 
   app.register(helmet);
-  app.register(cors, { origin: [config.WEB_ORIGIN], credentials: true });
+  app.register(cors, {
+    origin: [config.WEB_ORIGIN],
+    credentials: true,
+    methods: ['GET', 'HEAD', 'POST', 'PATCH', 'DELETE'],
+  });
   // Every route must be registered inside a plugin (app.register) after this line; routes added
   // directly on `app`, or before this plugin, are not rate-limited.
   app.register(rateLimit, {
@@ -70,6 +75,7 @@ export function buildApp({ config, checks, auth, db, rateLimitMax = 300, logStre
     app.register(authRoutes, { auth });
     app.register(meRoutes, { auth });
     app.register(passwordResetRoutes, { auth, db });
+    app.register(treesRoutes, { auth, db, config });
   }
 
   app.setNotFoundHandler((_req, reply) => {

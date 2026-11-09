@@ -55,6 +55,20 @@ describe('buildApp', () => {
     ).toBeUndefined();
   });
 
+  it('allows PATCH and DELETE in CORS preflights', async () => {
+    const config = testConfig();
+    app = buildApp({ config, checks });
+    const res = await app.inject({
+      method: 'OPTIONS',
+      url: '/api/v1/health',
+      headers: { origin: config.WEB_ORIGIN, 'access-control-request-method': 'DELETE' },
+    });
+    expect(res.statusCode).toBe(204);
+    const methods = String(res.headers['access-control-allow-methods']);
+    expect(methods).toContain('DELETE');
+    expect(methods).toContain('PATCH');
+  });
+
   it('hides internal error details behind a generic 500', async () => {
     app = buildApp({ config: testConfig(), checks });
     app.get('/boom', async () => {
