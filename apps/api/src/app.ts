@@ -9,6 +9,7 @@ import type { Config } from './config.js';
 import { AppError, safeError } from './errors.js';
 import { healthRoutes, type HealthChecks } from './routes/health.js';
 import { membersRoutes } from './routes/members.js';
+import { stewardsRoutes } from './routes/stewards.js';
 import { meRoutes } from './routes/me.js';
 import { passwordResetRoutes } from './routes/password-reset.js';
 import { treesRoutes } from './routes/trees.js';
@@ -78,6 +79,7 @@ export function buildApp({ config, checks, auth, db, rateLimitMax = 300, logStre
     app.register(passwordResetRoutes, { auth, db });
     app.register(treesRoutes, { auth, db, config });
     app.register(membersRoutes, { auth, db, config });
+    app.register(stewardsRoutes, { auth, db, config });
   }
 
   app.setNotFoundHandler((_req, reply) => {
