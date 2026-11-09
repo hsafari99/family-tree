@@ -2515,3 +2515,5 @@ Phase 1 — what to try yourself (about 10 minutes)
 - Set Fastify `trustProxy` when Caddy is in front (phase 7), so `req.ip` is the real client for rate limiting.
 - Put `/api/v1/health` under the rate limiter when `@fastify/rate-limit` is added (phase 2).
 - The logger's `redact` paths don't match Fastify's default serializers. Revisit them when sessions arrive (phase 2): redact cookies and `set-cookie`, and make sure error logs carry no personal data.
+- **Schema code in Task 7 is out of date.** After the batch 3 review, `apps/api/src/db/schema.ts` gained composite `(tree_id, …)` foreign keys for tree isolation, a partial unique index on live `parent_child` rows, a `unions_distinct_partners` CHECK and sort-year indexes. The code in the repo is the source of truth, not this plan's Task 7 snippet.
+- The root-person FK only blocks *hard* deletes. The phase 4 soft-delete code must refuse to soft-delete `trees.root_person_id` (spec §3).
