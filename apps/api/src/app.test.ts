@@ -103,6 +103,30 @@ describe('buildApp', () => {
     expect(sink.text()).not.toContain('Already exists');
   });
 
+  it('keeps the request body out of a 500 error log', async () => {
+    const sink = logSink();
+    app = buildApp({
+      config: testConfig({ LOG_LEVEL: 'info' }),
+      checks,
+      logStream: sink.stream,
+    });
+    app.post('/boom', async () => {
+      throw new Error('kaboom');
+    });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/boom',
+      headers: { cookie: 'ft.session_token=secret-cookie-value' },
+      payload: { email: 'ann@example.com', password: 'hunter2-hunter2' },
+    });
+    expect(res.statusCode).toBe(500);
+    const log = sink.text();
+    expect(log).toContain('kaboom');
+    expect(log).not.toContain('hunter2');
+    expect(log).not.toContain('ann@example.com');
+    expect(log).not.toContain('secret-cookie-value');
+  });
+
   it('maps a thrown 404 error to NOT_FOUND', async () => {
     app = buildApp({ config: testConfig(), checks });
     app.get('/missing', async () => {

@@ -19,7 +19,7 @@ const deps = createDeps(config);
 await runMigrations(deps.db);
 if (config.S3_CREATE_BUCKET) await ensureBucket(deps.s3, config.S3_BUCKET);
 
-const app = buildApp({ config, checks: deps.checks });
+const app = buildApp({ config, checks: deps.checks, auth: deps.auth });
 
 const shutdown = async (signal: string) => {
   app.log.info({ signal }, 'shutting down');

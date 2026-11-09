@@ -3,13 +3,19 @@ import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import type { ApiError } from '@family-tree/shared';
 import Fastify, { type FastifyError } from 'fastify';
+import type { Auth } from './auth/auth.js';
+import { authRoutes } from './auth/fastify-adapter.js';
 import type { Config } from './config.js';
 import { AppError } from './errors.js';
 import { healthRoutes, type HealthChecks } from './routes/health.js';
+import { meRoutes } from './routes/me.js';
+import { originGuard } from './security/origin-guard.js';
 
 export interface AppOptions {
   config: Config;
   checks: HealthChecks;
+  /** Mounts /api/auth/* and the session routes. Optional so unit tests can skip the database. */
+  auth?: Auth;
   /** Global per-IP requests per minute (default 300). Routes may set their own limit. */
   rateLimitMax?: number;
   /** Where log lines go (default stdout). Tests pass a stream to inspect them. */
@@ -26,7 +32,7 @@ function trustHops(hops: number) {
   return hops > 0 ? (_address: string, hop: number) => hop < hops : false;
 }
 
-export function buildApp({ config, checks, rateLimitMax = 300, logStream }: AppOptions) {
+export function buildApp({ config, checks, auth, rateLimitMax = 300, logStream }: AppOptions) {
   const app = Fastify({
     trustProxy: trustHops(config.TRUST_PROXY),
     logger:
@@ -34,7 +40,13 @@ export function buildApp({ config, checks, rateLimitMax = 300, logStream }: AppO
         ? false
         : {
             level: config.LOG_LEVEL,
-            redact: ['req.headers.authorization', 'req.headers.cookie'],
+            // No handler logs request bodies; this is a backstop for anything that does.
+            redact: [
+              'req.headers.authorization',
+              'req.headers.cookie',
+              'res.headers["set-cookie"]',
+              '*.password',
+            ],
             ...(logStream ? { stream: logStream } : {}),
           },
   });
@@ -49,7 +61,12 @@ export function buildApp({ config, checks, rateLimitMax = 300, logStream }: AppO
     errorResponseBuilder: () =>
       new AppError('RATE_LIMITED', 429, 'Too many requests, try again later'),
   });
+  app.addHook('onRequest', originGuard(config.WEB_ORIGIN));
   app.register(healthRoutes, { checks });
+  if (auth) {
+    app.register(authRoutes, { auth });
+    app.register(meRoutes, { auth });
+  }
 
   app.setNotFoundHandler((_req, reply) => {
     const body: ApiError = { error: { code: 'NOT_FOUND', message: 'Not found' } };
