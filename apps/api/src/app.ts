@@ -12,22 +12,37 @@ export interface AppOptions {
   checks: HealthChecks;
   /** Global per-IP requests per minute (default 300). Routes may set their own limit. */
   rateLimitMax?: number;
+  /** Where log lines go (default stdout). Tests pass a stream to inspect them. */
+  logStream?: { write(line: string): void };
 }
 
-export function buildApp({ config, checks, rateLimitMax = 300 }: AppOptions) {
+/**
+ * Trust exactly `hops` proxies counted from the socket peer, so req.ip is the address the
+ * outermost trusted proxy saw. Never `true`: that takes the leftmost X-Forwarded-For entry,
+ * which the client controls. A function because Fastify 5.12 treats a numeric trustProxy as
+ * "trust nothing". Only safe when the API is reachable solely through those proxies.
+ */
+function trustHops(hops: number) {
+  return hops > 0 ? (_address: string, hop: number) => hop < hops : false;
+}
+
+export function buildApp({ config, checks, rateLimitMax = 300, logStream }: AppOptions) {
   const app = Fastify({
-    trustProxy: config.TRUST_PROXY,
+    trustProxy: trustHops(config.TRUST_PROXY),
     logger:
       config.LOG_LEVEL === 'silent'
         ? false
         : {
             level: config.LOG_LEVEL,
             redact: ['req.headers.authorization', 'req.headers.cookie'],
+            ...(logStream ? { stream: logStream } : {}),
           },
   });
 
   app.register(helmet);
   app.register(cors, { origin: [config.WEB_ORIGIN], credentials: true });
+  // Every route must be registered inside a plugin (app.register) after this line; routes added
+  // directly on `app`, or before this plugin, are not rate-limited.
   app.register(rateLimit, {
     max: rateLimitMax,
     timeWindow: '1 minute',
@@ -47,6 +62,7 @@ export function buildApp({ config, checks, rateLimitMax = 300 }: AppOptions) {
       return reply.code(status).send(body);
     };
     if (err instanceof AppError) {
+      if (err.statusCode >= 500) req.log.error(err);
       return send(err.statusCode, {
         code: err.code,
         message: err.message,

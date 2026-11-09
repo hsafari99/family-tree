@@ -14,7 +14,12 @@ function isLocalHost(hostname: string): boolean {
 const bool = z.enum(['true', 'false']).transform((v) => v === 'true');
 // Browsers send Origin without path or trailing slash; anything else silently breaks CORS.
 const bareOrigin = () =>
-  z.url().refine((u) => new URL(u).origin === u, 'Must be a bare origin, e.g. https://example.com');
+  z
+    .url()
+    .refine(
+      (u) => URL.canParse(u) && new URL(u).origin === u,
+      'Must be a bare origin, e.g. https://example.com',
+    );
 
 export const configSchema = z
   .object({
@@ -28,8 +33,9 @@ export const configSchema = z
     WEB_ORIGIN: bareOrigin(),
     // Public origin Better Auth builds its URLs from (it appends /api/auth itself).
     AUTH_BASE_URL: bareOrigin(),
-    // Only behind a proxy that overwrites X-Forwarded-For; otherwise clients could spoof their IP.
-    TRUST_PROXY: bool.default(false),
+    // Number of trusted proxy hops in front of the API (0 = none). The client IP is taken that
+    // many hops from the right of X-Forwarded-For, so extra entries a client adds are ignored.
+    TRUST_PROXY: z.coerce.number().int().min(0).max(5).default(0),
     SESSION_SECRET: z.string().min(32),
     S3_ENDPOINT: z.url(),
     S3_REGION: z.string().min(1),

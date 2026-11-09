@@ -13,10 +13,11 @@ export const passwordSchema = z
   .min(PASSWORD_MIN, `Use at least ${PASSWORD_MIN} characters`)
   .max(PASSWORD_MAX, `Use at most ${PASSWORD_MAX} characters`);
 export const nameSchema = z.string().trim().min(1, 'Enter your name').max(100);
+// Authenticator apps often show the code as "123 456"; accept it with any whitespace.
 export const totpCodeSchema = z
   .string()
-  .trim()
-  .regex(/^\d{6}$/, 'Enter the 6-digit code');
+  .transform((s) => s.replace(/\s+/g, ''))
+  .pipe(z.string().regex(/^\d{6}$/, 'Enter the 6-digit code'));
 export const recoveryCodeSchema = z
   .string()
   .trim()
@@ -32,7 +33,10 @@ export const signUpSchema = z.object({
 });
 export const signInSchema = z.object({
   email: emailSchema,
-  password: z.string().min(1, 'Enter your password'),
+  password: z
+    .string()
+    .min(1, 'Enter your password')
+    .max(PASSWORD_MAX, `Use at most ${PASSWORD_MAX} characters`),
 });
 export const resetWithCodeSchema = z.object({
   email: emailSchema,

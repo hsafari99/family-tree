@@ -1,9 +1,22 @@
+import { Writable } from 'node:stream';
 import { afterEach, describe, expect, it } from 'vitest';
 import { testConfig } from '../test/test-config.js';
 import { buildApp } from './app.js';
 import { AppError } from './errors.js';
 
 const checks = { checkDb: async () => {}, checkStorage: async () => {} };
+
+/** Collects log lines written by the app. */
+function logSink() {
+  const lines: string[] = [];
+  const stream = new Writable({
+    write(chunk, _enc, done) {
+      lines.push(String(chunk));
+      done();
+    },
+  });
+  return { stream, text: () => lines.join('') };
+}
 let app: ReturnType<typeof buildApp> | undefined;
 
 afterEach(async () => {
@@ -59,6 +72,66 @@ describe('buildApp', () => {
     const res = await app.inject({ method: 'GET', url: '/conflict' });
     expect(res.statusCode).toBe(409);
     expect(res.json()).toEqual({ error: { code: 'CONFLICT', message: 'Already exists' } });
+  });
+
+  it('logs an AppError with a 5xx status', async () => {
+    const sink = logSink();
+    app = buildApp({
+      config: testConfig({ LOG_LEVEL: 'error' }),
+      checks,
+      logStream: sink.stream,
+    });
+    app.get('/unavailable', async () => {
+      throw new AppError('INTERNAL', 503, 'Try again later');
+    });
+    const res = await app.inject({ method: 'GET', url: '/unavailable' });
+    expect(res.statusCode).toBe(503);
+    expect(sink.text()).toContain('Try again later');
+  });
+
+  it('does not log an AppError with a 4xx status', async () => {
+    const sink = logSink();
+    app = buildApp({
+      config: testConfig({ LOG_LEVEL: 'error' }),
+      checks,
+      logStream: sink.stream,
+    });
+    app.get('/conflict', async () => {
+      throw new AppError('CONFLICT', 409, 'Already exists');
+    });
+    await app.inject({ method: 'GET', url: '/conflict' });
+    expect(sink.text()).not.toContain('Already exists');
+  });
+
+  it('maps a thrown 404 error to NOT_FOUND', async () => {
+    app = buildApp({ config: testConfig(), checks });
+    app.get('/missing', async () => {
+      throw Object.assign(new Error('row 42 missing in table x'), { statusCode: 404 });
+    });
+    const res = await app.inject({ method: 'GET', url: '/missing' });
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toEqual({ error: { code: 'NOT_FOUND', message: 'Not found' } });
+  });
+
+  it('trusts exactly TRUST_PROXY hops of X-Forwarded-For', async () => {
+    const ipOf = async (trustProxy: string) => {
+      const scoped = buildApp({ config: testConfig({ TRUST_PROXY: trustProxy }), checks });
+      try {
+        scoped.get('/ip', async (req) => ({ ip: req.ip }));
+        const res = await scoped.inject({
+          method: 'GET',
+          url: '/ip',
+          headers: { 'x-forwarded-for': '6.6.6.6, 203.0.113.7' },
+        });
+        return res.json().ip as string;
+      } finally {
+        await scoped.close();
+      }
+    };
+    expect(await ipOf('0')).toBe('127.0.0.1');
+    // One trusted hop (Caddy): the entry it appended, not the spoofable leftmost one.
+    expect(await ipOf('1')).toBe('203.0.113.7');
+    expect(await ipOf('2')).toBe('6.6.6.6');
   });
 
   it('maps other 4xx errors to BAD_REQUEST without leaking their message', async () => {

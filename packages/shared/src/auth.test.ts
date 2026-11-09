@@ -5,6 +5,7 @@ import {
   resetCodeSchema,
   resetWithCodeSchema,
   resetWithLinkSchema,
+  signInSchema,
   signUpSchema,
   totpCodeSchema,
 } from './auth.js';
@@ -45,6 +46,11 @@ describe('totpCodeSchema', () => {
     expect(ok(totpCodeSchema, '123456')).toBe(true);
     expect(ok(totpCodeSchema, '12345')).toBe(false);
   });
+  it('ignores whitespace inside the code', () => {
+    expect(totpCodeSchema.parse('123 456')).toBe('123456');
+    expect(totpCodeSchema.parse(' 123456 ')).toBe('123456');
+    expect(ok(totpCodeSchema, '123 45')).toBe(false);
+  });
 });
 
 describe('resetCodeSchema', () => {
@@ -76,5 +82,14 @@ describe('resetWithLinkSchema', () => {
     expect(ok(resetWithLinkSchema, { token: 'a'.repeat(200), newPassword })).toBe(true);
     expect(ok(resetWithLinkSchema, { token: 'a'.repeat(201), newPassword })).toBe(false);
     expect(ok(resetWithLinkSchema, { token: 'a'.repeat(20), newPassword: 'short' })).toBe(false);
+  });
+});
+
+describe('signInSchema', () => {
+  it('caps the password at the maximum length', () => {
+    expect(ok(signInSchema, { email: 'a@b.co', password: 'x' })).toBe(true);
+    expect(ok(signInSchema, { email: 'a@b.co', password: 'a'.repeat(128) })).toBe(true);
+    expect(ok(signInSchema, { email: 'a@b.co', password: 'a'.repeat(129) })).toBe(false);
+    expect(ok(signInSchema, { email: 'a@b.co', password: '' })).toBe(false);
   });
 });

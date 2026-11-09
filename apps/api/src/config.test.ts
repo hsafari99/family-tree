@@ -140,9 +140,19 @@ describe('loadConfig', () => {
     );
   });
 
-  it('parses TRUST_PROXY as a boolean defaulting to false', () => {
-    expect(loadConfig(devEnv).TRUST_PROXY).toBe(false);
-    expect(loadConfig({ ...devEnv, TRUST_PROXY: 'true' }).TRUST_PROXY).toBe(true);
-    expect(() => loadConfig({ ...devEnv, TRUST_PROXY: 'yes' })).toThrowError(/TRUST_PROXY/);
+  it('parses TRUST_PROXY as a hop count defaulting to 0', () => {
+    expect(loadConfig(devEnv).TRUST_PROXY).toBe(0);
+    expect(loadConfig({ ...devEnv, TRUST_PROXY: '1' }).TRUST_PROXY).toBe(1);
+    expect(() => loadConfig({ ...devEnv, TRUST_PROXY: 'true' })).toThrowError(/TRUST_PROXY/);
+    expect(() => loadConfig({ ...devEnv, TRUST_PROXY: '-1' })).toThrowError(/TRUST_PROXY/);
+    expect(() => loadConfig({ ...devEnv, TRUST_PROXY: '6' })).toThrowError(/TRUST_PROXY/);
+    expect(() => loadConfig({ ...devEnv, TRUST_PROXY: '1.5' })).toThrowError(/TRUST_PROXY/);
+  });
+
+  it('reports a malformed AUTH_BASE_URL as a config error', () => {
+    expect(() => loadConfig({ ...devEnv, AUTH_BASE_URL: 'not a url' })).toThrowError(ConfigError);
+    expect(() => loadConfig({ ...devEnv, AUTH_BASE_URL: 'not a url' })).toThrowError(
+      /AUTH_BASE_URL/,
+    );
   });
 });
