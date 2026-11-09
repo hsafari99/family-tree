@@ -1,4 +1,12 @@
 **/node_modules
 **/dist
+**/coverage
 .git
+.env.development
 .env.production
+.env*.local
+graft
+.ignore
+docs
+**/*.test.ts
+**/*.int.test.ts
