@@ -32,6 +32,7 @@ const user = {
   name: 'Ada',
   email: 'ada@example.com',
   twoFactorEnabled: false,
+  requiresTwoFactor: false,
 };
 
 describe('toAuthError', () => {
