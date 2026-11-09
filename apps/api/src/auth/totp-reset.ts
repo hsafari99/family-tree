@@ -1,5 +1,5 @@
-// Mirrors better-auth@1.7.18 two-factor storage and lockout (plugins/two-factor/{totp,backup-codes}
-// and verify-two-factor.mjs). Re-check those files whenever better-auth is upgraded;
+// Mirrors better-auth@1.7.18 two-factor storage (plugins/two-factor/{totp,backup-codes}) and
+// reads its lockout fields (verify-two-factor.mjs). Re-check those files whenever better-auth is upgraded;
 // password-reset.int.test.ts will fail if they drift.
 import { base32 } from '@better-auth/utils/base32';
 import { createOTP } from '@better-auth/utils/otp';
@@ -7,7 +7,6 @@ import { symmetricDecrypt, symmetricEncrypt, type SecretConfig } from 'better-au
 import { and, eq } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { twoFactors } from '../db/schema.js';
-import { TWO_FACTOR_LOCK_SECONDS, TWO_FACTOR_MAX_FAILED_ATTEMPTS } from './auth.js';
 
 /** What Better Auth passes to symmetricEncrypt/Decrypt for 2FA data: `ctx.secretConfig`. */
 export type TwoFactorKey = string | SecretConfig;
@@ -42,11 +41,14 @@ function writeBackupCodes(key: TwoFactorKey, codes: string[]): Promise<string> {
 /**
  * Verifies an authenticator code or spends a recovery code for a user with verified 2FA.
  *
- * Shares Better Auth's account lockout: while `lockedUntil` is in the future every attempt
- * fails; each failure adds to `failedVerificationCount` and locks the account for 15 minutes
- * once it reaches the limit; a success clears both. An expired lock starts the count afresh.
+ * Respects Better Auth's sign-in lockout but never feeds it: while `lockedUntil` (set by failed
+ * sign-in verifications) is in the future every attempt fails, and a success clears the
+ * counter and the lock, since the caller proved possession of the second factor. A failure
+ * here does NOT count toward the lock: this route needs only an email, so counting would let
+ * anyone lock a user out of sign-in. Guessing stays bounded by the route's rate limits
+ * (5 per email and 20 per IP per 15 minutes).
  * Everything runs in one transaction holding the two_factors row (SELECT ... FOR UPDATE), so
- * concurrent requests can't both spend one recovery code or lose a failure count.
+ * concurrent requests can't both spend one recovery code.
  *
  * Like Better Auth, an authenticator code stays valid for its whole window (±1 step), so it can
  * be replayed within ~90 seconds. Accepted: the attacker would also need the email, and the
@@ -66,10 +68,7 @@ export async function verifyAndConsumeSecondFactor(
       .for('update');
     if (!row) return false;
 
-    const now = Date.now();
-    if (row.lockedUntil && row.lockedUntil.getTime() > now) return false;
-    // Better Auth lazily clears an expired lock together with its counter.
-    const priorFailures = row.lockedUntil ? 0 : row.failedVerificationCount;
+    if (row.lockedUntil && row.lockedUntil.getTime() > Date.now()) return false;
 
     let updatedBackupCodes: string | undefined;
     let valid = false;
@@ -89,20 +88,8 @@ export async function verifyAndConsumeSecondFactor(
       }
     }
 
-    if (!valid) {
-      const failures = priorFailures + 1;
-      await tx
-        .update(twoFactors)
-        .set({
-          failedVerificationCount: failures,
-          lockedUntil:
-            failures >= TWO_FACTOR_MAX_FAILED_ATTEMPTS
-              ? new Date(now + TWO_FACTOR_LOCK_SECONDS * 1000)
-              : null,
-        })
-        .where(eq(twoFactors.id, row.id));
-      return false;
-    }
+    // Deliberately no failure count here; see the doc comment above.
+    if (!valid) return false;
 
     await tx
       .update(twoFactors)

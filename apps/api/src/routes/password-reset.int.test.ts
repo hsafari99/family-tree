@@ -203,7 +203,19 @@ describe('POST /api/v1/password-reset/totp', () => {
 });
 
 describe('password reset and the 2FA account lockout', () => {
-  it('locks after 5 wrong reset codes: reset and Better Auth sign-in both refuse', async () => {
+  /** Fails verify-totp n times during one sign-in, feeding Better Auth's lockout counter. */
+  async function failSignIn2fa(email: string, password: string, bad: string, n: number) {
+    const pending = await signIn(app, { email, password });
+    for (let i = 0; i < n; i++) {
+      const res = await call(app, 'POST', '/api/auth/two-factor/verify-totp', {
+        jar: pending.jar,
+        body: { code: bad },
+      });
+      expect(res.statusCode).toBe(401);
+    }
+  }
+
+  it('5 failed resets do NOT lock sign-in 2FA', async () => {
     const { email, password, userId, rawSecret } = await userWith2fa();
     const bad = wrongCode(await totpNow(rawSecret));
     for (let i = 0; i < 5; i++) {
@@ -212,58 +224,36 @@ describe('password reset and the 2FA account lockout', () => {
       );
     }
     const row = await twoFactorRow(userId);
-    expect(row.failedVerificationCount).toBe(5);
-    expect(row.lockedUntil!.getTime()).toBeGreaterThan(Date.now() + 14 * 60_000);
-
-    // A fresh app so the per-email limit doesn't answer first: the lock gives INVALID_RESET.
-    const other = newApp();
-    try {
-      const locked = await resetTotp(
-        { email, code: await totpNow(rawSecret), newPassword: NEW_PASSWORD },
-        { target: other },
-      );
-      expect(locked.statusCode).toBe(400);
-      expect(locked.json()).toEqual({ error: INVALID });
-    } finally {
-      await other.close();
-    }
+    expect(row.failedVerificationCount).toBe(0);
+    expect(row.lockedUntil).toBeNull();
 
     const pending = await signIn(app, { email, password });
     const verify = await call(app, 'POST', '/api/auth/two-factor/verify-totp', {
       jar: pending.jar,
       body: { code: await totpNow(rawSecret) },
     });
-    expect(verify.statusCode).toBe(429);
-    expect(verify.json().code).toBe('ACCOUNT_TEMPORARILY_LOCKED');
+    expect(verify.statusCode).toBe(200);
+    expect((await me(pending.jar)).statusCode).toBe(200);
   });
 
-  it('counts sign-in failures and reset failures together', async () => {
+  it('an existing sign-in lock blocks the reset, even with a correct code', async () => {
     const { email, password, userId, rawSecret } = await userWith2fa();
-    const bad = wrongCode(await totpNow(rawSecret));
-    const pending = await signIn(app, { email, password });
-    for (let i = 0; i < 4; i++) {
-      const res = await call(app, 'POST', '/api/auth/two-factor/verify-totp', {
-        jar: pending.jar,
-        body: { code: bad },
-      });
-      expect(res.statusCode).toBe(401);
-    }
-    expect((await resetTotp({ email, code: bad, newPassword: NEW_PASSWORD })).statusCode).toBe(400);
+    await failSignIn2fa(email, password, wrongCode(await totpNow(rawSecret)), 5);
     expect((await twoFactorRow(userId)).lockedUntil).not.toBeNull();
+
     const res = await resetTotp({
       email,
       code: await totpNow(rawSecret),
       newPassword: NEW_PASSWORD,
     });
     expect(res.statusCode).toBe(400);
+    expect(res.json()).toEqual({ error: INVALID });
+    expect((await signIn(app, { email, password: NEW_PASSWORD })).res.statusCode).toBe(401);
   });
 
-  it('clears the failure count after a successful reset', async () => {
-    const { email, userId, rawSecret } = await userWith2fa();
-    const bad = wrongCode(await totpNow(rawSecret));
-    for (let i = 0; i < 3; i++) {
-      await resetTotp({ email, code: bad, newPassword: NEW_PASSWORD });
-    }
+  it('clears the sign-in failure count after a successful reset', async () => {
+    const { email, password, userId, rawSecret } = await userWith2fa();
+    await failSignIn2fa(email, password, wrongCode(await totpNow(rawSecret)), 3);
     expect((await twoFactorRow(userId)).failedVerificationCount).toBe(3);
     const ok = await resetTotp({
       email,
@@ -274,6 +264,14 @@ describe('password reset and the 2FA account lockout', () => {
     const row = await twoFactorRow(userId);
     expect(row.failedVerificationCount).toBe(0);
     expect(row.lockedUntil).toBeNull();
+  });
+
+  it('leaves the sign-in failure count untouched when a reset fails', async () => {
+    const { email, password, userId, rawSecret } = await userWith2fa();
+    const bad = wrongCode(await totpNow(rawSecret));
+    await failSignIn2fa(email, password, bad, 2);
+    expect((await resetTotp({ email, code: bad, newPassword: NEW_PASSWORD })).statusCode).toBe(400);
+    expect((await twoFactorRow(userId)).failedVerificationCount).toBe(2);
   });
 
   it('accepts a correct code once an earlier lock has expired', async () => {
@@ -288,19 +286,8 @@ describe('password reset and the 2FA account lockout', () => {
       newPassword: NEW_PASSWORD,
     });
     expect(ok.statusCode).toBe(204);
-    expect((await twoFactorRow(userId)).failedVerificationCount).toBe(0);
-  });
-
-  it('starts counting afresh after an expired lock', async () => {
-    const { email, userId, rawSecret } = await userWith2fa();
-    await deps.db
-      .update(twoFactors)
-      .set({ failedVerificationCount: 5, lockedUntil: new Date(Date.now() - 1000) })
-      .where(eq(twoFactors.userId, userId));
-    const bad = wrongCode(await totpNow(rawSecret));
-    expect((await resetTotp({ email, code: bad, newPassword: NEW_PASSWORD })).statusCode).toBe(400);
     const row = await twoFactorRow(userId);
-    expect(row.failedVerificationCount).toBe(1);
+    expect(row.failedVerificationCount).toBe(0);
     expect(row.lockedUntil).toBeNull();
   });
 });

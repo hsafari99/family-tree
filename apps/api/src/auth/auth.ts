@@ -22,7 +22,7 @@ export interface AuthOptions {
   log?: AuthLogSink;
 }
 
-/** Spec §5: lock 2FA after this many consecutive failures (shared with the code-reset route). */
+/** Spec §5: lock 2FA sign-in after this many consecutive failures. */
 export const TWO_FACTOR_MAX_FAILED_ATTEMPTS = 5;
 /** Better Auth's default lock duration (accountLockout.durationSeconds), stated explicitly. */
 export const TWO_FACTOR_LOCK_SECONDS = 15 * 60;
