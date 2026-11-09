@@ -31,6 +31,19 @@ pnpm test             # unit tests (no Docker needed)
 pnpm test:int         # integration tests (needs `pnpm dev` or `docker compose up -d postgres s3`)
 ```
 
+## Accounts and two-step verification (dev)
+
+- Create an account at http://localhost:5173/sign-up. No email is ever sent, so there is no verification step.
+- Turn on two-step verification under **Account**: scan the QR code with any authenticator app (Google Authenticator, Authy, 1Password…) and save the 8 recovery codes it shows once.
+- Forgot your password? Use **Forgot password?** with your email plus a current authenticator code or a recovery code.
+- No authenticator? In development, print a one-time reset link (valid 24 hours) with:
+
+  ```bash
+  pnpm reset-link you@example.com
+  ```
+
+  In a later phase, tree owners will create these links in the app.
+
 ## Known limitations
 
 - **Sign-up reveals registered emails.** Sign-up is open, and signing up with an email that
