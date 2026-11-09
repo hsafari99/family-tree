@@ -40,15 +40,21 @@ export const MESSAGES = {
   locked: 'Too many wrong codes. Two-step verification is locked for 15 minutes, try again later',
   newChallenge: 'Too many wrong codes. Sign in again to get a fresh attempt',
   challengeExpired: 'Your sign-in has expired. Sign in again',
+  sessionExpired: 'Your session has expired — sign in again',
   badCode: 'That code is incorrect',
   badRecoveryCode: 'That recovery code is incorrect or has already been used',
   badPassword: 'Password is incorrect',
   emailTaken: 'An account with this email already exists',
+  invalidReset: 'Email or code is incorrect',
+  checkDetails: 'Check the details and try again',
   network: 'Cannot reach the server, check your connection and try again',
   unknown: 'Something went wrong, try again',
 } as const;
 
-/** Friendly messages for Better Auth error codes (see its BASE_ERROR_CODES / TWO_FACTOR_ERROR_CODES). */
+/** The error code AuthProvider reacts to by re-reading the session. */
+export const SESSION_EXPIRED = 'SESSION_EXPIRED';
+
+/** Friendly messages for known error codes (Better Auth's BASE_ERROR_CODES / TWO_FACTOR_ERROR_CODES, and ours). */
 const BY_CODE: Record<string, string> = {
   INVALID_EMAIL_OR_PASSWORD: MESSAGES.badCredentials,
   INVALID_PASSWORD: MESSAGES.badPassword,
@@ -59,16 +65,32 @@ const BY_CODE: Record<string, string> = {
   ACCOUNT_TEMPORARILY_LOCKED: MESSAGES.locked,
   USER_ALREADY_EXISTS: MESSAGES.emailTaken,
   USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL: MESSAGES.emailTaken,
+  INVALID_RESET: MESSAGES.invalidReset,
 };
 
-/** Turns a status and an error body (Better Auth's or ours) into a message for people. */
-export function toAuthError(status: number, code?: string, message?: string): AuthError {
-  const resolvedCode = code || (status === 429 ? 'RATE_LIMITED' : `HTTP_${status}`);
+/**
+ * What a call depends on, which decides what a bare 401 means:
+ * - `signIn`: the email and password were wrong;
+ * - `challenge`: the half-finished 2FA sign-in has expired;
+ * - `session`: the signed-in session has expired;
+ * - `public`: nothing; a 401 is unexpected.
+ */
+export type CallKind = 'signIn' | 'challenge' | 'session' | 'public';
+
+/**
+ * Turns a status and an error code into a message for people. Server text is never shown:
+ * anything unrecognised gets a generic message.
+ */
+export function toAuthError(status: number, code?: string, kind: CallKind = 'public'): AuthError {
   if (code && BY_CODE[code]) return { code, message: BY_CODE[code] };
-  if (code === 'INVALID_RESET' && message) return { code, message };
-  if (status === 401) return { code: resolvedCode, message: MESSAGES.badCredentials };
+  const resolvedCode = code || (status === 429 ? 'RATE_LIMITED' : `HTTP_${status}`);
   if (status === 429) return { code: resolvedCode, message: MESSAGES.tooMany };
-  if (status >= 400 && status < 500 && message) return { code: resolvedCode, message };
+  if (status === 401) {
+    if (kind === 'signIn') return { code: resolvedCode, message: MESSAGES.badCredentials };
+    if (kind === 'challenge') return { code: resolvedCode, message: MESSAGES.challengeExpired };
+    if (kind === 'session') return { code: SESSION_EXPIRED, message: MESSAGES.sessionExpired };
+  }
+  if (status >= 400 && status < 500) return { code: resolvedCode, message: MESSAGES.checkDetails };
   return { code: resolvedCode, message: MESSAGES.unknown };
 }
 
@@ -79,10 +101,11 @@ const networkError = (): Result<never> => ({
 
 type BetterAuthResult<T> = {
   data: T | null;
-  error: { status: number; code?: string; message?: string } | null;
+  error: { status: number; code?: string } | null;
 };
 
 async function run<T, R>(
+  kind: CallKind,
   call: () => Promise<BetterAuthResult<T>>,
   map: (data: T) => R,
 ): Promise<Result<R>> {
@@ -93,7 +116,7 @@ async function run<T, R>(
     return networkError();
   }
   if (res.error) {
-    return { ok: false, error: toAuthError(res.error.status, res.error.code, res.error.message) };
+    return { ok: false, error: toAuthError(res.error.status, res.error.code, kind) };
   }
   return { ok: true, data: map(res.data as T) };
 }
@@ -126,7 +149,7 @@ export function createAuthApi({ baseUrl }: { baseUrl: string }): AuthApi {
     const body: unknown = await res.json().catch(() => null);
     const parsed = apiErrorSchema.safeParse(body);
     const err = parsed.success ? parsed.data.error : undefined;
-    return { ok: false, error: toAuthError(res.status, err?.code, err?.message) };
+    return { ok: false, error: toAuthError(res.status, err?.code) };
   }
 
   async function v1Post(path: string, body: unknown): Promise<Result<void>> {
@@ -147,9 +170,10 @@ export function createAuthApi({ baseUrl }: { baseUrl: string }): AuthApi {
       return { ok: true, data: parsed.data.user };
     },
     signUp: ({ name, email, password }) =>
-      run(() => client.signUp.email({ name, email, password }), nothing),
+      run('public', () => client.signUp.email({ name, email, password }), nothing),
     signIn: ({ email, password }) =>
       run(
+        'signIn',
         () => client.signIn.email({ email, password }),
         (data) => ({
           twoFactorRequired:
@@ -160,27 +184,32 @@ export function createAuthApi({ baseUrl }: { baseUrl: string }): AuthApi {
         }),
       ),
     verifyTotp: ({ code, trustDevice }) =>
-      run(() => client.twoFactor.verifyTotp({ code, trustDevice }), nothing),
+      run('challenge', () => client.twoFactor.verifyTotp({ code, trustDevice }), nothing),
     verifyRecoveryCode: ({ code }) =>
-      run(() => client.twoFactor.verifyBackupCode({ code }), nothing),
-    signOut: () => run(() => client.signOut(), nothing),
+      run('challenge', () => client.twoFactor.verifyBackupCode({ code }), nothing),
+    signOut: () => run('public', () => client.signOut(), nothing),
     startTwoFactorSetup: ({ password }) =>
       run(
+        'session',
         () => client.twoFactor.enable({ password, method: 'totp' }),
         (data) =>
           'totpURI' in data
             ? { totpURI: data.totpURI, backupCodes: data.backupCodes }
             : { totpURI: '', backupCodes: [] },
       ),
-    confirmTwoFactorSetup: ({ code }) => run(() => client.twoFactor.verifyTotp({ code }), nothing),
+    confirmTwoFactorSetup: ({ code }) =>
+      run('session', () => client.twoFactor.verifyTotp({ code }), nothing),
     regenerateRecoveryCodes: ({ password }) =>
       run(
+        'session',
         () => client.twoFactor.generateBackupCodes({ password }),
         (data) => data.backupCodes,
       ),
-    disableTwoFactor: ({ password }) => run(() => client.twoFactor.disable({ password }), nothing),
+    disableTwoFactor: ({ password }) =>
+      run('session', () => client.twoFactor.disable({ password }), nothing),
     changePassword: ({ currentPassword, newPassword }) =>
       run(
+        'session',
         () => client.changePassword({ currentPassword, newPassword, revokeOtherSessions: true }),
         nothing,
       ),

@@ -67,4 +67,11 @@ describe('SignInPage', () => {
     signIn();
     expect(await screen.findByText('Signed in as Ada')).toBeInTheDocument();
   });
+
+  it('sends an already signed-in user on to next', async () => {
+    const api = seeded();
+    api.current = 'ada@example.com';
+    renderAt('/sign-in?next=%2Faccount', api);
+    expect(await screen.findByRole('heading', { name: 'Account' })).toBeInTheDocument();
+  });
 });

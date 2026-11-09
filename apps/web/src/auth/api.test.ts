@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createAuthApi, MESSAGES, toAuthError } from './api';
+import { createAuthApi, MESSAGES, SESSION_EXPIRED, toAuthError } from './api';
 
 const BASE = 'https://api.example.com';
 
@@ -35,18 +35,36 @@ const user = {
 };
 
 describe('toAuthError', () => {
-  it('maps 401 to the bad-credentials message', () => {
-    expect(toAuthError(401).message).toBe(MESSAGES.badCredentials);
+  it('maps a 401 to bad credentials only for sign-in', () => {
+    expect(toAuthError(401, undefined, 'signIn').message).toBe(MESSAGES.badCredentials);
+    expect(toAuthError(401, undefined, 'public').message).toBe(MESSAGES.checkDetails);
+  });
+
+  it('maps a 401 on a session-bound call to an expired session', () => {
+    expect(toAuthError(401, undefined, 'session')).toEqual({
+      code: SESSION_EXPIRED,
+      message: MESSAGES.sessionExpired,
+    });
+    expect(toAuthError(401, 'UNAUTHORIZED', 'session').code).toBe(SESSION_EXPIRED);
+  });
+
+  it('maps a 401 during the 2FA step to an expired sign-in', () => {
+    expect(toAuthError(401, undefined, 'challenge').message).toBe(MESSAGES.challengeExpired);
+    expect(toAuthError(401, 'INVALID_CODE', 'challenge').message).toBe(MESSAGES.badCode);
+  });
+
+  it('maps INVALID_PASSWORD on password-checked calls', () => {
+    expect(toAuthError(400, 'INVALID_PASSWORD', 'session').message).toBe(MESSAGES.badPassword);
   });
 
   it('maps 429 to the rate-limit message', () => {
     expect(toAuthError(429)).toEqual({ code: 'RATE_LIMITED', message: MESSAGES.tooMany });
   });
 
-  it('keeps the INVALID_RESET message', () => {
-    expect(toAuthError(400, 'INVALID_RESET', 'Email or code is incorrect')).toEqual({
+  it('uses a fixed message for INVALID_RESET', () => {
+    expect(toAuthError(400, 'INVALID_RESET')).toEqual({
       code: 'INVALID_RESET',
-      message: 'Email or code is incorrect',
+      message: MESSAGES.invalidReset,
     });
   });
 
@@ -57,8 +75,12 @@ describe('toAuthError', () => {
     );
   });
 
-  it('hides server errors behind a generic message', () => {
-    expect(toAuthError(500, undefined, 'stack trace').message).toBe(MESSAGES.unknown);
+  it('never passes through an unmapped 4xx or 5xx', () => {
+    expect(toAuthError(400, 'SOMETHING_NEW')).toEqual({
+      code: 'SOMETHING_NEW',
+      message: MESSAGES.checkDetails,
+    });
+    expect(toAuthError(500).message).toBe(MESSAGES.unknown);
   });
 });
 
@@ -180,7 +202,40 @@ describe('createAuthApi', () => {
       }),
     ).resolves.toEqual({
       ok: false,
-      error: { code: 'INVALID_RESET', message: 'Email or code is incorrect' },
+      error: { code: 'INVALID_RESET', message: MESSAGES.invalidReset },
+    });
+  });
+
+  it('reports an expired session from a session-bound call', async () => {
+    stubFetch({ status: 401, body: { code: 'UNAUTHORIZED', message: 'Unauthorized' } });
+    await expect(
+      createAuthApi({ baseUrl: BASE }).changePassword({
+        currentPassword: 'old-password',
+        newPassword: 'new-password',
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      error: { code: SESSION_EXPIRED, message: MESSAGES.sessionExpired },
+    });
+  });
+
+  it('does not show raw server text for an unmapped error', async () => {
+    stubFetch({ status: 400, body: { code: 'WEIRD', message: 'internal detail leaked' } });
+    const res = await createAuthApi({ baseUrl: BASE }).signUp({
+      name: 'Ada',
+      email: 'ada@example.com',
+      password: 'correct-horse',
+    });
+    expect(res).toEqual({ ok: false, error: { code: 'WEIRD', message: MESSAGES.checkDetails } });
+  });
+
+  it('maps a wrong password when turning on 2FA', async () => {
+    stubFetch({ status: 400, body: { code: 'INVALID_PASSWORD', message: 'Invalid password' } });
+    await expect(
+      createAuthApi({ baseUrl: BASE }).startTwoFactorSetup({ password: 'nope' }),
+    ).resolves.toEqual({
+      ok: false,
+      error: { code: 'INVALID_PASSWORD', message: MESSAGES.badPassword },
     });
   });
 });

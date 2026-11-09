@@ -1,13 +1,16 @@
 import { PASSWORD_MIN, signUpSchema } from '@family-tree/shared';
 import { type FormEvent, useState } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
+import { safeNext } from '../auth/RequireAuth';
 import { Field, type FieldErrors, FormError, validate } from '../components/forms';
 import { Page } from '../components/Page';
 
 export function SignUpPage() {
-  const { api, refresh } = useAuth();
+  const { api, user, refresh } = useAuth();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const next = safeNext(params.get('next'));
   const [values, setValues] = useState({ name: '', email: '', password: '' });
   const [errors, setErrors] = useState<FieldErrors>({});
   const [serverError, setServerError] = useState<string | null>(null);
@@ -29,8 +32,11 @@ export function SignUpPage() {
       return;
     }
     await refresh();
-    navigate('/', { replace: true });
+    navigate(next, { replace: true });
   }
+
+  // Already signed in: there is nothing to do here.
+  if (user && user !== 'loading') return <Navigate to={next} replace />;
 
   return (
     <Page title="Create an account">

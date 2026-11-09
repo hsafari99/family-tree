@@ -54,4 +54,11 @@ describe('SignUpPage', () => {
     expect(await screen.findByLabelText('Email')).toHaveAttribute('autocomplete', 'email');
     expect(screen.getByLabelText('Password')).toHaveAttribute('autocomplete', 'new-password');
   });
+
+  it('sends an already signed-in user home', async () => {
+    const api = new FakeAuthApi();
+    api.addUser({ email: 'ada@example.com', name: 'Ada' }, { signedIn: true });
+    renderAt('/sign-up', api);
+    expect(await screen.findByText('Signed in as Ada')).toBeInTheDocument();
+  });
 });

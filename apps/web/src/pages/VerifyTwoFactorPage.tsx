@@ -70,7 +70,7 @@ export function VerifyTwoFactorPage() {
             label="Recovery code"
             name="code"
             hint="One of the codes you saved when you turned on two-step verification. Each works once."
-            autoComplete="one-time-code"
+            autoComplete="off"
             autoCapitalize="none"
             spellCheck={false}
             value={code}

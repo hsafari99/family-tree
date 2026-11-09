@@ -1,5 +1,4 @@
 import { totpCodeSchema } from '@family-tree/shared';
-import QRCode from 'qrcode';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { Field, FormError, validate } from '../components/forms';
@@ -8,7 +7,7 @@ type Step =
   | { kind: 'idle' }
   | { kind: 'password'; purpose: 'enable' | 'regenerate' | 'disable' }
   | { kind: 'scan'; totpURI: string; backupCodes: string[] }
-  | { kind: 'codes'; codes: string[] };
+  | { kind: 'codes'; codes: string[]; doneNotice: string };
 
 const PROMPTS = {
   enable: { title: 'Turn on two-step verification', submit: 'Continue' },
@@ -27,6 +26,18 @@ export function TwoFactorSetup({
   const { api } = useAuth();
   const [step, setStep] = useState<Step>({ kind: 'idle' });
   const [notice, setNotice] = useState<string | null>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const firstRender = useRef(true);
+
+  // Back at the start (done, cancelled or turned off): move focus to the section heading so
+  // keyboard and screen-reader users aren't left on a button that no longer exists.
+  useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false;
+      return;
+    }
+    if (step.kind === 'idle') headingRef.current?.focus();
+  }, [step.kind]);
 
   async function onPassword(
     purpose: 'enable' | 'regenerate' | 'disable',
@@ -39,7 +50,11 @@ export function TwoFactorSetup({
     } else if (purpose === 'regenerate') {
       const res = await api.regenerateRecoveryCodes({ password });
       if (!res.ok) return res.error.message;
-      setStep({ kind: 'codes', codes: res.data });
+      setStep({
+        kind: 'codes',
+        codes: res.data,
+        doneNotice: 'New recovery codes are ready; the old ones no longer work.',
+      });
     } else {
       const res = await api.disableTwoFactor({ password });
       if (!res.ok) return res.error.message;
@@ -52,7 +67,9 @@ export function TwoFactorSetup({
 
   return (
     <section aria-labelledby="two-factor-heading">
-      <h2 id="two-factor-heading">Two-step verification</h2>
+      <h2 id="two-factor-heading" ref={headingRef} tabIndex={-1}>
+        Two-step verification
+      </h2>
       {step.kind === 'idle' && (
         <>
           <p>
@@ -115,7 +132,11 @@ export function TwoFactorSetup({
         <ScanAndConfirm
           totpURI={step.totpURI}
           onConfirmed={async () => {
-            setStep({ kind: 'codes', codes: step.backupCodes });
+            setStep({
+              kind: 'codes',
+              codes: step.backupCodes,
+              doneNotice: 'Two-step verification is on.',
+            });
             await onChanged();
           }}
           onCancel={() => setStep({ kind: 'idle' })}
@@ -126,7 +147,7 @@ export function TwoFactorSetup({
           codes={step.codes}
           onDone={() => {
             setStep({ kind: 'idle' });
-            setNotice('Two-step verification is on.');
+            setNotice(step.doneNotice);
           }}
         />
       )}
@@ -151,6 +172,7 @@ function PasswordPrompt({
   const [serverError, setServerError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const mounted = useMounted();
+  const heading = useFocusOnMount();
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -169,7 +191,9 @@ function PasswordPrompt({
 
   return (
     <form onSubmit={submit} noValidate aria-label={title}>
-      <h3>{title}</h3>
+      <h3 ref={heading} tabIndex={-1}>
+        {title}
+      </h3>
       <Field
         label="Your password"
         name="password"
@@ -215,14 +239,19 @@ function ScanAndConfirm({
   const [error, setError] = useState<string | undefined>();
   const [serverError, setServerError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [qrFailed, setQrFailed] = useState(false);
   const mounted = useMounted();
+  const heading = useFocusOnMount();
 
   useEffect(() => {
     let active = true;
-    QRCode.toDataURL(totpURI, { margin: 1, width: 200 }).then(
-      (url) => active && setQr(url),
-      () => active && setQr(null),
-    );
+    // Loaded on demand so the QR library stays out of the main bundle.
+    import('qrcode')
+      .then(({ default: QRCode }) => QRCode.toDataURL(totpURI, { margin: 1, width: 200 }))
+      .then(
+        (url) => active && setQr(url),
+        () => active && setQrFailed(true),
+      );
     return () => {
       active = false;
     };
@@ -247,8 +276,11 @@ function ScanAndConfirm({
 
   return (
     <form onSubmit={submit} noValidate aria-label="Set up your authenticator app">
-      <h3>Scan with your authenticator app</h3>
+      <h3 ref={heading} tabIndex={-1}>
+        Scan with your authenticator app
+      </h3>
       {qr && <img className="qr" src={qr} alt="QR code for your authenticator app" />}
+      {qrFailed && <p>The QR code couldn’t be shown.</p>}
       <p>Can’t scan it? Enter this key in the app instead:</p>
       <p>
         <code className="secret">{secretFrom(totpURI)}</code>
@@ -288,18 +320,26 @@ function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void 
     }
   }
 
+  const heading = useFocusOnMount();
+
   function download() {
     const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
     const a = document.createElement('a');
     a.href = url;
     a.download = 'family-tree-recovery-codes.txt';
+    // Firefox only follows a click on an anchor that is in the document.
+    document.body.append(a);
     a.click();
-    URL.revokeObjectURL(url);
+    a.remove();
+    // Revoking straight away can cancel the download in some browsers.
+    setTimeout(() => URL.revokeObjectURL(url), 0);
   }
 
   return (
     <div>
-      <h3>Save your recovery codes</h3>
+      <h3 ref={heading} tabIndex={-1}>
+        Save your recovery codes
+      </h3>
       <p>
         If you lose your phone, each of these {codes.length} codes lets you sign in or reset your
         password once. Keep them somewhere safe: they won’t be shown again.
@@ -336,4 +376,13 @@ function useMounted() {
     };
   }, []);
   return mounted;
+}
+
+/** A ref for a heading that takes focus when its step appears. */
+function useFocusOnMount() {
+  const ref = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    ref.current?.focus();
+  }, []);
+  return ref;
 }

@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { describe, expect, it } from 'vitest';
 import { FakeAuthApi } from '../test/fake-auth';
 import { renderAt } from '../test/render';
+import { MESSAGES, SESSION_EXPIRED } from './api';
 import { AuthProvider, useAuth } from './AuthContext';
 import { RequireAuth, safeNext } from './RequireAuth';
 
@@ -63,6 +64,80 @@ function ShowLocation() {
   return <p>at:{`${location.pathname}${location.search}`}</p>;
 }
 
+describe('AuthProvider error handling', () => {
+  it('keeps the signed-in user when a refresh fails for a transient reason', async () => {
+    const api = signedInApi();
+    function RefreshButton() {
+      const { refresh, loadError } = useAuth();
+      return (
+        <>
+          <button type="button" onClick={() => void refresh()}>
+            refresh
+          </button>
+          {loadError && <p>error:{loadError.code}</p>}
+        </>
+      );
+    }
+    render(
+      <AuthProvider api={api}>
+        <Probe />
+        <RefreshButton />
+      </AuthProvider>,
+    );
+    await screen.findByText('user:Ada');
+    api.failNext('getMe', { code: 'NETWORK', message: MESSAGES.network });
+    fireEvent.click(screen.getByRole('button', { name: 'refresh' }));
+    expect(await screen.findByText('error:NETWORK')).toBeInTheDocument();
+    expect(screen.getByText('user:Ada')).toBeInTheDocument();
+  });
+
+  it('signs the user out when the server says there is no session', async () => {
+    const api = signedInApi();
+    function Refresh() {
+      const { refresh } = useAuth();
+      return (
+        <button type="button" onClick={() => void refresh()}>
+          refresh
+        </button>
+      );
+    }
+    render(
+      <AuthProvider api={api}>
+        <Probe />
+        <Refresh />
+      </AuthProvider>,
+    );
+    await screen.findByText('user:Ada');
+    api.current = null;
+    fireEvent.click(screen.getByRole('button', { name: 'refresh' }));
+    expect(await screen.findByText('signed out')).toBeInTheDocument();
+  });
+
+  it('re-reads the session when a call reports it expired, and sends the user to sign in', async () => {
+    const api = signedInApi();
+    renderAt('/account', api);
+    await screen.findByRole('heading', { name: 'Account' });
+    // The session ended on the server.
+    api.current = null;
+    api.failNext('changePassword', { code: SESSION_EXPIRED, message: MESSAGES.sessionExpired });
+    fireEvent.change(screen.getByLabelText('Current password'), {
+      target: { value: 'correct-horse' },
+    });
+    fireEvent.change(screen.getByLabelText('New password'), {
+      target: { value: 'brand-new-password' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
+  });
+
+  it('home shows a notice when the server cannot be reached', async () => {
+    const api = new FakeAuthApi();
+    api.failNext('getMe', { code: 'NETWORK', message: MESSAGES.network });
+    renderAt('/', api);
+    expect(await screen.findByText('Can’t reach the server right now')).toBeInTheDocument();
+  });
+});
+
 describe('RequireAuth', () => {
   it('redirects to sign-in with the path to come back to', async () => {
     render(
@@ -95,6 +170,13 @@ describe('RequireAuth', () => {
 });
 
 describe('safeNext', () => {
+  it('a tab-split protocol-relative URL never leaves the site', () => {
+    // What `?next=/%09/evil.example` decodes to.
+    expect(new URL(safeNext('/\t/evil.example'), window.location.origin).origin).toBe(
+      window.location.origin,
+    );
+  });
+
   it.each([
     ['/account', '/account'],
     ['/a?b=c', '/a?b=c'],
@@ -104,6 +186,14 @@ describe('safeNext', () => {
     ['//evil.example', '/'],
     ['/\\evil.example', '/'],
     ['javascript:alert(1)', '/'],
+    ['/\t/evil.example', '/'],
+    ['/\n/evil.example', '/'],
+    ['/\r\n/evil.example', '/'],
+    ['/\t\\evil.example', '/'],
+    ['/\\evil.example', '/'],
+    ['/%5Cevil.example', '/%5Cevil.example'],
+    ['//evil.example/x', '/'],
+    ['/account#two-factor', '/account#two-factor'],
   ])('%s → %s', (input, expected) => {
     expect(safeNext(input)).toBe(expected);
   });

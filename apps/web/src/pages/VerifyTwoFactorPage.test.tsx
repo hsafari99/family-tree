@@ -48,6 +48,7 @@ describe('VerifyTwoFactorPage', () => {
     const { api, user } = challenged();
     renderAt('/sign-in/verify', api);
     fireEvent.click(await screen.findByRole('button', { name: 'Use a recovery code instead' }));
+    expect(screen.getByLabelText('Recovery code')).toHaveAttribute('autocomplete', 'off');
     submit('Recovery code', '123456');
     expect(await screen.findByText('Enter a recovery code like abcde-12345')).toBeInTheDocument();
     expect(api.callsTo('verifyRecoveryCode')).toHaveLength(0);

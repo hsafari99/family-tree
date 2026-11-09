@@ -5,7 +5,7 @@ import { Page } from '../components/Page';
 import { HealthStatus } from '../HealthStatus';
 
 export function HomePage() {
-  const { user, signOut } = useAuth();
+  const { user, loadError, signOut } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -19,6 +19,11 @@ export function HomePage() {
 
   return (
     <Page title="Family Tree">
+      {loadError && (
+        <p role="status" className="notice">
+          Can’t reach the server right now
+        </p>
+      )}
       {user === 'loading' ? (
         <p>Loading…</p>
       ) : user ? (
