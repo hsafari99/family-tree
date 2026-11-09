@@ -1,6 +1,7 @@
 import type { FuzzyDate } from '@family-tree/shared';
 import { sql } from 'drizzle-orm';
 import {
+  type AnyPgColumn,
   boolean,
   check,
   foreignKey,
@@ -10,6 +11,7 @@ import {
   pgEnum,
   pgTable,
   type PgTableExtraConfigValue,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -92,11 +94,14 @@ export const persons = pgTable(
     biography: text('biography'),
     notes: text('notes'),
     siblingOrder: integer('sibling_order'),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
     version: integer('version').notNull().default(1),
     ...timestamps(),
   },
   (t) => [
     index('persons_tree_idx').on(t.treeId),
+    index('persons_created_by_idx').on(t.treeId, t.createdBy),
     // A UNIQUE constraint (not just an index) so it is created inside CREATE TABLE, before the
     // composite FKs that target it.
     unique('persons_tree_id_uq').on(t.treeId, t.id),
@@ -290,7 +295,7 @@ export const twoFactors = pgTable('two_factors', {
 });
 
 // One-time password-reset links issued by an owner. Only a hash of the token is stored.
-// Phase 3 adds tree_id.
+// tree_id is set when a tree owner issued the link; null for the dev CLI.
 export const resetLinks = pgTable(
   'reset_links',
   {
@@ -299,6 +304,7 @@ export const resetLinks = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
+    treeId: uuid('tree_id').references(() => trees.id, { onDelete: 'cascade' }),
     createdByUserId: uuid('created_by_user_id').references(() => users.id, {
       onDelete: 'set null',
     }),
@@ -307,4 +313,118 @@ export const resetLinks = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('reset_links_user_idx').on(t.userId)],
+);
+
+// ---------------------------------------------------------------------------------------------
+// Tree access (spec §3, §4).
+
+export const memberRoleEnum = pgEnum('member_role', ['owner', 'editor', 'viewer']);
+
+/** The single source of truth for who may see a tree and in which role. */
+export const treeMembers = pgTable(
+  'tree_members',
+  {
+    treeId: uuid('tree_id')
+      .notNull()
+      .references(() => trees.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    role: memberRoleEnum('role').notNull(),
+    /** The member's own card in this tree. */
+    personId: uuid('person_id'),
+    invitedByUserId: uuid('invited_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    ...authTimestamps(),
+  },
+  (t) => [
+    primaryKey({ name: 'tree_members_pk', columns: [t.treeId, t.userId] }),
+    // Exactly one owner per tree.
+    uniqueIndex('tree_members_one_owner_uq')
+      .on(t.treeId)
+      .where(sql`${t.role} = 'owner'`),
+    // A person card belongs to at most one login.
+    uniqueIndex('tree_members_person_uq')
+      .on(t.treeId, t.personId)
+      .where(sql`${t.personId} is not null`),
+    // NO ACTION: persons are only soft-deleted; phase 4's permanent erase must unlink first.
+    foreignKey({
+      name: 'tree_members_person_fk',
+      columns: [t.treeId, t.personId],
+      foreignColumns: [persons.treeId, persons.id],
+    }),
+    index('tree_members_user_idx').on(t.userId),
+  ],
+);
+
+export const branchStewards = pgTable(
+  'branch_stewards',
+  {
+    id: id(),
+    treeId: uuid('tree_id').notNull(),
+    userId: uuid('user_id').notNull(),
+    anchorPersonId: uuid('anchor_person_id').notNull(),
+    grantedByUserId: uuid('granted_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    /** The granter's grant this one derives from; null when the owner granted it. */
+    parentGrantId: uuid('parent_grant_id').references((): AnyPgColumn => branchStewards.id, {
+      onDelete: 'cascade',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // A grant only exists while its holder is a member; removing the member removes it.
+    foreignKey({
+      name: 'branch_stewards_member_fk',
+      columns: [t.treeId, t.userId],
+      foreignColumns: [treeMembers.treeId, treeMembers.userId],
+    }).onDelete('cascade'),
+    // Cascade: deleting a tree deletes persons and members in one statement, and a NO ACTION
+    // check here would fire before the grants are gone. A grant is meaningless without its anchor.
+    foreignKey({
+      name: 'branch_stewards_anchor_fk',
+      columns: [t.treeId, t.anchorPersonId],
+      foreignColumns: [persons.treeId, persons.id],
+    }).onDelete('cascade'),
+    unique('branch_stewards_user_anchor_uq').on(t.treeId, t.userId, t.anchorPersonId),
+    index('branch_stewards_parent_idx').on(t.parentGrantId),
+  ],
+);
+
+export const invites = pgTable(
+  'invites',
+  {
+    id: id(),
+    tokenHash: text('token_hash').notNull().unique(),
+    treeId: uuid('tree_id')
+      .notNull()
+      .references(() => trees.id, { onDelete: 'cascade' }),
+    role: memberRoleEnum('role').notNull(),
+    stewardAnchorPersonId: uuid('steward_anchor_person_id'),
+    targetPersonId: uuid('target_person_id'),
+    createdByUserId: uuid('created_by_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true }),
+    usedByUserId: uuid('used_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check('invites_not_owner', sql`${t.role} <> 'owner'`),
+    foreignKey({
+      name: 'invites_anchor_fk',
+      columns: [t.treeId, t.stewardAnchorPersonId],
+      foreignColumns: [persons.treeId, persons.id],
+    }),
+    foreignKey({
+      name: 'invites_target_fk',
+      columns: [t.treeId, t.targetPersonId],
+      foreignColumns: [persons.treeId, persons.id],
+    }),
+    index('invites_tree_idx').on(t.treeId),
+  ],
 );
