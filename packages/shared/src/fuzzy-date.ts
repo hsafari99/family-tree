@@ -35,7 +35,8 @@ export const fuzzyDateSchema = z
           path: ['date2'],
           message: 'date2 is required for "between"',
         });
-      } else if (value.date2 < value.date1) {
+      } else if (value.date2 < value.date1.slice(0, value.date2.length)) {
+        // Compare at date2's precision: '1950-06'..'1950' is valid (1950 runs to December).
         ctx.addIssue({
           code: 'custom',
           path: ['date2'],
@@ -53,6 +54,7 @@ export const fuzzyDateSchema = z
 
 export type FuzzyDate = z.infer<typeof fuzzyDateSchema>;
 
+/** Assumes `partial` has already been validated by `fuzzyDateSchema`. */
 export function precisionOf(partial: string): DatePrecision {
   if (partial.length === 4) return 'year';
   if (partial.length === 7) return 'month';

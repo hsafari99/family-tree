@@ -5,3 +5,6 @@ coverage/
 .DS_Store
 .env.production
 .env*.local
+
+# local tooling caches
+/graft/

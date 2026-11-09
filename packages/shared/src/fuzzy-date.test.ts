@@ -9,6 +9,9 @@ describe('fuzzyDateSchema', () => {
     { qualifier: 'after', date1: '2001' },
     { qualifier: 'between', date1: '1950', date2: '1955' },
     { qualifier: 'exact', date1: '2024-02-29' },
+    { qualifier: 'exact', date1: '2000-02-29' },
+    { qualifier: 'between', date1: '1950-06', date2: '1950' },
+    { qualifier: 'between', date1: '1950-06-15', date2: '1950-06' },
   ])('accepts %o', (value) => {
     expect(fuzzyDateSchema.safeParse(value).success).toBe(true);
   });
@@ -18,6 +21,10 @@ describe('fuzzyDateSchema', () => {
     ['month 13', { qualifier: 'exact', date1: '1948-13' }],
     ['Feb 30', { qualifier: 'exact', date1: '1948-02-30' }],
     ['Feb 29 on non-leap year', { qualifier: 'exact', date1: '2023-02-29' }],
+    ['Feb 29 on non-leap century', { qualifier: 'exact', date1: '1900-02-29' }],
+    ['month 00', { qualifier: 'exact', date1: '1948-00' }],
+    ['day 00', { qualifier: 'exact', date1: '1948-03-00' }],
+    ['coarse date2 before date1', { qualifier: 'between', date1: '1950-06', date2: '1949' }],
     ['between without date2', { qualifier: 'between', date1: '1950' }],
     ['between with date2 before date1', { qualifier: 'between', date1: '1955', date2: '1950' }],
     ['date2 on non-between', { qualifier: 'about', date1: '1950', date2: '1955' }],
