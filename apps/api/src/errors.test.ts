@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { DrizzleQueryError } from 'drizzle-orm/errors';
-import { AppError, parseBody, safeError } from './errors.js';
+import { AppError, forbidden, idParam, parseBody, safeError } from './errors.js';
 
 describe('parseBody', () => {
   const schema = z.object({ email: z.email() });
@@ -54,5 +54,27 @@ describe('safeError', () => {
     const err = new Error('plain');
     expect(safeError(err)).toBe(err);
     expect(safeError('text')).toBe('text');
+  });
+});
+
+describe('idParam and forbidden', () => {
+  const uuid = '0b0c8a4e-1f7e-4c1a-9a51-6a2a3c9d0e11';
+  it('returns a valid uuid parameter', () => {
+    expect(idParam({ treeId: uuid }, 'treeId')).toBe(uuid);
+  });
+  it('turns anything else into a 404 NOT_FOUND', () => {
+    try {
+      idParam({ treeId: 'not-a-uuid' }, 'treeId');
+      expect.unreachable();
+    } catch (err) {
+      expect(err).toBeInstanceOf(AppError);
+      expect((err as AppError).statusCode).toBe(404);
+      expect((err as AppError).code).toBe('NOT_FOUND');
+    }
+  });
+  it('forbidden() is a 403 FORBIDDEN', () => {
+    const err = forbidden();
+    expect(err.statusCode).toBe(403);
+    expect(err.code).toBe('FORBIDDEN');
   });
 });

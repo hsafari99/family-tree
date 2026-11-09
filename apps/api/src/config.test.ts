@@ -140,6 +140,17 @@ describe('loadConfig', () => {
     );
   });
 
+  it('parses MAX_TREES_PER_USER, defaulting to 3', () => {
+    expect(loadConfig(devEnv).MAX_TREES_PER_USER).toBe(3);
+    expect(loadConfig({ ...devEnv, MAX_TREES_PER_USER: '5' }).MAX_TREES_PER_USER).toBe(5);
+    expect(() => loadConfig({ ...devEnv, MAX_TREES_PER_USER: '0' })).toThrowError(
+      /MAX_TREES_PER_USER/,
+    );
+    expect(() => loadConfig({ ...devEnv, MAX_TREES_PER_USER: '101' })).toThrowError(
+      /MAX_TREES_PER_USER/,
+    );
+  });
+
   it('parses TRUST_PROXY as a hop count defaulting to 0', () => {
     expect(loadConfig(devEnv).TRUST_PROXY).toBe(0);
     expect(loadConfig({ ...devEnv, TRUST_PROXY: '1' }).TRUST_PROXY).toBe(1);

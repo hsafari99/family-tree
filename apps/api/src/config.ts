@@ -36,6 +36,8 @@ export const configSchema = z
     // Number of trusted proxy hops in front of the API (0 = none). The client IP is taken that
     // many hops from the right of X-Forwarded-For, so extra entries a client adds are ignored.
     TRUST_PROXY: z.coerce.number().int().min(0).max(5).default(0),
+    // Spec §3: how many non-deleted trees one user may own.
+    MAX_TREES_PER_USER: z.coerce.number().int().min(1).max(100).default(3),
     SESSION_SECRET: z.string().min(32),
     S3_ENDPOINT: z.url(),
     S3_REGION: z.string().min(1),

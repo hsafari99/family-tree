@@ -1,24 +1,25 @@
-import { createHash, randomBytes } from 'node:crypto';
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { resetLinks } from '../db/schema.js';
+import { hashToken, newToken } from '../security/tokens.js';
 
 /** Only this hash is stored; the raw token exists only in the link given to the user. */
-export const hashResetToken = (token: string) => createHash('sha256').update(token).digest('hex');
+export const hashResetToken = hashToken;
 
 export async function createResetLink(
   db: Db,
   {
     userId,
     createdByUserId,
+    treeId = null,
     ttlHours = 24,
-  }: { userId: string; createdByUserId: string | null; ttlHours?: number },
+  }: { userId: string; createdByUserId: string | null; treeId?: string | null; ttlHours?: number },
 ): Promise<{ token: string; expiresAt: Date }> {
-  const token = randomBytes(32).toString('base64url');
+  const token = newToken();
   const expiresAt = new Date(Date.now() + ttlHours * 3_600_000);
   await db
     .insert(resetLinks)
-    .values({ tokenHash: hashResetToken(token), userId, createdByUserId, expiresAt });
+    .values({ tokenHash: hashResetToken(token), userId, createdByUserId, treeId, expiresAt });
   return { token, expiresAt };
 }
 
