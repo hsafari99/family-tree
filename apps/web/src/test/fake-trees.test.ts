@@ -67,4 +67,37 @@ describe('FakeTreesApi refuses what the real API refuses', () => {
       error: { code: 'TWO_FACTOR_REQUIRED', message: MESSAGES.twoFactorRequired },
     });
   });
+
+  it('changeRole and removeMember need permission over that member', async () => {
+    const { trees, treeId } = viewerTree();
+    const userId = id();
+    trees.trees.get(treeId)!.members.push({
+      userId,
+      name: 'X',
+      role: 'viewer',
+      personId: null,
+      invitedByUserId: null,
+    });
+    const forbidden = { ok: false, error: { code: 'FORBIDDEN', message: MESSAGES.forbidden } };
+    expect(await trees.changeRole(treeId, userId, 'editor')).toEqual(forbidden);
+    expect(await trees.removeMember(treeId, userId)).toEqual(forbidden);
+  });
+
+  it('transferOwnership rejects a target without two-step verification', async () => {
+    const trees = new FakeTreesApi();
+    const treeId = trees.addTree();
+    const userId = id();
+    trees.trees.get(treeId)!.members.push({
+      userId,
+      name: 'X',
+      role: 'editor',
+      personId: null,
+      invitedByUserId: null,
+      twoFactorEnabled: false,
+    });
+    expect(await trees.transferOwnership(treeId, userId)).toMatchObject({
+      ok: false,
+      error: { code: 'TWO_FACTOR_REQUIRED', message: MESSAGES.twoFactorRequired },
+    });
+  });
 });

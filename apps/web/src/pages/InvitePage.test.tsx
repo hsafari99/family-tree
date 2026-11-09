@@ -1,4 +1,4 @@
-import { fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { MESSAGES } from '../auth/api';
 import { FakeAuthApi } from '../test/fake-auth';
@@ -75,5 +75,16 @@ describe('InvitePage', () => {
         /look after a branch of the family. That needs two-step verification/,
       ),
     ).toBeInTheDocument();
+  });
+
+  it('replaces the invite page in history when joining, and re-reads the session', async () => {
+    const s = setup({ signedIn: true });
+    const view = renderAt(`/invite/${TOKEN}`, { ...s, entries: ['/', `/invite/${TOKEN}`] });
+    fireEvent.click(await screen.findByRole('button', { name: 'Join Hale family' }));
+    await screen.findByRole('heading', { name: 'Hale family' });
+    // initial load, plus one after joining (joining can make the user an owner or steward)
+    await waitFor(() => expect(s.auth.callsTo('getMe').length).toBeGreaterThanOrEqual(2));
+    act(() => view.navigate(-1));
+    expect(await screen.findByRole('heading', { name: 'Your trees' })).toBeInTheDocument();
   });
 });

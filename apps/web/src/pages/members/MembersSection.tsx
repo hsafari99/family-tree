@@ -1,5 +1,5 @@
 import { type InviteRole } from '@family-tree/shared';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { AuthError } from '../../auth/api';
 import { ConfirmButton } from '../../components/ConfirmButton';
 import { FormError } from '../../components/forms';
@@ -8,10 +8,22 @@ import { useTreesApi } from '../../trees/TreesApiContext';
 import { CopyLink } from './CopyLink';
 import { actionMessage, type SectionProps } from './types';
 
-export function MembersSection({ treeId, detail, persons, members, me, reload }: SectionProps) {
+export function MembersSection({
+  treeId,
+  detail,
+  persons,
+  members,
+  me,
+  reload,
+  acted,
+  onActed,
+}: SectionProps) {
   const api = useTreesApi();
   const [error, setError] = useState<string | null>(null);
   const [link, setLink] = useState<{ name: string; url: string } | null>(null);
+  useEffect(() => {
+    if (acted.from !== 'reset') setLink(null);
+  }, [acted]);
   const isOwner = detail.me.role === 'owner';
   const activeSteward = detail.me.steward.active;
   const showEmail = members.some((m) => m.email !== undefined);
@@ -30,6 +42,7 @@ export function MembersSection({ treeId, detail, persons, members, me, reload }:
     setError(null);
     const res = await call();
     if (!res.ok) return setError(actionMessage(res.error));
+    onActed(null);
     await reload(...parts);
   }
 
@@ -39,6 +52,7 @@ export function MembersSection({ treeId, detail, persons, members, me, reload }:
     const res = await api.createResetLink(treeId, userId);
     if (!res.ok) return setError(actionMessage(res.error));
     setLink({ name, url: `${window.location.origin}/reset/${res.data.token}` });
+    onActed('reset');
   }
 
   return (

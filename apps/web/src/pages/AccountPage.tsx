@@ -10,6 +10,10 @@ import { TwoFactorSetup } from './TwoFactorSetup';
 
 export function AccountPage() {
   const { user, refresh } = useAuth();
+  // Joining a tree can change whether 2FA is required; don't trust a stale session.
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
   // RequireAuth only renders this page for a signed-in user.
   if (user === null || user === 'loading') return null;
 

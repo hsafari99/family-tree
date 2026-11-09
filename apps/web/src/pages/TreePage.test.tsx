@@ -141,4 +141,17 @@ describe('TreePage', () => {
     expect(await screen.findByText('You look after the branches of: Bob Hale')).toBeInTheDocument();
     expect(within(document.body).queryByText(/Turn on two-step/)).not.toBeInTheDocument();
   });
+
+  it('cannot delete after the typed name stops matching', async () => {
+    const s = setup();
+    renderAt(`/trees/${s.id}`, s);
+    const field = await screen.findByLabelText('Type the tree name to confirm');
+    fireEvent.change(field, { target: { value: 'Hale family' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Delete tree' }));
+    expect(screen.getByRole('button', { name: 'Yes, delete this tree' })).toBeInTheDocument();
+    fireEvent.change(field, { target: { value: 'Hale famil' } });
+    expect(screen.queryByRole('button', { name: 'Yes, delete this tree' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delete tree' })).toBeDisabled();
+    expect(s.trees.callsTo('deleteTree')).toHaveLength(0);
+  });
 });

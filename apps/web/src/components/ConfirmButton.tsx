@@ -28,6 +28,11 @@ export function ConfirmButton({
     wasAsking.current = asking;
   }, [asking]);
 
+  // If the button becomes disabled while the confirm step is open, close the step.
+  useEffect(() => {
+    if (disabled) setAsking(false);
+  }, [disabled]);
+
   const cls = danger ? 'danger' : undefined;
 
   if (!asking) {
@@ -49,7 +54,7 @@ export function ConfirmButton({
         ref={confirmRef}
         type="button"
         className={cls}
-        disabled={pending}
+        disabled={pending || disabled}
         onClick={() => {
           setAsking(false);
           onConfirm();

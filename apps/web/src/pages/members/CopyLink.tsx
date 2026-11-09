@@ -10,7 +10,7 @@ export function CopyLink({
   url: string;
   children: ReactNode;
 }) {
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<boolean | null>(null);
   async function copy() {
     try {
       await navigator.clipboard.writeText(url);
@@ -31,9 +31,14 @@ export function CopyLink({
       <button type="button" onClick={() => void copy()}>
         Copy
       </button>
-      {copied && (
+      {copied === true && (
         <span role="status" className="success">
           Copied
+        </span>
+      )}
+      {copied === false && (
+        <span role="status" className="notice">
+          Couldn’t copy — select the link and copy it
         </span>
       )}
     </div>

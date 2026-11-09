@@ -3037,6 +3037,7 @@ export function createTreesApi({ baseUrl }: { baseUrl: string }): TreesApi {
   - **Form:**
     - **Role** radio: "Can view" (viewer, the default) or "Can add and edit" (editor).
     - **Make them a steward of** (optional): a person select, defaulting to "No".
+      - **Deviation (as built):** for the owner this lists all persons. For a steward it lists only the persons they hold a grant on (their own anchors). The web app can't compute a steward's branch, and the API refuses (403) a steward anchor outside it. Their own anchors are always inside it. A steward's "This invite is for" list still shows every unlinked person, and a 403 from the server shows "You can only invite people into your own branch".
     - **This invite is for** (optional): a select of persons not yet linked to a member.
     - A **Create invite link** button.
   - **On success**, a box:

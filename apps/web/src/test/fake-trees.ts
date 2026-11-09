@@ -67,6 +67,8 @@ export class FakeTreesApi implements TreesApi {
   quotaLeft = 3;
   /** Whether the signed-in user has two-step verification; createTree refuses without it. */
   twoFactorEnabled = true;
+  /** The signed-in user's id, so permission checks can tell "members I invited" from others. */
+  meUserId: string | null = null;
   calls: { method: Method; input: unknown }[] = [];
   private forced = new Map<Method, AuthError>();
   private pending = new Set<Method>();
@@ -251,11 +253,22 @@ export class FakeTreesApi implements TreesApi {
     return t ? ok([...t.members]) : notFound();
   }
 
+  /** Owners manage every non-owner; an active steward only the members they invited. */
+  private mayManage(t: FakeTree, m: Member): boolean {
+    if (m.role === 'owner') return false;
+    if (t.detail.capabilities.manageTree) return true;
+    return (
+      t.detail.me.steward.active && this.meUserId !== null && m.invitedByUserId === this.meUserId
+    );
+  }
+
   async changeRole(treeId: string, userId: string, role: InviteRole) {
     const forced = await this.enter('changeRole', { treeId, userId, role });
     if (forced) return { ok: false as const, error: forced };
-    const m = this.find(treeId)?.members.find((x) => x.userId === userId);
-    if (!m) return notFound();
+    const t = this.find(treeId);
+    const m = t?.members.find((x) => x.userId === userId);
+    if (!t || !m) return notFound();
+    if (!this.mayManage(t, m)) return forbidden();
     m.role = role;
     return ok(undefined);
   }
@@ -264,7 +277,9 @@ export class FakeTreesApi implements TreesApi {
     const forced = await this.enter('removeMember', { treeId, userId });
     if (forced) return { ok: false as const, error: forced };
     const t = this.find(treeId);
-    if (!t || !t.members.some((x) => x.userId === userId)) return notFound();
+    const target = t?.members.find((x) => x.userId === userId);
+    if (!t || !target) return notFound();
+    if (!this.mayManage(t, target)) return forbidden();
     t.members = t.members.filter((x) => x.userId !== userId);
     t.stewards = t.stewards.filter((s) => s.userId !== userId);
     return ok(undefined);
@@ -278,6 +293,9 @@ export class FakeTreesApi implements TreesApi {
     if (!t.detail.capabilities.manageTree) return forbidden();
     const target = t.members.find((x) => x.userId === userId);
     if (!target) return notFound();
+    if (!target.twoFactorEnabled) {
+      return fail('TWO_FACTOR_REQUIRED', MESSAGES.twoFactorRequired);
+    }
     for (const m of t.members) if (m.role === 'owner') m.role = 'editor';
     target.role = 'owner';
     t.detail.me.role = 'editor';

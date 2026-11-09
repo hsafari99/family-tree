@@ -22,6 +22,9 @@ export function TreePage() {
 
   useEffect(() => {
     let active = true;
+    setDetail(null);
+    setPersons([]);
+    setError(null);
     void Promise.all([api.getTree(treeId), api.listPersons(treeId)]).then(([t, p]) => {
       if (!active) return;
       if (!t.ok) return setError(t.error);

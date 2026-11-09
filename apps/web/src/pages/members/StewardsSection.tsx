@@ -1,5 +1,5 @@
 import type { StewardGrant } from '@family-tree/shared';
-import { type FormEvent, useEffect, useState } from 'react';
+import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { ConfirmButton } from '../../components/ConfirmButton';
 import { FormError } from '../../components/forms';
 import { personName } from '../../trees/format';
@@ -13,6 +13,7 @@ export function StewardsSection({
   members,
   me,
   reload,
+  onActed,
   stewards,
 }: SectionProps & { stewards: StewardGrant[] }) {
   const api = useTreesApi();
@@ -20,21 +21,29 @@ export function StewardsSection({
   const [userId, setUserId] = useState('');
   const [personId, setPersonId] = useState('');
   const isOwner = detail.me.role === 'owner';
-  const candidates = members.filter((m) => m.role !== 'owner' && m.userId !== me);
+  const [pending, setPending] = useState(false);
+  const candidates = useMemo(
+    () => members.filter((m) => m.role !== 'owner' && m.userId !== me),
+    [members, me],
+  );
   const nameOfPerson = (id: string) => {
     const p = persons.find((x) => x.id === id);
     return p ? personName(p) : 'someone';
   };
 
   useEffect(() => {
-    if (userId === '' && candidates[0]) setUserId(candidates[0].userId);
-    if (personId === '' && persons[0]) setPersonId(persons[0].id);
+    // Keep the selections pointing at someone who is still in the list.
+    if (!candidates.some((c) => c.userId === userId)) setUserId(candidates[0]?.userId ?? '');
+    if (!persons.some((p) => p.id === personId)) setPersonId(persons[0]?.id ?? '');
   }, [candidates, persons, userId, personId]);
 
   async function grant(e: FormEvent) {
     e.preventDefault();
+    if (pending || userId === '' || personId === '') return;
     setError(null);
+    setPending(true);
     const res = await api.grantSteward(treeId, { userId, anchorPersonId: personId });
+    setPending(false);
     if (!res.ok) {
       setError(
         res.error.code === 'FORBIDDEN'
@@ -43,6 +52,7 @@ export function StewardsSection({
       );
       return;
     }
+    onActed(null);
     await reload('stewards');
   }
 
@@ -50,6 +60,7 @@ export function StewardsSection({
     setError(null);
     const res = await api.revokeSteward(treeId, id);
     if (!res.ok) return setError(actionMessage(res.error));
+    onActed(null);
     await reload('stewards');
   }
 
@@ -109,7 +120,7 @@ export function StewardsSection({
               ))}
             </select>
           </div>
-          <button type="submit" disabled={userId === '' || personId === ''}>
+          <button type="submit" disabled={pending || userId === '' || personId === ''}>
             Make steward
           </button>
         </form>

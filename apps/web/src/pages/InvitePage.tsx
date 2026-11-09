@@ -10,7 +10,7 @@ import { useTreesApi } from '../trees/TreesApiContext';
 export function InvitePage() {
   const { token = '' } = useParams();
   const api = useTreesApi();
-  const { user } = useAuth();
+  const { user, refresh } = useAuth();
   const navigate = useNavigate();
   const [preview, setPreview] = useState<InvitePreview | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +38,9 @@ export function InvitePage() {
       setJoinError(res.error.message);
       return;
     }
-    void navigate(`/trees/${res.data.treeId}`);
+    // Joining can make this user an owner or steward, which changes what the account page allows.
+    await refresh();
+    void navigate(`/trees/${res.data.treeId}`, { replace: true });
   }
 
   const title = 'You’re invited';

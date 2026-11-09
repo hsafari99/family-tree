@@ -249,4 +249,23 @@ describe('AccountPage', () => {
       expect(api.callsTo('deleteAccount')).toHaveLength(0);
     });
   });
+
+  it('re-reads the session when opened, so requirements are current', async () => {
+    const { api } = signedIn({ twoFactorEnabled: true });
+    renderAt('/account', { auth: api });
+    await screen.findByText('ada@example.com');
+    await waitFor(() => expect(api.callsTo('getMe').length).toBeGreaterThanOrEqual(2));
+  });
+
+  it('shows a fixed message when the server refuses to turn 2FA off for a role', async () => {
+    const { api } = signedIn({ twoFactorEnabled: true });
+    api.failNext('disableTwoFactor', {
+      code: 'TWO_FACTOR_REQUIRED_FOR_ROLE',
+      message: MESSAGES.twoFactorForRole,
+    });
+    renderAt('/account', { auth: api });
+    fireEvent.click(await screen.findByRole('button', { name: 'Turn off two-step verification' }));
+    await enterPassword('Turn off');
+    expect(await screen.findByRole('alert')).toHaveTextContent(MESSAGES.twoFactorForRole);
+  });
 });

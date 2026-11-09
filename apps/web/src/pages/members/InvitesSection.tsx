@@ -1,5 +1,5 @@
 import type { CreatedInvite, Invite } from '@family-tree/shared';
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
 import { ConfirmButton } from '../../components/ConfirmButton';
 import { FormError } from '../../components/forms';
 import { personName } from '../../trees/format';
@@ -14,6 +14,8 @@ export function InvitesSection({
   members,
   me,
   reload,
+  acted,
+  onActed,
   invites,
 }: SectionProps & { invites: Invite[] }) {
   const api = useTreesApi();
@@ -23,6 +25,9 @@ export function InvitesSection({
   const [targetId, setTargetId] = useState('');
   const [created, setCreated] = useState<CreatedInvite | null>(null);
   const [pending, setPending] = useState(false);
+  useEffect(() => {
+    if (acted.from !== 'invite') setCreated(null);
+  }, [acted]);
   const isOwner = detail.me.role === 'owner';
   const linked = new Set(members.map((m) => m.personId).filter(Boolean));
   const unlinked = persons.filter((p) => !linked.has(p.id));
@@ -55,6 +60,7 @@ export function InvitesSection({
       return;
     }
     setCreated(res.data);
+    onActed('invite');
     await reload('invites');
   }
 
@@ -62,6 +68,7 @@ export function InvitesSection({
     setError(null);
     const res = await api.revokeInvite(treeId, id);
     if (!res.ok) return setError(actionMessage(res.error));
+    onActed(null);
     await reload('invites');
   }
 

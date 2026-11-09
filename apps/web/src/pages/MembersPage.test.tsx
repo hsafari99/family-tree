@@ -35,6 +35,7 @@ function setup(kind: 'owner' | 'editor' | 'steward' = 'owner') {
     { signedIn: true },
   );
   const trees = new FakeTreesApi();
+  trees.meUserId = user.id;
   const emails = kind === 'owner';
   const mine = member({
     userId: user.id,
@@ -254,5 +255,85 @@ describe('MembersPage', () => {
     fireEvent.click(within(row).getByRole('button', { name: 'Remove from tree' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(MESSAGES.itemGone);
     expect(screen.queryByText(MESSAGES.notFound)).not.toBeInTheDocument();
+  });
+
+  it('shows a refused transfer in the members alert', async () => {
+    const s = setup();
+    renderAt(`/trees/${s.id}/members`, s);
+    await screen.findByText('a@example.com');
+    s.trees.failNext('transferOwnership', {
+      code: 'TWO_FACTOR_REQUIRED',
+      message: MESSAGES.twoFactorRequired,
+    });
+    const row = rowOf('Other Person');
+    fireEvent.click(within(row).getByRole('button', { name: 'Make owner' }));
+    fireEvent.click(within(row).getByRole('button', { name: 'Transfer ownership' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(MESSAGES.twoFactorRequired);
+  });
+
+  it('ignores a second submit of the grant form while one is running', async () => {
+    const s = setup();
+    renderAt(`/trees/${s.id}/members`, s);
+    await screen.findByText('a@example.com');
+    s.trees.hold('grantSteward');
+    const form = screen.getByRole('button', { name: 'Make steward' }).closest('form')!;
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    s.trees.release();
+    await screen.findByText(/looks after/);
+    expect(s.trees.callsTo('grantSteward')).toHaveLength(1);
+  });
+
+  it('keeps the grant form’s member selection valid when that member leaves', async () => {
+    const s = setup();
+    renderAt(`/trees/${s.id}/members`, s);
+    await screen.findByText('a@example.com');
+    const select = screen.getByLabelText('Member') as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: s.other.userId } });
+    const row = rowOf('Other Person');
+    fireEvent.click(within(row).getByRole('button', { name: 'Remove' }));
+    fireEvent.click(within(row).getByRole('button', { name: 'Remove from tree' }));
+    await waitFor(() => expect(screen.queryByText('Other Person', { selector: 'td' })).toBeNull());
+    expect((screen.getByLabelText('Member') as HTMLSelectElement).value).toBe(s.invitedByMe.userId);
+  });
+
+  it('clears the reset link box after another successful action', async () => {
+    const s = setup();
+    renderAt(`/trees/${s.id}/members`, s);
+    await screen.findByText('a@example.com');
+    fireEvent.click(within(rowOf('Invited By Me')).getByRole('button', { name: 'Reset link' }));
+    await screen.findByLabelText('Reset link');
+    fireEvent.change(screen.getByLabelText('Role for Invited By Me'), {
+      target: { value: 'editor' },
+    });
+    await waitFor(() => expect(screen.queryByLabelText('Reset link')).not.toBeInTheDocument());
+  });
+
+  it('clears the invite link box after revoking an invite', async () => {
+    const s = setup();
+    renderAt(`/trees/${s.id}/members`, s);
+    await screen.findByRole('heading', { name: 'Invite someone' });
+    fireEvent.click(screen.getByRole('button', { name: 'Create invite link' }));
+    await screen.findByLabelText('Invite link');
+    const open = (await screen.findByRole('heading', { name: 'Open invites' })).parentElement!;
+    fireEvent.click(await within(open).findByRole('button', { name: 'Revoke' }));
+    fireEvent.click(within(open).getByRole('button', { name: 'Revoke invite' }));
+    await waitFor(() => expect(screen.queryByLabelText('Invite link')).not.toBeInTheDocument());
+  });
+
+  it('says so when the clipboard is unavailable', async () => {
+    const s = setup();
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn().mockRejectedValue(new Error('no')) },
+      configurable: true,
+    });
+    renderAt(`/trees/${s.id}/members`, s);
+    await screen.findByText('a@example.com');
+    fireEvent.click(within(rowOf('Invited By Me')).getByRole('button', { name: 'Reset link' }));
+    await screen.findByLabelText('Reset link');
+    fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+    expect(
+      await screen.findByText('Couldn’t copy — select the link and copy it'),
+    ).toBeInTheDocument();
   });
 });
