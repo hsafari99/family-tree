@@ -678,7 +678,7 @@ const prodEnv = {
   NODE_ENV: 'production',
   DATABASE_URL: 'postgres://family:Str0ngPassw0rd@postgres:5432/family',
   WEB_ORIGIN: 'https://family.cortextechservices.com',
-  SESSION_SECRET: 'k3J9xQ2vL8mN4pR7tW1yZ6bC5dF0gH2jK4lM8nP3qS',
+  SESSION_SECRET: 'test-only-prod-like-session-secret-0123456789abcdef',
   S3_ENDPOINT: 'https://0123456789abcdef.r2.cloudflarestorage.com',
   S3_REGION: 'auto',
   S3_BUCKET: 'family-photos',
