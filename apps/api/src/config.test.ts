@@ -5,6 +5,7 @@ const devEnv = {
   NODE_ENV: 'development',
   DATABASE_URL: 'postgres://family:dev-only-pw@localhost:5432/family',
   WEB_ORIGIN: 'http://localhost:5173',
+  AUTH_BASE_URL: 'http://localhost:5173',
   SESSION_SECRET: 'dev-only-session-secret-change-me-0000000000',
   S3_ENDPOINT: 'http://localhost:8333',
   S3_REGION: 'us-east-1',
@@ -19,6 +20,7 @@ const prodEnv = {
   NODE_ENV: 'production',
   DATABASE_URL: 'postgres://family:Str0ngPassw0rd@postgres:5432/family',
   WEB_ORIGIN: 'https://family.cortextechservices.com',
+  AUTH_BASE_URL: 'https://api.family.cortextechservices.com',
   SESSION_SECRET: 'test-only-prod-like-session-secret-0123456789abcdef',
   S3_ENDPOINT: 'https://0123456789abcdef.r2.cloudflarestorage.com',
   S3_REGION: 'auto',
@@ -112,5 +114,35 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ ...prodEnv, S3_CREATE_BUCKET: 'true' })).toThrowError(
       /S3_CREATE_BUCKET/,
     );
+  });
+
+  it('requires AUTH_BASE_URL', () => {
+    const env: Record<string, string | undefined> = { ...devEnv };
+    delete env.AUTH_BASE_URL;
+    expect(() => loadConfig(env)).toThrowError(/AUTH_BASE_URL/);
+  });
+
+  it('rejects an AUTH_BASE_URL that is not a bare origin', () => {
+    expect(() => loadConfig({ ...devEnv, AUTH_BASE_URL: 'http://localhost:5173/' })).toThrowError(
+      /AUTH_BASE_URL/,
+    );
+    expect(() =>
+      loadConfig({ ...devEnv, AUTH_BASE_URL: 'http://localhost:5173/api/auth' }),
+    ).toThrowError(/AUTH_BASE_URL/);
+  });
+
+  it('rejects an http or local AUTH_BASE_URL in production', () => {
+    expect(() =>
+      loadConfig({ ...prodEnv, AUTH_BASE_URL: 'http://api.family.example.com' }),
+    ).toThrowError(/AUTH_BASE_URL/);
+    expect(() => loadConfig({ ...prodEnv, AUTH_BASE_URL: 'https://localhost' })).toThrowError(
+      /AUTH_BASE_URL/,
+    );
+  });
+
+  it('parses TRUST_PROXY as a boolean defaulting to false', () => {
+    expect(loadConfig(devEnv).TRUST_PROXY).toBe(false);
+    expect(loadConfig({ ...devEnv, TRUST_PROXY: 'true' }).TRUST_PROXY).toBe(true);
+    expect(() => loadConfig({ ...devEnv, TRUST_PROXY: 'yes' })).toThrowError(/TRUST_PROXY/);
   });
 });

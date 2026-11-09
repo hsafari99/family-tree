@@ -16,6 +16,7 @@ export interface AppOptions {
 
 export function buildApp({ config, checks, rateLimitMax = 300 }: AppOptions) {
   const app = Fastify({
+    trustProxy: config.TRUST_PROXY,
     logger:
       config.LOG_LEVEL === 'silent'
         ? false
