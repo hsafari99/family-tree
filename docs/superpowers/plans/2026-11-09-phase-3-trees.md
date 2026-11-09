@@ -1187,6 +1187,8 @@ describe('can: rules that depend on who made something', () => {
     expect(can(owner, 'steward.revoke', ownerMade)).toBe(true);
     expect(can(steward, 'steward.revoke', mine)).toBe(true);
     expect(can(steward, 'steward.revoke', ownerMade)).toBe(false);
+    // A former owner (now a plain editor after a transfer) can't revoke grants they once made.
+    expect(can(editor, 'steward.revoke', { kind: 'grant', grantedByUserId: 'editor' })).toBe(false);
   });
   it('member.changeRole / member.remove: owner any non-owner; steward only people they invited', () => {
     const invitedBySteward = { kind: 'member', role: 'viewer', invitedByUserId: 'steward' } as const;
@@ -1305,7 +1307,7 @@ const RULES: { [A in Action]: (actor: Actor, target: Targets[A]) => boolean } = 
     (isSteward(a) && (t.stewardAnchorPersonId === null || inScope(a, t.stewardAnchorPersonId))),
   'invite.revoke': (a, t) => isOwner(a) || t.createdByUserId === a.userId,
   'steward.grant': (a, t) => isOwner(a) || inScope(a, t.personId),
-  'steward.revoke': (a, t) => isOwner(a) || t.grantedByUserId === a.userId,
+  'steward.revoke': (a, t) => isOwner(a) || (isSteward(a) && t.grantedByUserId === a.userId),
   'member.changeRole': manageMember,
   'member.remove': manageMember,
 };
@@ -1576,7 +1578,10 @@ export async function addGrant(
 
 **Files:**
 - Create: `apps/api/src/routes/trees.ts`, `apps/api/src/routes/trees.int.test.ts`
-- Modify: `apps/api/src/app.ts` (register the plugin; `meRoutes` gets `db` in Task 12)
+- Modify: `apps/api/src/app.ts` (register the plugin; `meRoutes` gets `db` in Task 12; CORS methods)
+- Modify: `apps/api/src/app.test.ts`
+
+- [ ] **Step 0: CORS allows PATCH and DELETE.** `@fastify/cors` defaults `methods` to `GET,HEAD,POST`, which breaks this phase's PATCH/DELETE routes cross-origin in prod (web and API are on different hosts; the dev Vite proxy hides it). In `app.ts` change the registration to `app.register(cors, { origin: [config.WEB_ORIGIN], credentials: true, methods: ['GET', 'HEAD', 'POST', 'PATCH', 'DELETE'] })`. Add a unit test in `app.test.ts`: `OPTIONS /api/v1/health` with `origin: <WEB_ORIGIN>` and `access-control-request-method: DELETE` returns 204 and `access-control-allow-methods` contains `DELETE` and `PATCH`. Run it failing first, then passing.
 
 - [ ] **Step 1: Write the failing integration test** `apps/api/src/routes/trees.int.test.ts`.
   - **Setup:** the same as `password-reset.int.test.ts`:
@@ -1869,7 +1874,7 @@ export const treesRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, { a
        - Removing the owner returns 403.
     4. **Transferring ownership (`POST …/transfer`):**
        - To E (no 2FA): 403 `TWO_FACTOR_REQUIRED`.
-       - To S (2FA): 204. Now S is owner and the old owner is an editor. S's grants are deleted. Exactly one owner row exists. The old owner's `capabilities.manageTree` is false.
+       - To S (2FA): 204. Now S is owner and the old owner is an editor. S's grants are deleted. A grant S had made to S2 before the transfer survives with `parentGrantId` null. The old owner's open invite has `revoked_at` set. Exactly one owner row exists. The old owner's `capabilities.manageTree` is false.
        - To yourself: 400 `VALIDATION`.
        - By an editor: 403.
     5. **Reset links (`POST …/members/:userId/reset-link`), owner only:**
@@ -1887,7 +1892,7 @@ export const treesRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, { a
 
 ```ts
 import { changeRoleSchema, type Member, ROLE_RANK, transferSchema } from '@family-tree/shared';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 import { createResetLink } from '../auth/reset-links.js';
 import { requireSession } from '../auth/session-guard.js';
@@ -2003,6 +2008,28 @@ export const membersRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, {
       );
     }
     await db.transaction(async (tx) => {
+      // Grants the new owner made as a steward become owner-made (parent null),
+      // so deleting the new owner's own grants below doesn't cascade to them.
+      const ownGrants = tx
+        .select({ id: branchStewards.id })
+        .from(branchStewards)
+        .where(and(eq(branchStewards.treeId, access.treeId), eq(branchStewards.userId, userId)));
+      await tx
+        .update(branchStewards)
+        .set({ parentGrantId: null })
+        .where(inArray(branchStewards.parentGrantId, ownGrants));
+      // The old owner's open invites could no longer be accepted (re-auth fails); revoke them.
+      await tx
+        .update(invites)
+        .set({ revokedAt: sql`now()` })
+        .where(
+          and(
+            eq(invites.treeId, access.treeId),
+            eq(invites.createdByUserId, access.userId),
+            isNull(invites.acceptedAt),
+            isNull(invites.revokedAt),
+          ),
+        );
       // Demote first: the one-owner index is checked row by row.
       await tx
         .update(treeMembers)
@@ -2079,7 +2106,7 @@ export const membersRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, {
     2. **Derived grants:**
        - S1 grants S2 on Leo, who is inside S1's scope: 201, with `parentGrantId` = S1's grant.
        - S1 granting S2 on George, who is outside: 403.
-       - S1 granting themselves: 400.
+       - S1 granting themselves on Leo (inside S1's scope, so `authorize` passes first): 400.
     3. **2FA:** S3, a viewer without 2FA, receives a grant from the owner: 201, but `GET …/stewards` shows `active: false`. S3 then granting anyone: 403, because the grant isn't effective without 2FA.
     4. **Listing (`GET …/stewards`):** every member can read it. Rows carry `userName`, `anchorPersonId`, `grantedByName` and `active`.
     5. **Revoking:**
@@ -2441,6 +2468,10 @@ export const invitesRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, {
         };
         if (!creator || !can(creator, 'invite.create', spec)) throw invalidInvite();
 
+        // Serialise accepts per tree so two invites targeting the same person can't both
+        // pass `claimable` and then hit tree_members_person_uq (a 500).
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${'accept:' + inv.treeId}))`);
+
         const [existing] = await tx
           .select()
           .from(treeMembers)
@@ -2508,7 +2539,7 @@ export const invitesRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, {
 - [ ] **Step 1: Write the failing integration test** `apps/api/src/auth/account.int.test.ts`. Disable 2FA with `POST /api/auth/two-factor/disable {password}`; delete the account with `POST /api/auth/delete-user {password}`.
   - **Test cases:**
     1. **Owners can't turn 2FA off:** a tree owner's disable returns 403, with body `code` `TWO_FACTOR_REQUIRED_FOR_ROLE`, and `/me` still shows `twoFactorEnabled: true`.
-    2. **Neither can stewards:** a member holding a grant, even an inactive one, gets 403 too.
+    2. **Neither can stewards:** a member holding a grant gets 403 too. Use a steward who has 2FA enabled (they must, to call disable at all); the hook checks for any `branch_stewards` row, active or not, so it refuses before Better Auth runs.
     3. **Others can:** a plain editor with 2FA gets 200.
     4. **`/me` (`requiresTwoFactor`):**
        - True for an owner and for a grant holder.
@@ -2623,7 +2654,7 @@ const routes = (t: string, ids: { member: string; grant: string; invite: string;
   - **Test cases:**
     1. **Outsider:** every route returns **404** with body code `NOT_FOUND` for X.
     2. **Nothing changed:** after all calls, tree A's name, deleted_at, member count, grant count and open invite count are unchanged.
-    3. **Mixed ids:** X calls the routes with **tree B's** id but **tree A's** member, grant and invite ids. Each returns 404 (or 400 `VALIDATION` for the steward grant's anchor), and tree A is unchanged.
+    3. **Mixed ids:** X calls only the sub-resource routes with **tree B's** id (which X owns) but **tree A's** ids: members PATCH and DELETE, transfer, reset-link, DELETE stewards/:grantId and DELETE invites/:inviteId each return **404**; POST stewards with tree A's member and person returns 404 for the member (a non-member of B) — and with a tree-B member plus tree A's person returns **400 `VALIDATION`**. Don't call tree B's own tree-level routes here (they'd succeed, and DELETE would soft-delete B). Tree A is unchanged.
     4. **Deleted tree:** after owner A soft-deletes tree A, the former member gets 404 on every route except `POST …/restore`, which also returns 404 (non-owner).
     5. **Not signed in:** every route returns 401.
     6. **Malformed ids:** `GET /api/v1/trees/not-a-uuid` returns 404.
