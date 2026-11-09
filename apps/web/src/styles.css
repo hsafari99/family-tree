@@ -50,6 +50,9 @@ body {
   border: 1px solid var(--border);
   border-radius: 0.75rem;
 }
+.card-wide {
+  max-width: 960px;
+}
 .card h1 {
   margin-top: 0;
   font-size: 1.6rem;
@@ -209,4 +212,21 @@ a {
   border-radius: 0.4rem;
   background: var(--surface);
   color: var(--muted);
+}
+
+/* Trees */
+.tree-list {
+  padding-left: 1.25rem;
+}
+.tree-list li {
+  margin: 0.4rem 0;
+}
+.role {
+  margin-left: 0.5rem;
+  color: var(--muted, inherit);
+  font-size: 0.9rem;
+}
+.confirm {
+  display: inline-flex;
+  gap: 0.5rem;
 }

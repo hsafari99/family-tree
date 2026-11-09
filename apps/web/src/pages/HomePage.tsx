@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
 import { Page } from '../components/Page';
 import { HealthStatus } from '../HealthStatus';
+import { MyTrees } from './MyTrees';
 
 export function HomePage() {
   const { user, loadError, signOut } = useAuth();
@@ -35,6 +36,8 @@ export function HomePage() {
               Sign out
             </button>
           </div>
+          <h2>Your trees</h2>
+          <MyTrees />
         </>
       ) : (
         <div className="actions">
