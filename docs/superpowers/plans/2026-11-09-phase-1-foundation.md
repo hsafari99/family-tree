@@ -652,7 +652,7 @@ export default defineConfig({
 ```
 
 Run: `pnpm install && readlink apps/api/node_modules/@family-tree/shared`
-Expected: the install succeeds, and `readlink` prints a path pointing to `packages/shared`, meaning it's a symlink. If it prints nothing, it's an injected copy, and dev and test would read stale shared source. In that case add `dedupeInjectedDeps: true` to `pnpm-workspace.yaml` and re-install.
+Expected: the install succeeds, and `readlink` prints a path pointing to `packages/shared`, meaning it's a symlink. If it prints nothing, it's an injected copy, and dev and test would read stale shared source. In that case remove `injectWorkspacePackages: true` from `pnpm-workspace.yaml`, re-install, and in Task 12 use `pnpm --filter @family-tree/api deploy --legacy --prod /out`.
 
 - [ ] **Step 2: Write the failing tests** in `apps/api/src/config.test.ts`
 
