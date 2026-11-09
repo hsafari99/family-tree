@@ -1,0 +1,244 @@
+import type { AuthApi, AuthError, Result, SessionUser } from '../auth/api';
+import { MESSAGES } from '../auth/api';
+
+/** The only TOTP code the fake accepts. */
+export const FAKE_TOTP = '123456';
+export const FAKE_TOTP_URI =
+  'otpauth://totp/Family%20Tree:ada%40example.com?secret=JBSWY3DPEHPK3PXP&issuer=Family%20Tree';
+export const FAKE_SECRET = 'JBSWY3DPEHPK3PXP';
+
+interface FakeUser {
+  id: string;
+  name: string;
+  email: string;
+  password: string;
+  twoFactorEnabled: boolean;
+  twoFactorPending: boolean;
+  recoveryCodes: string[];
+}
+
+type Method = keyof AuthApi;
+
+let codeBatch = 0;
+function newRecoveryCodes(): string[] {
+  codeBatch += 1;
+  return Array.from({ length: 8 }, (_, i) => `code${codeBatch}-${String(i).padStart(5, '0')}`);
+}
+
+const ok = <T>(data: T): Result<T> => ({ ok: true, data });
+const fail = (code: string, message: string): Result<never> => ({
+  ok: false,
+  error: { code, message },
+});
+
+/** An in-memory AuthApi. Tests can seed users, force errors and inspect calls. */
+export class FakeAuthApi implements AuthApi {
+  users = new Map<string, FakeUser>();
+  current: string | null = null;
+  /** Email that passed the password step and still needs a second factor. */
+  challenge: string | null = null;
+  resetTokens = new Map<string, string>();
+  calls: { method: Method; input: unknown }[] = [];
+  private forced = new Map<Method, AuthError>();
+  private pending = new Set<Method>();
+  private waiting: (() => void)[] = [];
+
+  addUser(
+    input: Partial<Omit<FakeUser, 'id'>> & { email: string },
+    { signedIn = false } = {},
+  ): FakeUser {
+    const user: FakeUser = {
+      id: crypto.randomUUID(),
+      name: 'Ada Lovelace',
+      password: 'correct-horse',
+      twoFactorEnabled: false,
+      twoFactorPending: false,
+      recoveryCodes: [],
+      ...input,
+    };
+    if (user.twoFactorEnabled && user.recoveryCodes.length === 0) {
+      user.recoveryCodes = newRecoveryCodes();
+    }
+    this.users.set(user.email, user);
+    if (signedIn) this.current = user.email;
+    return user;
+  }
+
+  /** The next call to `method` fails with this error. */
+  failNext(method: Method, error: AuthError) {
+    this.forced.set(method, error);
+  }
+
+  /** Calls to `method` wait until `release()` is called. */
+  hold(method: Method) {
+    this.pending.add(method);
+  }
+
+  release() {
+    this.pending.clear();
+    for (const resolve of this.waiting.splice(0)) resolve();
+  }
+
+  callsTo(method: Method) {
+    return this.calls.filter((c) => c.method === method).map((c) => c.input);
+  }
+
+  private async enter(method: Method, input?: unknown): Promise<AuthError | null> {
+    this.calls.push({ method, input });
+    if (this.pending.has(method)) await new Promise<void>((r) => this.waiting.push(r));
+    const forced = this.forced.get(method);
+    if (forced) {
+      this.forced.delete(method);
+      return forced;
+    }
+    return null;
+  }
+
+  private me(): FakeUser | undefined {
+    return this.current ? this.users.get(this.current) : undefined;
+  }
+
+  private toSession(u: FakeUser): SessionUser {
+    return { id: u.id, name: u.name, email: u.email, twoFactorEnabled: u.twoFactorEnabled };
+  }
+
+  async getMe() {
+    const forced = await this.enter('getMe');
+    if (forced) return { ok: false as const, error: forced };
+    const u = this.me();
+    return ok(u ? this.toSession(u) : null);
+  }
+
+  async signUp(input: { name: string; email: string; password: string }) {
+    const forced = await this.enter('signUp', input);
+    if (forced) return { ok: false as const, error: forced };
+    if (this.users.has(input.email)) return fail('USER_ALREADY_EXISTS', MESSAGES.emailTaken);
+    this.addUser(input, { signedIn: true });
+    return ok(undefined);
+  }
+
+  async signIn(input: { email: string; password: string }) {
+    const forced = await this.enter('signIn', input);
+    if (forced) return { ok: false as const, error: forced };
+    const u = this.users.get(input.email);
+    if (!u || u.password !== input.password) {
+      return fail('INVALID_EMAIL_OR_PASSWORD', MESSAGES.badCredentials);
+    }
+    if (u.twoFactorEnabled) {
+      this.challenge = u.email;
+      return ok({ twoFactorRequired: true });
+    }
+    this.current = u.email;
+    return ok({ twoFactorRequired: false });
+  }
+
+  async verifyTotp(input: { code: string; trustDevice: false }) {
+    const forced = await this.enter('verifyTotp', input);
+    if (forced) return { ok: false as const, error: forced };
+    if (!this.challenge) return fail('INVALID_TWO_FACTOR_COOKIE', MESSAGES.challengeExpired);
+    if (input.code !== FAKE_TOTP) return fail('INVALID_CODE', MESSAGES.badCode);
+    this.current = this.challenge;
+    this.challenge = null;
+    return ok(undefined);
+  }
+
+  async verifyRecoveryCode(input: { code: string }) {
+    const forced = await this.enter('verifyRecoveryCode', input);
+    if (forced) return { ok: false as const, error: forced };
+    const u = this.challenge ? this.users.get(this.challenge) : undefined;
+    if (!u) return fail('INVALID_TWO_FACTOR_COOKIE', MESSAGES.challengeExpired);
+    if (!u.recoveryCodes.includes(input.code)) {
+      return fail('INVALID_BACKUP_CODE', MESSAGES.badRecoveryCode);
+    }
+    u.recoveryCodes = u.recoveryCodes.filter((c) => c !== input.code);
+    this.current = u.email;
+    this.challenge = null;
+    return ok(undefined);
+  }
+
+  async signOut() {
+    const forced = await this.enter('signOut');
+    if (forced) return { ok: false as const, error: forced };
+    this.current = null;
+    return ok(undefined);
+  }
+
+  private checkPassword(password: string): Result<FakeUser> {
+    const u = this.me();
+    if (!u) return fail('UNAUTHORIZED', MESSAGES.badCredentials);
+    if (u.password !== password) return fail('INVALID_PASSWORD', MESSAGES.badPassword);
+    return ok(u);
+  }
+
+  async startTwoFactorSetup(input: { password: string }) {
+    const forced = await this.enter('startTwoFactorSetup', input);
+    if (forced) return { ok: false as const, error: forced };
+    const checked = this.checkPassword(input.password);
+    if (!checked.ok) return checked;
+    checked.data.twoFactorPending = true;
+    checked.data.recoveryCodes = newRecoveryCodes();
+    return ok({ totpURI: FAKE_TOTP_URI, backupCodes: [...checked.data.recoveryCodes] });
+  }
+
+  async confirmTwoFactorSetup(input: { code: string }) {
+    const forced = await this.enter('confirmTwoFactorSetup', input);
+    if (forced) return { ok: false as const, error: forced };
+    const u = this.me();
+    if (!u?.twoFactorPending) return fail('TOTP_NOT_ENABLED', 'TOTP not enabled');
+    if (input.code !== FAKE_TOTP) return fail('INVALID_CODE', MESSAGES.badCode);
+    u.twoFactorPending = false;
+    u.twoFactorEnabled = true;
+    return ok(undefined);
+  }
+
+  async regenerateRecoveryCodes(input: { password: string }) {
+    const forced = await this.enter('regenerateRecoveryCodes', input);
+    if (forced) return { ok: false as const, error: forced };
+    const checked = this.checkPassword(input.password);
+    if (!checked.ok) return checked;
+    checked.data.recoveryCodes = newRecoveryCodes();
+    return ok([...checked.data.recoveryCodes]);
+  }
+
+  async disableTwoFactor(input: { password: string }) {
+    const forced = await this.enter('disableTwoFactor', input);
+    if (forced) return { ok: false as const, error: forced };
+    const checked = this.checkPassword(input.password);
+    if (!checked.ok) return checked;
+    checked.data.twoFactorEnabled = false;
+    checked.data.recoveryCodes = [];
+    return ok(undefined);
+  }
+
+  async changePassword(input: { currentPassword: string; newPassword: string }) {
+    const forced = await this.enter('changePassword', input);
+    if (forced) return { ok: false as const, error: forced };
+    const checked = this.checkPassword(input.currentPassword);
+    if (!checked.ok) return checked;
+    checked.data.password = input.newPassword;
+    return ok(undefined);
+  }
+
+  async resetWithCode(input: { email: string; code: string; newPassword: string }) {
+    const forced = await this.enter('resetWithCode', input);
+    if (forced) return { ok: false as const, error: forced };
+    const u = this.users.get(input.email);
+    const valid =
+      u?.twoFactorEnabled && (input.code === FAKE_TOTP || u.recoveryCodes.includes(input.code));
+    if (!u || !valid) return fail('INVALID_RESET', 'Email or code is incorrect');
+    u.recoveryCodes = u.recoveryCodes.filter((c) => c !== input.code);
+    u.password = input.newPassword;
+    return ok(undefined);
+  }
+
+  async resetWithLink(input: { token: string; newPassword: string }) {
+    const forced = await this.enter('resetWithLink', input);
+    if (forced) return { ok: false as const, error: forced };
+    const email = this.resetTokens.get(input.token);
+    const u = email ? this.users.get(email) : undefined;
+    if (!u) return fail('INVALID_RESET', 'Email or code is incorrect');
+    this.resetTokens.delete(input.token);
+    u.password = input.newPassword;
+    return ok(undefined);
+  }
+}
