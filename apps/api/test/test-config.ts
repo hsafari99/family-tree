@@ -3,7 +3,7 @@ import { loadConfig, type Config } from '../src/config.js';
 export function testConfig(overrides: Record<string, string> = {}): Config {
   return loadConfig({
     NODE_ENV: 'test',
-    DATABASE_URL: 'postgres://family:family@localhost:5432/family_test',
+    DATABASE_URL: 'postgres://family:dev-only-pw@localhost:5432/family_test',
     WEB_ORIGIN: 'http://localhost:5173',
     SESSION_SECRET: 'dev-only-session-secret-change-me-0000000000',
     S3_ENDPOINT: 'http://localhost:8333',

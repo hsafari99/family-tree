@@ -2,20 +2,30 @@ import { z } from 'zod';
 
 /** Every committed dev value contains this marker so production can refuse it. */
 export const DEV_ONLY_MARKER = 'dev-only';
-const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]', '0.0.0.0', 's3']);
+/** Markers (compared case-insensitively) that must never reach production. */
+const FORBIDDEN_IN_PRODUCTION = [DEV_ONLY_MARKER, 'change_me'];
+const LOCAL_HOSTS = new Set(['localhost', '::1', '[::1]', '0.0.0.0', 's3', 'host.docker.internal']);
+
+function isLocalHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/\.$/, '');
+  return LOCAL_HOSTS.has(host) || host.startsWith('127.') || host.endsWith('.localhost');
+}
 
 const bool = z.enum(['true', 'false']).transform((v) => v === 'true');
 
 export const configSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']),
-    PORT: z.coerce.number().int().positive().default(3000),
+    PORT: z.coerce.number().int().min(1).max(65535).default(3000),
     HOST: z.string().min(1).default('0.0.0.0'),
     LOG_LEVEL: z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
       .default('info'),
     DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
-    WEB_ORIGIN: z.url(),
+    // Browsers send Origin without path or trailing slash; anything else silently breaks CORS.
+    WEB_ORIGIN: z
+      .url()
+      .refine((u) => new URL(u).origin === u, 'Must be a bare origin, e.g. https://example.com'),
     SESSION_SECRET: z.string().min(32),
     S3_ENDPOINT: z.url(),
     S3_REGION: z.string().min(1),
@@ -29,11 +39,14 @@ export const configSchema = z
     if (config.NODE_ENV !== 'production') return;
 
     for (const [key, value] of Object.entries(config)) {
-      if (typeof value === 'string' && value.includes(DEV_ONLY_MARKER)) {
+      if (
+        typeof value === 'string' &&
+        FORBIDDEN_IN_PRODUCTION.some((marker) => value.toLowerCase().includes(marker))
+      ) {
         ctx.addIssue({
           code: 'custom',
           path: [key],
-          message: 'Development value not allowed in production',
+          message: 'Development or placeholder value not allowed in production',
         });
       }
     }
@@ -42,7 +55,7 @@ export const configSchema = z
       if (url.protocol !== 'https:') {
         ctx.addIssue({ code: 'custom', path: [key], message: 'Must use https in production' });
       }
-      if (LOCAL_HOSTS.has(url.hostname)) {
+      if (isLocalHost(url.hostname)) {
         ctx.addIssue({
           code: 'custom',
           path: [key],

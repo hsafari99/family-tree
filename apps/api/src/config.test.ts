@@ -3,7 +3,7 @@ import { ConfigError, loadConfig } from './config.js';
 
 const devEnv = {
   NODE_ENV: 'development',
-  DATABASE_URL: 'postgres://family:family@localhost:5432/family',
+  DATABASE_URL: 'postgres://family:dev-only-pw@localhost:5432/family',
   WEB_ORIGIN: 'http://localhost:5173',
   SESSION_SECRET: 'dev-only-session-secret-change-me-0000000000',
   S3_ENDPOINT: 'http://localhost:8333',
@@ -64,6 +64,43 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ ...prodEnv, WEB_ORIGIN: 'http://family.example.com' })).toThrowError(
       /WEB_ORIGIN/,
     );
+  });
+
+  it('rejects a WEB_ORIGIN with a trailing slash or path', () => {
+    expect(() => loadConfig({ ...devEnv, WEB_ORIGIN: 'http://localhost:5173/' })).toThrowError(
+      /WEB_ORIGIN/,
+    );
+    expect(() => loadConfig({ ...devEnv, WEB_ORIGIN: 'http://localhost:5173/app' })).toThrowError(
+      /WEB_ORIGIN/,
+    );
+  });
+
+  it('rejects an out-of-range PORT', () => {
+    expect(() => loadConfig({ ...devEnv, PORT: '99999' })).toThrowError(/PORT/);
+  });
+
+  it('rejects dev and placeholder markers in any variable, case-insensitively', () => {
+    expect(() =>
+      loadConfig({
+        ...prodEnv,
+        DATABASE_URL: 'postgres://family:dev-only-pw@postgres:5432/family',
+      }),
+    ).toThrowError(/DATABASE_URL/);
+    expect(() =>
+      loadConfig({ ...prodEnv, DATABASE_URL: 'postgres://family:CHANGE_ME@postgres:5432/family' }),
+    ).toThrowError(/DATABASE_URL/);
+    expect(() => loadConfig({ ...prodEnv, S3_ACCESS_KEY_ID: 'DEV-ONLY-KEY' })).toThrowError(
+      /S3_ACCESS_KEY_ID/,
+    );
+  });
+
+  it.each([
+    'https://localhost',
+    'https://localhost.',
+    'https://127.0.0.2',
+    'https://host.docker.internal',
+  ])('rejects local S3 endpoint %s in production', (endpoint) => {
+    expect(() => loadConfig({ ...prodEnv, S3_ENDPOINT: endpoint })).toThrowError(/S3_ENDPOINT/);
   });
 
   it('rejects automatic bucket creation in production', () => {
