@@ -115,7 +115,7 @@ describe('AuthProvider error handling', () => {
 
   it('re-reads the session when a call reports it expired, and sends the user to sign in', async () => {
     const api = signedInApi();
-    renderAt('/account', api);
+    renderAt('/account', { auth: api });
     await screen.findByRole('heading', { name: 'Account' });
     // The session ended on the server.
     api.current = null;
@@ -133,7 +133,7 @@ describe('AuthProvider error handling', () => {
   it('home shows a notice when the server cannot be reached', async () => {
     const api = new FakeAuthApi();
     api.failNext('getMe', { code: 'NETWORK', message: MESSAGES.network });
-    renderAt('/', api);
+    renderAt('/', { auth: api });
     expect(await screen.findByText('Can’t reach the server right now')).toBeInTheDocument();
   });
 });
@@ -164,7 +164,7 @@ describe('RequireAuth', () => {
   });
 
   it('renders the page for a signed-in user', async () => {
-    renderAt('/account', signedInApi());
+    renderAt('/account', { auth: signedInApi() });
     expect(await screen.findByRole('heading', { name: 'Account' })).toBeInTheDocument();
   });
 });
@@ -219,7 +219,7 @@ describe('routes', () => {
   });
 
   it('home greets a signed-in user and signs out', async () => {
-    renderAt('/', signedInApi());
+    renderAt('/', { auth: signedInApi() });
     expect(await screen.findByText('Signed in as Ada')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
     expect(await screen.findByRole('link', { name: 'Sign in' })).toBeInTheDocument();

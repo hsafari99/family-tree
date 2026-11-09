@@ -16,6 +16,8 @@ interface FakeUser {
   requiresTwoFactor: boolean;
   twoFactorPending: boolean;
   recoveryCodes: string[];
+  /** Set to make deleteAccount fail with OWNS_TREES. */
+  ownsTrees?: boolean;
 }
 
 type Method = keyof AuthApi;
@@ -247,6 +249,17 @@ export class FakeAuthApi implements AuthApi {
     if (!u) return fail('INVALID_RESET', 'Email or code is incorrect');
     this.resetTokens.delete(input.token);
     u.password = input.newPassword;
+    return ok(undefined);
+  }
+
+  async deleteAccount(input: { password: string }) {
+    const forced = await this.enter('deleteAccount', input);
+    if (forced) return { ok: false as const, error: forced };
+    const checked = this.checkPassword(input.password);
+    if (!checked.ok) return checked;
+    if (checked.data.ownsTrees) return fail('OWNS_TREES', MESSAGES.ownsTrees);
+    this.users.delete(checked.data.email);
+    this.current = null;
     return ok(undefined);
   }
 }

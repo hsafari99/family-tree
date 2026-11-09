@@ -26,7 +26,7 @@ async function enterPassword(submit: string, password = 'correct-horse') {
 
 describe('AccountPage', () => {
   it('shows name, email and 2FA status', async () => {
-    renderAt('/account', signedIn().api);
+    renderAt('/account', { auth: signedIn().api });
     expect(await screen.findByText('Ada')).toBeInTheDocument();
     expect(screen.getByText('ada@example.com')).toBeInTheDocument();
     expect(status()).toHaveTextContent('Off');
@@ -34,7 +34,7 @@ describe('AccountPage', () => {
 
   it('changes the password', async () => {
     const { api } = signedIn();
-    renderAt('/account', api);
+    renderAt('/account', { auth: api });
     await screen.findByText('ada@example.com');
     type('Current password', 'correct-horse');
     type('New password', 'brand-new-password');
@@ -44,7 +44,7 @@ describe('AccountPage', () => {
   });
 
   it('shows a wrong current password', async () => {
-    renderAt('/account', signedIn().api);
+    renderAt('/account', { auth: signedIn().api });
     await screen.findByText('ada@example.com');
     type('Current password', 'not-my-password');
     type('New password', 'brand-new-password');
@@ -54,7 +54,7 @@ describe('AccountPage', () => {
 
   it('validates the new password', async () => {
     const { api } = signedIn();
-    renderAt('/account', api);
+    renderAt('/account', { auth: api });
     await screen.findByText('ada@example.com');
     type('Current password', 'correct-horse');
     type('New password', 'short');
@@ -65,7 +65,7 @@ describe('AccountPage', () => {
 
   it('turns on 2FA: QR code, confirm, 8 recovery codes shown once', async () => {
     const { api } = signedIn();
-    renderAt('/account', api);
+    renderAt('/account', { auth: api });
     fireEvent.click(await screen.findByRole('button', { name: 'Turn on two-step verification' }));
     await enterPassword('Continue');
 
@@ -92,7 +92,7 @@ describe('AccountPage', () => {
   });
 
   it('shows a wrong password when starting setup', async () => {
-    renderAt('/account', signedIn().api);
+    renderAt('/account', { auth: signedIn().api });
     fireEvent.click(await screen.findByRole('button', { name: 'Turn on two-step verification' }));
     await enterPassword('Continue', 'wrong-password');
     expect(await screen.findByRole('alert')).toHaveTextContent(MESSAGES.badPassword);
@@ -101,7 +101,7 @@ describe('AccountPage', () => {
   it('regenerates recovery codes', async () => {
     const { api, user } = signedIn({ twoFactorEnabled: true });
     const old = [...user.recoveryCodes];
-    renderAt('/account', api);
+    renderAt('/account', { auth: api });
     fireEvent.click(await screen.findByRole('button', { name: 'Generate new recovery codes' }));
     await enterPassword('Generate codes');
     const list = await screen.findByRole('list', { name: 'Recovery codes' });
@@ -120,7 +120,7 @@ describe('AccountPage', () => {
 
   it('keeps showing the codes when the refresh after confirming fails', async () => {
     const { api } = signedIn();
-    renderAt('/account', api);
+    renderAt('/account', { auth: api });
     fireEvent.click(await screen.findByRole('button', { name: 'Turn on two-step verification' }));
     await enterPassword('Continue');
     await screen.findByAltText('QR code for your authenticator app');
@@ -135,7 +135,7 @@ describe('AccountPage', () => {
 
   it('moves focus to each step heading', async () => {
     const { api } = signedIn();
-    renderAt('/account', api);
+    renderAt('/account', { auth: api });
     fireEvent.click(await screen.findByRole('button', { name: 'Turn on two-step verification' }));
     expect(screen.getByRole('heading', { name: 'Turn on two-step verification' })).toHaveFocus();
     await enterPassword('Continue');
@@ -159,7 +159,7 @@ describe('AccountPage', () => {
     });
     try {
       const { api } = signedIn({ twoFactorEnabled: true });
-      renderAt('/account', api);
+      renderAt('/account', { auth: api });
       fireEvent.click(await screen.findByRole('button', { name: 'Generate new recovery codes' }));
       await enterPassword('Generate codes');
       fireEvent.click(await screen.findByRole('button', { name: 'Download as .txt' }));
@@ -177,7 +177,7 @@ describe('AccountPage', () => {
 
   it('turns 2FA off', async () => {
     const { api } = signedIn({ twoFactorEnabled: true });
-    renderAt('/account', api);
+    renderAt('/account', { auth: api });
     await screen.findByText('ada@example.com');
     expect(status()).toHaveTextContent('On');
     fireEvent.click(screen.getByRole('button', { name: 'Turn off two-step verification' }));

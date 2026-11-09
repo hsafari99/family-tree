@@ -32,7 +32,7 @@ describe('SignUpPage', () => {
   it('shows a server error in the alert region', async () => {
     const api = new FakeAuthApi();
     api.addUser({ email: 'ada@example.com' });
-    renderAt('/sign-up', api);
+    renderAt('/sign-up', { auth: api });
     fill('Ada', 'ada@example.com', 'correct-horse-battery');
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'An account with this email already exists',
@@ -42,7 +42,7 @@ describe('SignUpPage', () => {
   it('disables the submit button while pending', async () => {
     const api = new FakeAuthApi();
     api.hold('signUp');
-    renderAt('/sign-up', api);
+    renderAt('/sign-up', { auth: api });
     fill('Ada', 'ada@example.com', 'correct-horse-battery');
     expect(await screen.findByRole('button', { name: 'Creating account…' })).toBeDisabled();
     api.release();
@@ -58,7 +58,7 @@ describe('SignUpPage', () => {
   it('sends an already signed-in user home', async () => {
     const api = new FakeAuthApi();
     api.addUser({ email: 'ada@example.com', name: 'Ada' }, { signedIn: true });
-    renderAt('/sign-up', api);
+    renderAt('/sign-up', { auth: api });
     expect(await screen.findByText('Signed in as Ada')).toBeInTheDocument();
   });
 });

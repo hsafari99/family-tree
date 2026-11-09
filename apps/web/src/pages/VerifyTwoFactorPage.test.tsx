@@ -20,7 +20,7 @@ function submit(label: string, code: string) {
 describe('VerifyTwoFactorPage', () => {
   it('accepts a valid code and goes on to next', async () => {
     const { api } = challenged();
-    renderAt('/sign-in/verify?next=%2Faccount', api);
+    renderAt('/sign-in/verify?next=%2Faccount', { auth: api });
     const input = await screen.findByLabelText('6-digit code');
     expect(input).toHaveAttribute('autocomplete', 'one-time-code');
     submit('6-digit code', '123 456');
@@ -29,7 +29,7 @@ describe('VerifyTwoFactorPage', () => {
   });
 
   it('shows an invalid code', async () => {
-    renderAt('/sign-in/verify', challenged().api);
+    renderAt('/sign-in/verify', { auth: challenged().api });
     await screen.findByLabelText('6-digit code');
     submit('6-digit code', '000000');
     expect(await screen.findByRole('alert')).toHaveTextContent(MESSAGES.badCode);
@@ -37,7 +37,7 @@ describe('VerifyTwoFactorPage', () => {
 
   it('validates the code format before calling the API', async () => {
     const { api } = challenged();
-    renderAt('/sign-in/verify', api);
+    renderAt('/sign-in/verify', { auth: api });
     await screen.findByLabelText('6-digit code');
     submit('6-digit code', '12');
     expect(await screen.findByText('Enter the 6-digit code')).toBeInTheDocument();
@@ -46,7 +46,7 @@ describe('VerifyTwoFactorPage', () => {
 
   it('switches to a recovery code, with its own schema and API method', async () => {
     const { api, user } = challenged();
-    renderAt('/sign-in/verify', api);
+    renderAt('/sign-in/verify', { auth: api });
     fireEvent.click(await screen.findByRole('button', { name: 'Use a recovery code instead' }));
     expect(screen.getByLabelText('Recovery code')).toHaveAttribute('autocomplete', 'off');
     submit('Recovery code', '123456');
@@ -66,7 +66,7 @@ describe('VerifyTwoFactorPage', () => {
       code: 'TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE',
       message: MESSAGES.newChallenge,
     });
-    renderAt('/sign-in/verify', api);
+    renderAt('/sign-in/verify', { auth: api });
     await screen.findByLabelText('6-digit code');
     submit('6-digit code', '111111');
     const alert = await screen.findByRole('alert');
@@ -77,7 +77,7 @@ describe('VerifyTwoFactorPage', () => {
   it('explains the lockout', async () => {
     const { api } = challenged();
     api.failNext('verifyTotp', { code: 'ACCOUNT_TEMPORARILY_LOCKED', message: MESSAGES.locked });
-    renderAt('/sign-in/verify', api);
+    renderAt('/sign-in/verify', { auth: api });
     await screen.findByLabelText('6-digit code');
     submit('6-digit code', '111111');
     expect(await screen.findByRole('alert')).toHaveTextContent(MESSAGES.locked);

@@ -27,7 +27,7 @@ describe('ForgotPasswordPage', () => {
   });
 
   it('validates every field before calling the API', async () => {
-    const { api } = renderAt('/forgot-password', seeded());
+    const { api } = renderAt('/forgot-password', { auth: seeded() });
     await screen.findByLabelText('Email');
     submit('nope', 'abc', 'short');
     expect(await screen.findByText('Enter a valid email address')).toBeInTheDocument();
@@ -37,7 +37,7 @@ describe('ForgotPasswordPage', () => {
   });
 
   it('shows the generic error for a wrong code', async () => {
-    renderAt('/forgot-password', seeded());
+    renderAt('/forgot-password', { auth: seeded() });
     await screen.findByLabelText('Email');
     submit('ada@example.com', '000000', 'brand-new-password');
     expect(await screen.findByRole('alert')).toHaveTextContent('Email or code is incorrect');
@@ -45,7 +45,7 @@ describe('ForgotPasswordPage', () => {
 
   it('changes the password and links to sign in', async () => {
     const api = seeded();
-    renderAt('/forgot-password', api);
+    renderAt('/forgot-password', { auth: api });
     await screen.findByLabelText('Email');
     submit('ada@example.com', FAKE_TOTP, 'brand-new-password');
     expect(
