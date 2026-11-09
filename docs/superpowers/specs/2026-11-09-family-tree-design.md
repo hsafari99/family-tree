@@ -57,21 +57,24 @@ All primary keys are UUIDs. Every tree-scoped table has a `tree_id`. Every soft-
 | Table | Key columns |
 |---|---|
 | `users` (and other Better Auth tables) | email, password hash (Argon2id), Google account link, TOTP secret, recovery codes (hashed) |
-| `trees` | id, name, `owner_user_id`, created_at, deleted_at |
-| `tree_members` | tree_id, user_id, role (`owner` \| `editor` \| `viewer`), `person_id` (the user's own card, nullable), `invited_by` |
-| `branch_stewards` | tree_id, user_id, `anchor_person_id`, `granted_by` |
+| `trees` | id, name, `root_person_id` (default focus; the owner can change it), created_at, deleted_at |
+| `tree_members` | tree_id, user_id, role (`owner` \| `editor` \| `viewer`), `person_id` (the user's own card, nullable), `invited_by`. This table is the **single source of truth for ownership**: a partial unique index allows exactly one `owner` row per tree. |
+| `branch_stewards` | tree_id, user_id, `anchor_person_id`, `granted_by` (user id; null means granted by the owner) |
 | `persons` | given_name, middle_name, surname, maiden_name, nickname, sex, birth_date, birth_place, death_date, death_place, cause_of_death, is_living, occupation, education, biography, notes, primary_photo_id, sibling_order, version, created_by, updated_by |
 | `unions` | partner_a_id (nullable), partner_b_id (nullable), type (`marriage` \| `partnership`), status (`married` \| `partners` \| `divorced` \| `separated` \| `widowed`), start_date, end_date |
 | `parent_child` | union_id, child_id, kind (`biological` \| `adoptive` \| `step` \| `foster`) |
 | `residences` | person_id, place, from_date, to_date |
 | `photos` | person_id, storage_key_full, storage_key_thumb, width, height, bytes, is_primary, uploaded_by |
 | `invites` | token_hash, tree_id, role, steward_anchor_person_id (nullable), target_person_id (nullable), created_by, expires_at, used_at, used_by, revoked_at |
-| `reset_links` | token_hash, user_id, created_by, expires_at, used_at |
-| `deletion_batches` | id, tree_id, deleted_by, root_person_id, mode (`person` \| `descendants`), created_at, restored_at |
+| `reset_links` | token_hash, tree_id, user_id, created_by, expires_at, used_at |
+| `deletion_batches` | id, tree_id, deleted_by, mode (`person` \| `descendants` \| `relation`), root_person_id (nullable), root_union_id (nullable), root_parent_child_id (nullable), created_at, restored_at |
 | `audit_log` | tree_id, user_id, action, entity_type, entity_id, before (jsonb), after (jsonb), created_at |
 
 ### Rules
 - **Children belong to unions, never to a single person.** A single known parent is a union with one partner left empty. Half-siblings are children of different unions that share one partner.
+- **Every union has at least one partner** (enforced with a CHECK constraint). A child with both parents unknown simply has no `parent_child` row.
+- **All `parent_child` kinds count as parent and child links.** That covers biological, adoptive, step and foster, for branch membership, the descendant cascade, the relationship path and layout alike.
+- **Disconnected people are computed, not stored.** A non-deleted person counts as disconnected when they can't be reached from `trees.root_person_id` through any relation. The tree page lists them under "Disconnected people".
 - **Fuzzy dates** are stored as `{ qualifier: exact|about|before|after|between, date1, date2?, precision: day|month|year }` plus a derived `sort_year` column used for indexing, sorting and range filters.
 - **Places** are free text in v1.
 - **Optimistic concurrency.** Updates to a person must send the `version` they edited. A mismatch returns `409 CONFLICT`.
@@ -95,6 +98,16 @@ All primary keys are UUIDs. Every tree-scoped table has a `tree_id`. Every soft-
 
 The branch is computed with a recursive CTE whenever it's needed, so it grows automatically. A person can be in more than one branch.
 
+### Steward scope
+- **Effective scope.** For a grant made by the owner, the steward's effective scope is `branch(anchor)`. For a grant made by another steward S, it is `branch(anchor) ∩ effective scope of S`, applied recursively. A steward can therefore never pass on more than they hold, even as the tree grows. If S's grant is removed, the grants S made are removed with it.
+- **Granting.** A steward may grant stewardship only on an anchor inside their own effective scope.
+- **2FA.** A steward grant only takes effect once the steward has TOTP enrolled. Until then they act with their base role.
+- **People.** A steward can add, edit and delete people inside their scope.
+- **Relations.**
+  - Adding or editing a relation (a union or a parent–child link) needs **at least one** end inside the scope.
+  - Deleting a relation needs **both** ends inside the scope. Otherwise only the owner can delete it, so a steward can't cut your marriage from her side.
+- **Cascade deletes.** If a delete preview includes any person outside the steward's scope, the steward's delete is blocked. The preview says "includes N people outside your branch, ask the owner".
+
 ### Permission matrix
 
 | Action | Owner | Steward (in branch) | Editor | Viewer |
@@ -106,7 +119,7 @@ The branch is computed with a recursive CTE whenever it's needed, so it grows au
 | Restore from Trash | ✅ | ❌ | ❌ | ❌ |
 | Create viewer and editor invites | ✅ | ✅ | ❌ | ❌ |
 | Grant stewardship | ✅ | ✅ (anchor inside own branch) | ❌ | ❌ |
-| Change or remove members, revoke invites | ✅ | Only people they invited | ❌ | ❌ |
+| Change or remove members, revoke invites | ✅ | Only people they invited: switch them between viewer and editor, remove them, revoke their own invites | ❌ | ❌ |
 | Empty Trash permanently, delete tree, transfer ownership, export | ✅ | ❌ | ❌ | ❌ |
 
 - Outside their branch, a steward acts with their base role.
@@ -115,10 +128,16 @@ The branch is computed with a recursive CTE whenever it's needed, so it grows au
 
 ### Deletion
 - Deleting a person always shows a **preview** first, and the owner or steward chooses:
-  - **Just this person:** the person and their union and parent–child links are removed. Relatives stay in the tree and are flagged as disconnected.
-  - **This person and their descendants:** also removes descendants, plus partners of those descendants who have no other connection to the tree.
-- Every delete is soft and grouped in a `deletion_batch`. The owner restores a whole batch from Trash, or erases it permanently.
-- Deleting the whole tree is also soft. It can be restored for 30 days, then a scheduled job purges it, including its photos.
+  - **Just this person:**
+    - The person is soft-deleted.
+    - Their slot in each of their unions is set to empty. The union and its children stay with the surviving partner. A union with no remaining partner is soft-deleted, and its children's links to it go with it.
+    - Their own `parent_child` links as a child are soft-deleted.
+    - Relatives stay in the tree. Anyone who can no longer be reached from the root shows as disconnected.
+  - **This person and their descendants:** also removes all descendants, plus partners of those descendants who have no other connection to the tree.
+- **Deleting a relation** (a union or a parent–child link) is also soft. It creates a `relation` batch.
+- **Batches.** Every delete is soft and grouped in a `deletion_batch` that records each changed row and its previous value. The owner restores a whole batch from Trash, or erases it permanently.
+- **Restore** is all or nothing per batch: it brings back the batch's rows and empty slots. A restored link that points at a row deleted by a *different* batch stays hidden until that batch is restored too. Nothing is ever restored halfway.
+- **Deleting the whole tree** is also soft. It can be restored for 30 days from a "Deleted trees" section on the My trees screen, then a scheduled job purges it, including its photos.
 
 ## 5. Authentication and accounts
 
@@ -129,15 +148,20 @@ The branch is computed with a recursive CTE whenever it's needed, so it grows au
   - The link is sent by the inviter through any channel they choose.
   - Each link is single-use, expires after 7 days by default, is stored hashed, and can be revoked.
   - Opening it leads to sign-up or login, then the user joins the tree as that role and person.
+  - If the user is already a member of that tree, redeeming the invite can only raise their role or add the steward grant; it never lowers anything. The invite is used up either way.
 - **2FA (TOTP authenticator app):**
   - Optional for editors and viewers.
-  - **Required for owners and stewards.** Owner and steward permissions don't take effect until TOTP is enrolled, and the user is prompted to enrol.
+  - **Required for owners and stewards:**
+    - "Start a new tree" includes a TOTP enrolment step and won't create the tree until TOTP is enrolled.
+    - Ownership can only be transferred to a member who already has TOTP.
+    - A steward grant takes effect only after enrolment (see §4).
   - Enrolling shows 8 one-time recovery codes, once.
 - **Password reset without email:**
   - With TOTP: email plus a current TOTP code, or a recovery code.
-  - Without TOTP: the tree owner creates a one-time reset link for the member, valid for 24 hours.
+  - Without TOTP: a tree owner creates a one-time reset link for the member, valid for 24 hours. This is allowed **only if the target account belongs to no tree other than trees that same owner owns.** That stops one family's owner from taking over an account that holds access to another family's tree. Anyone else has to use TOTP or recovery codes.
+  - Using a reset link sets a new password and signs the account out everywhere.
   - All of this is rate-limited, with a lockout after 5 failed attempts.
-- **Account deletion** removes the account and its memberships. Person cards the user created stay in the tree. Their own card stays but is unlinked from the login.
+- **Account deletion** removes the account and its memberships. It is **blocked while the user owns any non-deleted tree**: they must transfer or delete those trees first. Person cards the user created stay in the tree. Their own card stays but is unlinked from the login.
 - **Owner continuity:** ownership can be transferred, and the docs recommend designating a successor.
 
 ## 6. User interface
@@ -154,7 +178,7 @@ The branch is computed with a recursive CTE whenever it's needed, so it grows au
 
 ### Canvas
 - **Focus view (default):** centred on one person, with depth 1 showing parents, siblings, partners and children. The depth slider goes up to 3. Clicking a person re-centres the view.
-- **Full view:** the whole accessible tree. Cards simplify by zoom level: full card, then name and years, then a dot. If a tree is too large to load at once, the full view loads it by branch.
+- **Full view:** the whole accessible tree. Cards simplify by zoom level: full card, then name and years, then a dot. Trees with more than 2,000 people load by branch: the user picks an anchor person, and the view shows that person's branch using the §4 rule. The search filter "branch" uses the same rule.
 - **Layout:** automatic only, using an ELK layered layout with unions as hidden intermediate nodes, so generations sit in rows. The only drag action is reordering siblings, which updates `sibling_order`.
 - **Lines:** solid for biological, dashed for adoptive, dotted for step and foster. A divorced or separated union is shown greyed and broken. A person with several partners sits between separate union nodes.
 - **Person card:**
@@ -188,7 +212,8 @@ English only. All interface text lives in one message catalog so translations ca
   - `GET /trees/:id/relationship?from=&to=`
   - `POST /trees/:id/persons/:pid/delete-preview` and `POST .../delete`, where `mode` is `person` or `descendants`
   - `POST /trash/:batchId/restore`
-  - `GET /trees/:id/export`, which returns a GEDCOM 5.5.1 file plus a ZIP of photos
+  - `POST /trees/:id/unions/:uid/delete` and `POST /trees/:id/parent-child/:pcid/delete` for deleting relations
+  - `GET /trees/:id/export`, which returns one ZIP containing `tree.ged` (GEDCOM 5.5.1) and a `photos/` folder
 - **Error format:** `{ error: { code, message, details? } }`. Codes include `VALIDATION`, `NOT_FOUND`, `FORBIDDEN` (only within a tree the user can see), `CONFLICT`, `RATE_LIMITED` and `QUOTA_EXCEEDED`.
 
 ## 8. Security
@@ -239,5 +264,23 @@ Development follows TDD.
 
 Estimated cost: Hetzner CX22 at about €4–5 a month. Cloudflare Pages is free, and R2 is free up to 10 GB.
 
-## 11. Future (post-v1)
+## 11. Delivery
+
+- The repository is **public on GitHub from day one**, under AGPL-3.0. Because it's public, secrets must never be committed: `.env.production` is in `.gitignore`, and CI runs a secret scan with gitleaks.
+- Google sign-in is wired in when the author creates the OAuth client. Until then, email and password sign-in works on its own, and Google sign-in is disabled by config.
+- The work is built in sequential phases, each with its own plan, and each ends with software that runs locally under `docker compose up`:
+  1. Monorepo, config validation, Docker dev environment, DB schema and migrations, seed script, CI skeleton.
+  2. Auth: email and password, TOTP, recovery codes, rate limiting, reset links. Google sign-in is added when the client ID exists.
+  3. Trees, members, invites, stewards, `can()`, the branch CTE, cross-tree isolation tests.
+  4. Persons, unions, parent–child links, residences, fuzzy dates, optimistic concurrency, audit log, deletion, Trash, restore, the tree purge job.
+  5. Graph endpoint and canvas: React Flow, ELK, focus and full views, person cards, adding people with the duplicate check.
+  6. Photos (sharp, MinIO and R2, signed URLs, quotas), search with `pg_trgm`, the relationship path and kinship wording.
+  7. GEDCOM and ZIP export, production compose with Caddy, backups, deployment, `self-hosting.md`, the full E2E suite.
+- **At the end of every phase:**
+  - Automated tests pass.
+  - Claude checks the running app in the browser itself wherever the phase includes interface work.
+  - Claude gives the author a short **manual test checklist**: the exact steps to try and what they should see.
+  - The next phase starts only after the author approves.
+
+## 12. Future (post-v1)
 GEDCOM import, translations (including RTL and the Solar Hijri calendar), a map of places, co-owners, optional free dragging with saved positions, and an optional email provider for notifications.
