@@ -1,5 +1,90 @@
+import { PASSWORD_MIN, resetWithCodeSchema } from '@family-tree/shared';
+import { type FormEvent, useState } from 'react';
+import { Link } from 'react-router';
+import { useAuth } from '../auth/AuthContext';
+import { Field, type FieldErrors, FormError, validate } from '../components/forms';
 import { Page } from '../components/Page';
+import { PasswordChanged } from './PasswordChanged';
 
 export function ForgotPasswordPage() {
-  return <Page title="ForgotPassword">{null}</Page>;
+  const { api } = useAuth();
+  const [values, setValues] = useState({ email: '', code: '', newPassword: '' });
+  const [errors, setErrors] = useState<FieldErrors>({});
+  const [serverError, setServerError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  const [done, setDone] = useState(false);
+  const set = (key: keyof typeof values) => (value: string) =>
+    setValues((v) => ({ ...v, [key]: value }));
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    setServerError(null);
+    const checked = validate(resetWithCodeSchema, values);
+    setErrors(checked.ok ? {} : checked.errors);
+    if (!checked.ok) return;
+    setPending(true);
+    const res = await api.resetWithCode(checked.data);
+    setPending(false);
+    if (!res.ok) {
+      setServerError(res.error.message);
+      return;
+    }
+    setDone(true);
+  }
+
+  if (done) {
+    return (
+      <Page title="Reset your password">
+        <PasswordChanged />
+      </Page>
+    );
+  }
+
+  return (
+    <Page title="Reset your password">
+      <p>
+        Use a code from your authenticator app, or one of your recovery codes, to set a new
+        password.
+      </p>
+      <p className="hint">No authenticator? Ask your tree owner for a reset link.</p>
+      <form onSubmit={onSubmit} noValidate>
+        <Field
+          label="Email"
+          name="email"
+          type="email"
+          autoComplete="email"
+          value={values.email}
+          onChange={set('email')}
+          error={errors.email}
+        />
+        <Field
+          label="Authenticator or recovery code"
+          name="code"
+          autoComplete="one-time-code"
+          autoCapitalize="none"
+          spellCheck={false}
+          value={values.code}
+          onChange={set('code')}
+          error={errors.code}
+        />
+        <Field
+          label="New password"
+          name="newPassword"
+          type="password"
+          autoComplete="new-password"
+          hint={`At least ${PASSWORD_MIN} characters.`}
+          value={values.newPassword}
+          onChange={set('newPassword')}
+          error={errors.newPassword}
+        />
+        <FormError>{serverError}</FormError>
+        <button type="submit" disabled={pending}>
+          {pending ? 'Saving…' : 'Set new password'}
+        </button>
+      </form>
+      <p>
+        <Link to="/sign-in">Back to sign in</Link>
+      </p>
+    </Page>
+  );
 }
