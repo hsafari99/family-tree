@@ -38,11 +38,15 @@ services:
 
   install:
     <<: *dev
-    # Only reinstall when pnpm-lock.yaml changed since the last successful install.
+    # Only reinstall when the lockfile, any package.json or the workspace config changed
+    # since the last successful install (or a package node_modules volume is empty).
     command: >-
-      sh -c 'if sha256sum -c --status node_modules/.lock-stamp 2>/dev/null;
+      sh -c 'files="pnpm-lock.yaml pnpm-workspace.yaml package.json apps/*/package.json packages/*/package.json";
+      if sha256sum -c --status node_modules/.lock-stamp 2>/dev/null
+      && [ -e apps/api/node_modules/fastify ] && [ -e apps/web/node_modules/react ]
+      && [ -e packages/shared/node_modules/zod ];
       then echo "deps up to date";
-      else pnpm install --frozen-lockfile && sha256sum pnpm-lock.yaml > node_modules/.lock-stamp; fi'
+      else pnpm install --frozen-lockfile && sha256sum $$files > node_modules/.lock-stamp; fi'
     volumes: &app-volumes
       - .:/app
       - nm_root:/app/node_modules

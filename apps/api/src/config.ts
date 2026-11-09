@@ -51,6 +51,8 @@ export const configSchema = z
       }
     }
     for (const key of ['S3_ENDPOINT', 'WEB_ORIGIN'] as const) {
+      // Field-level errors are already reported; superRefine still runs, so don't throw here.
+      if (!URL.canParse(config[key])) continue;
       const url = new URL(config[key]);
       if (url.protocol !== 'https:') {
         ctx.addIssue({ code: 'custom', path: [key], message: 'Must use https in production' });

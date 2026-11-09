@@ -22,7 +22,7 @@ pnpm seed             # in a second terminal: loads a sample family
   install; otherwise the `install` service prints `deps up to date` and the stack starts offline.
 - The dev containers run as uid 1000 (the image's `node` user), so files they write into the repo
   are owned by a host user with that uid.
-- If the `family_test` database is missing (a volume created before it was added), run `docker compose down -v` to recreate the volumes.
+- If the `family_test` database is missing (a volume created before it was added), run `docker compose down -v` to recreate the volumes (this also wipes dev data — run `pnpm seed` again). Do the same if `install` fails with `EACCES` on an old root-owned volume.
 
 Tests:
 

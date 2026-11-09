@@ -103,6 +103,11 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ ...prodEnv, S3_ENDPOINT: endpoint })).toThrowError(/S3_ENDPOINT/);
   });
 
+  it('reports empty URLs as config errors instead of crashing', () => {
+    expect(() => loadConfig({ ...prodEnv, S3_ENDPOINT: '' })).toThrowError(ConfigError);
+    expect(() => loadConfig({ ...prodEnv, S3_ENDPOINT: '' })).toThrowError(/S3_ENDPOINT/);
+  });
+
   it('rejects automatic bucket creation in production', () => {
     expect(() => loadConfig({ ...prodEnv, S3_CREATE_BUCKET: 'true' })).toThrowError(
       /S3_CREATE_BUCKET/,
