@@ -11,7 +11,7 @@ import { CLIENT_IP_HEADER } from './fastify-adapter.js';
 const config = { ...loadConfig(), TRUST_PROXY: 1 };
 const deps = createDeps(config);
 const auth = createAuth({ config, db: deps.db });
-const app = buildApp({ config, checks: deps.checks, auth });
+const app = buildApp({ config, checks: deps.checks, auth, db: deps.db });
 
 afterAll(async () => {
   await app.close();

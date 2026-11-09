@@ -9,7 +9,7 @@ import { createAuth } from './auth.js';
 const config = loadConfig();
 const deps = createDeps(config);
 const auth = createAuth({ config, db: deps.db });
-const app = buildApp({ config, checks: deps.checks, auth });
+const app = buildApp({ config, checks: deps.checks, auth, db: deps.db });
 
 afterAll(async () => {
   await app.close();

@@ -9,18 +9,21 @@ import type { Config } from './config.js';
 import { AppError } from './errors.js';
 import { healthRoutes, type HealthChecks } from './routes/health.js';
 import { meRoutes } from './routes/me.js';
+import { passwordResetRoutes } from './routes/password-reset.js';
+import type { Db } from './db/client.js';
 import { originGuard } from './security/origin-guard.js';
 
-export interface AppOptions {
+/** Mounts /api/auth/* and the session and reset routes. Optional so unit tests skip the database. */
+type AuthOptions = { auth?: undefined; db?: undefined } | { auth: Auth; db: Db };
+
+export type AppOptions = AuthOptions & {
   config: Config;
   checks: HealthChecks;
-  /** Mounts /api/auth/* and the session routes. Optional so unit tests can skip the database. */
-  auth?: Auth;
   /** Global per-IP requests per minute (default 300). Routes may set their own limit. */
   rateLimitMax?: number;
   /** Where log lines go (default stdout). Tests pass a stream to inspect them. */
   logStream?: { write(line: string): void };
-}
+};
 
 /**
  * Trust exactly `hops` proxies counted from the socket peer, so req.ip is the address the
@@ -32,7 +35,7 @@ function trustHops(hops: number) {
   return hops > 0 ? (_address: string, hop: number) => hop < hops : false;
 }
 
-export function buildApp({ config, checks, auth, rateLimitMax = 300, logStream }: AppOptions) {
+export function buildApp({ config, checks, auth, db, rateLimitMax = 300, logStream }: AppOptions) {
   const app = Fastify({
     trustProxy: trustHops(config.TRUST_PROXY),
     logger:
@@ -66,6 +69,7 @@ export function buildApp({ config, checks, auth, rateLimitMax = 300, logStream }
   if (auth) {
     app.register(authRoutes, { auth });
     app.register(meRoutes, { auth });
+    app.register(passwordResetRoutes, { auth, db });
   }
 
   app.setNotFoundHandler((_req, reply) => {

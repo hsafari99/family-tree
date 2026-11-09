@@ -21,7 +21,7 @@ const config = loadConfig();
 const deps = createDeps(config);
 // Better Auth's limiter is off here; auth-rate-limit.int.test.ts covers it.
 const auth = createAuth({ config, db: deps.db, rateLimitEnabled: false });
-const app = buildApp({ config, checks: deps.checks, auth });
+const app = buildApp({ config, checks: deps.checks, auth, db: deps.db });
 
 afterAll(async () => {
   await app.close();
@@ -199,7 +199,12 @@ describe('production cookies', () => {
       AUTH_BASE_URL: origin,
     };
     const prodAuth = createAuth({ config: prodConfig, db: deps.db, rateLimitEnabled: false });
-    const prodApp = buildApp({ config: prodConfig, checks: deps.checks, auth: prodAuth });
+    const prodApp = buildApp({
+      config: prodConfig,
+      checks: deps.checks,
+      auth: prodAuth,
+      db: deps.db,
+    });
     try {
       const res = await call(prodApp, 'POST', '/api/auth/sign-up/email', {
         body: { email: uniqueEmail(), password: TEST_PASSWORD, name: 'Prod User' },
@@ -290,7 +295,7 @@ describe('Better Auth two-factor', () => {
 
 describe('global rate limit on real routes', () => {
   it.each(['/api/v1/me', '/api/auth/get-session'])('limits %s', async (url) => {
-    const limited = buildApp({ config, checks: deps.checks, auth, rateLimitMax: 3 });
+    const limited = buildApp({ config, checks: deps.checks, auth, db: deps.db, rateLimitMax: 3 });
     try {
       for (let i = 0; i < 3; i++) {
         expect((await call(limited, 'GET', url)).statusCode).not.toBe(429);
