@@ -27,13 +27,18 @@ export const healthRoutes: FastifyPluginAsync<{
   checks: HealthChecks;
   timeoutMs?: number;
 }> = async (app, { checks, timeoutMs = 2000 }) => {
-  app.get('/api/v1/health', async (_req, reply) => {
-    const [db, storage] = await Promise.all([
-      probe(() => checks.checkDb(), timeoutMs),
-      probe(() => checks.checkStorage(), timeoutMs),
-    ]);
-    const healthy = db === 'ok' && storage === 'ok';
-    const body: HealthResponse = { status: healthy ? 'ok' : 'degraded', checks: { db, storage } };
-    return reply.code(healthy ? 200 : 503).send(body);
-  });
+  // Own limit replaces the global one: monitors poll this, but it also touches the db and storage.
+  app.get(
+    '/api/v1/health',
+    { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
+    async (_req, reply) => {
+      const [db, storage] = await Promise.all([
+        probe(() => checks.checkDb(), timeoutMs),
+        probe(() => checks.checkStorage(), timeoutMs),
+      ]);
+      const healthy = db === 'ok' && storage === 'ok';
+      const body: HealthResponse = { status: healthy ? 'ok' : 'degraded', checks: { db, storage } };
+      return reply.code(healthy ? 200 : 503).send(body);
+    },
+  );
 };

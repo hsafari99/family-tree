@@ -1,16 +1,20 @@
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
+import rateLimit from '@fastify/rate-limit';
 import type { ApiError } from '@family-tree/shared';
 import Fastify, { type FastifyError } from 'fastify';
 import type { Config } from './config.js';
+import { AppError } from './errors.js';
 import { healthRoutes, type HealthChecks } from './routes/health.js';
 
 export interface AppOptions {
   config: Config;
   checks: HealthChecks;
+  /** Global per-IP requests per minute (default 300). Routes may set their own limit. */
+  rateLimitMax?: number;
 }
 
-export function buildApp({ config, checks }: AppOptions) {
+export function buildApp({ config, checks, rateLimitMax = 300 }: AppOptions) {
   const app = Fastify({
     logger:
       config.LOG_LEVEL === 'silent'
@@ -23,6 +27,12 @@ export function buildApp({ config, checks }: AppOptions) {
 
   app.register(helmet);
   app.register(cors, { origin: [config.WEB_ORIGIN], credentials: true });
+  app.register(rateLimit, {
+    max: rateLimitMax,
+    timeWindow: '1 minute',
+    errorResponseBuilder: () =>
+      new AppError('RATE_LIMITED', 429, 'Too many requests, try again later'),
+  });
   app.register(healthRoutes, { checks });
 
   app.setNotFoundHandler((_req, reply) => {
@@ -31,18 +41,28 @@ export function buildApp({ config, checks }: AppOptions) {
   });
 
   app.setErrorHandler((err: FastifyError, req, reply) => {
-    if (err.validation) {
-      const body: ApiError = { error: { code: 'VALIDATION', message: err.message } };
-      return reply.code(400).send(body);
+    const send = (status: number, error: ApiError['error']) => {
+      const body: ApiError = { error };
+      return reply.code(status).send(body);
+    };
+    if (err instanceof AppError) {
+      return send(err.statusCode, {
+        code: err.code,
+        message: err.message,
+        ...(err.details === undefined ? {} : { details: err.details }),
+      });
     }
-    const status =
-      err.statusCode && err.statusCode >= 400 && err.statusCode < 500 ? err.statusCode : 500;
-    if (status === 500) req.log.error(err);
-    const body: ApiError =
-      status === 500
-        ? { error: { code: 'INTERNAL', message: 'Something went wrong' } }
-        : { error: { code: 'BAD_REQUEST', message: err.message } };
-    return reply.code(status).send(body);
+    if (err.validation) return send(400, { code: 'VALIDATION', message: err.message });
+    if (err.statusCode === 404) return send(404, { code: 'NOT_FOUND', message: 'Not found' });
+    if (err.statusCode && err.statusCode >= 400 && err.statusCode < 500) {
+      // Never echo err.message: plugins and libraries put internal detail there.
+      return send(err.statusCode, {
+        code: 'BAD_REQUEST',
+        message: 'Request could not be processed',
+      });
+    }
+    req.log.error(err);
+    return send(500, { code: 'INTERNAL', message: 'Something went wrong' });
   });
 
   return app;

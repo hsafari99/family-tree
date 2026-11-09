@@ -17,6 +17,8 @@ export const ERROR_CODES = [
   'RATE_LIMITED',
   'QUOTA_EXCEEDED',
   'BAD_REQUEST',
+  'UNAUTHENTICATED',
+  'INVALID_RESET',
   'INTERNAL',
 ] as const;
 
