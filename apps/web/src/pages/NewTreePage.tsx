@@ -17,12 +17,15 @@ const SEX_LABEL = {
 
 export function NewTreePage() {
   const { user, refresh } = useAuth();
+  // Turning 2FA on flips `twoFactorEnabled` before the recovery codes are dismissed; keep the
+  // setup on screen until then, or the codes (shown only once) would vanish.
+  const [codesPending, setCodesPending] = useState(false);
   // RequireAuth only renders this page for a signed-in user.
   if (user === null || user === 'loading') return null;
 
   return (
     <Page title="Start a new tree">
-      {user.twoFactorEnabled ? (
+      {user.twoFactorEnabled && !codesPending ? (
         <NewTreeForm />
       ) : (
         <>
@@ -30,7 +33,14 @@ export function NewTreePage() {
             Tree owners must use two-step verification, because they control who can see the
             family&apos;s details. Turn it on to continue.
           </p>
-          <TwoFactorSetup enabled={false} onChanged={refresh} />
+          <TwoFactorSetup
+            enabled={false}
+            onChanged={async () => {
+              setCodesPending(true);
+              await refresh();
+            }}
+            onFinished={() => setCodesPending(false)}
+          />
         </>
       )}
       <p>

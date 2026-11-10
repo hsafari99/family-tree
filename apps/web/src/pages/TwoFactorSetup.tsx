@@ -20,11 +20,14 @@ export function TwoFactorSetup({
   enabled,
   canDisable = true,
   onChanged,
+  onFinished,
 }: {
   enabled: boolean;
   /** False for owners and stewards, who must keep 2FA on. */
   canDisable?: boolean;
   onChanged: () => Promise<void>;
+  /** Called when the user dismisses the recovery codes. */
+  onFinished?: () => void;
 }) {
   const { api } = useAuth();
   const [step, setStep] = useState<Step>({ kind: 'idle' });
@@ -157,6 +160,7 @@ export function TwoFactorSetup({
           onDone={() => {
             setStep({ kind: 'idle' });
             setNotice(step.doneNotice);
+            onFinished?.();
           }}
         />
       )}

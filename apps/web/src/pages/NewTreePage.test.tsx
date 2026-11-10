@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { MESSAGES } from '../auth/api';
-import { FakeAuthApi } from '../test/fake-auth';
+import { FAKE_TOTP, FakeAuthApi } from '../test/fake-auth';
 import { FakeTreesApi } from '../test/fake-trees';
 import { renderAt } from '../test/render';
 
@@ -24,6 +24,20 @@ describe('NewTreePage', () => {
       screen.getByRole('button', { name: 'Turn on two-step verification' }),
     ).toBeInTheDocument();
     expect(screen.queryByLabelText('Tree name')).not.toBeInTheDocument();
+  });
+
+  it('shows the recovery codes after turning on 2FA, then the form', async () => {
+    renderAt('/trees/new', setup({ twoFactorEnabled: false }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Turn on two-step verification' }));
+    type('Your password', 'correct-horse');
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByLabelText('6-digit code from the app');
+    type('6-digit code from the app', FAKE_TOTP);
+    fireEvent.click(screen.getByRole('button', { name: 'Turn on' }));
+    expect(await screen.findByRole('list', { name: 'Recovery codes' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Tree name')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: "I've saved these codes" }));
+    expect(await screen.findByLabelText('Tree name')).toBeInTheDocument();
   });
 
   it('fills the tree name from the surname until it is edited by hand', async () => {
