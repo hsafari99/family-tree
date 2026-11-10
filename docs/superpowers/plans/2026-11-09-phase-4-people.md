@@ -59,7 +59,9 @@
   3. Parse the body.
   4. `authorize`.
   5. Write.
-  Structural writes do steps 2–5 inside the locked transaction.
+  Structural writes (adding people and relatives, deletes, restore, erase, a root change) open the transaction, take `lockTreeGraph`, then call `loadAccess(tx, …)` **inside** it and do steps 2–5 there. That way the steward scope `can()` sees is computed from the same graph the write changes.
+- **Validation before authorisation is acceptable:** some routes parse the body, or check that an id is live in the tree, before `authorize`. So a viewer may get `400 VALIDATION` instead of `403` for a malformed request. Members already see this tree's data, so this leaks nothing. Outsiders still always get 404 first, from `loadAccess`.
+- **Global lock order** (to avoid deadlocks): (1) the per-tree advisory lock `lockTreeGraph`, (2) the `trees` row, (3) a `deletion_batches` row, (4) `persons` / `unions` / `parent_child` rows. Every transaction that takes more than one of these takes them in this order. Any transaction that touches the `trees` row **and** person rows takes `lockTreeGraph` first: that covers `PATCH /trees/:id` (Task 10), the person delete, restore and erase.
 - **Routes:** every new route lives in a plugin registered after the rate limiter (see the comment in `app.ts`), with `requireSession` as a preHandler.
 - **Browser:** no `window.confirm` / `alert`, because they block the browser automation used to verify phases. Destructive buttons use `ConfirmButton` (inline two-step).
 - **User content** is never rendered as HTML. The biography and notes are plain text with `white-space: pre-line`.
@@ -75,7 +77,7 @@
 2. **Batch bookkeeping:**
    - Rows soft-deleted by a batch carry `deletion_batch_id`.
    - Partner slots emptied by a batch are stored as `deletion_batches.slots`, a jsonb array of `{unionId, slot: 'a'|'b', personId}`. Together these are "each changed row and its previous value" (spec §4).
-   - `deletion_batch_id` references `deletion_batches(id) ON DELETE SET NULL`. Erase deletes the rows first, then the batch.
+   - `deletion_batch_id` has a composite NO ACTION FK to `deletion_batches(tree_id, id)` (decision 21). Erase deletes the rows first, then the batch.
 3. **Residences:**
    - Residences are part of a person's details. Adding, editing and removing them is `person.edit`.
    - Removing one is a hard delete; the audit row keeps the old value.
@@ -96,14 +98,16 @@
 7. **Restore conflicts:** restore is all or nothing, inside one transaction. It fails with `409 CONFLICT` and changes nothing when:
    - a recorded partner slot has been filled by someone else since, or
    - restoring would duplicate a live parent–child link (unique index).
+   - restoring would create a parent–child **cycle**. Example: the link kid→dad was deleted, and dad was later added as kid's child. After the rows are revived, the live graph is checked with `hasCycle`.
    A slot whose union no longer exists (erased with another batch) is skipped: there is nothing left to put the person back into.
 8. **Erase permanently:**
    - **Before deleting anything:** it nulls `tree_members.person_id`, deletes `invites` whose anchor or target is an erased person, and deletes `branch_stewards` anchored on them, along with grants derived from those. Each removed grant and invite gets an audit row.
+   - **Unions outside the batch:** for every union **not** in this batch where an erased person sits in one slot and the other slot holds someone, it empties the erased person's slot. Otherwise the partner FK's `ON DELETE CASCADE` would destroy that union, which may be live. One way to reach this: delete union U(A,B) as b1, delete A as b2, restore b1, then erase b2.
    - **Then:** it hard-deletes the batch's links, unions and people, then the batch row.
    - **Other batches:** rows of other batches that point at an erased person go with it through the FK cascades. Restoring those batches later brings back what remains.
-   - **Audit cleanup:** erase also deletes audit rows describing the erased rows: entity id in the batch, or residence rows of erased people. That way "erase permanently" really removes the data.
+   - **Audit cleanup:** erase also deletes every audit row that describes the erased rows (entity id in the batch) or names an erased person (`person_ids && erased ids`). That way "erase permanently" really removes the data.
 9. **Trash URLs** sit under the tree, `/api/v1/trees/:treeId/trash/...` (the spec writes `/trash/:batchId/...`), so `loadAccess` gives outsiders a 404 the same way as on every other route.
-10. **Locking:** every structural write takes `pg_advisory_xact_lock('graph:<treeId>')` (adding relatives, deletes, restore, erase). The person delete also locks the `trees` row `FOR UPDATE` before checking the root person, which serialises it with `PATCH /trees/:id` (root change). Plain person field edits rely on `version` instead.
+10. **Locking:** every structural write takes `pg_advisory_xact_lock('graph:<treeId>')` first (adding people and relatives, deletes, restore, erase), and so does `PATCH /trees/:id`. The person delete then locks the `trees` row `FOR UPDATE` before checking the root person. Because `PATCH /trees` takes the advisory lock before its `persons … FOR SHARE`, the two can't deadlock. They serialise on the advisory lock. See "Global lock order" in the ground rules. Plain person field edits rely on `version` instead.
 11. **Adding relatives** (`as` is relative to the subject person):
     - **`partner`:** a new union (subject, relative), `marriage`/`married` unless given.
     - **`child`:**
@@ -121,7 +125,8 @@
     - `unions` and `parent-child` have `PATCH` and `…/delete`.
 13. **Audit log:**
     - Each row stores `person_ids uuid[]` (GIN-indexed), the people the change concerns. That makes a person's History a single indexed query.
-    - History returns the latest 100 entries. Field-level changes are listed only for `person.update` of that person; other entries show the action only.
+    - History returns the latest 100 entries, limited to `person.*`, `union.*`, `link.*`, `residence.*` and `trash.*` actions. Field-level changes are listed only for `person.update` of that person; other entries show the action only.
+    - `member.*`, `steward.*` and `invite.*` rows never set `person_ids`, so they can't reach a viewer through History. Some of that information (invites, emails) is owner-only. A later owner-only activity view can read those rows.
     - Membership, steward, invite and tree changes are audited from this phase on. Account deletion is not: the user row is gone and memberships cascade.
 14. **Tree purge:**
     - `purgeDeletedTrees` runs in a single statement, inside a transaction holding `pg_try_advisory_xact_lock('purge-trees')`. It deletes trees with `deleted_at < now() − TREE_RESTORE_DAYS`. A concurrent restore wins, because the row lock makes the `WHERE` re-check.
@@ -143,7 +148,13 @@
     - The delete preview is open to anyone who could delete the person at all (`can(person.delete, [person])`: the owner, or a steward with the person in scope). Editors and viewers get 403.
     - A steward's preview may still say `allowed: false` with `outsideScope: N` (spec §4).
 20. **Trash in the web app:** reached from the tree page when `capabilities.manageTree` (owner). No new capability flag.
-21. **Deferred:**
+21. **More limits and checks:**
+    - At most `RESIDENCES_MAX = 50` residences per person (`VALIDATION`).
+    - A union's `endDate` sort year can't be before its `startDate` sort year. This is checked on the merged record in `PATCH /unions` and by `updateUnionSchema` when both are sent.
+    - Linking an existing person as `partner` when a live union of that pair already exists gives `409 CONFLICT`.
+    - `deletion_batch_id` uses a composite `(tree_id, deletion_batch_id) → deletion_batches(tree_id, id)` FK, so a row can't name another tree's batch. It is NO ACTION: a composite `SET NULL` would also null the NOT NULL `tree_id`. Erase deletes the tagged rows before the batch, and a tree delete removes both in one statement.
+    - Removing a member (or transferring ownership) cascades their grants away. Each removed grant, derived ones included, gets a `steward.revoke` audit row with `after: { reason: 'member removed' }`.
+22. **Deferred:**
     - "Disconnected people" (`GET /disconnected`) moves to phase 5, with the graph endpoint.
     - The Photos tab is a placeholder until phase 6.
 
@@ -317,9 +328,11 @@ describe('relation inputs', () => {
       kind: 'biological',
     });
   });
-  it('updateUnionSchema refuses an empty change', () => {
+  it('updateUnionSchema refuses an empty change and an end before the start', () => {
     expect(updateUnionSchema.safeParse({}).success).toBe(false);
     expect(updateUnionSchema.parse({ status: 'divorced' })).toEqual({ status: 'divorced' });
+    const bad = updateUnionSchema.safeParse({ startDate: year('1990'), endDate: year('1980') });
+    expect(bad.error?.issues[0]?.path).toEqual(['endDate']);
   });
   it('residenceInputSchema needs a place', () => {
     expect(residenceInputSchema.safeParse({ place: ' ' }).success).toBe(false);
@@ -344,6 +357,9 @@ import { NAME_MAX, personSummarySchema, SEXES } from './trees.js';
 export const PLACE_MAX = 200;
 export const LONG_TEXT_MAX = 10_000;
 export const HISTORY_LIMIT = 100;
+export const RESIDENCES_MAX = 50;
+/** History shows only changes to people and their relations (decision 13). */
+export const HISTORY_ACTION_PREFIXES = ['person.', 'union.', 'link.', 'residence.', 'trash.'] as const;
 
 export const UNION_TYPES = ['marriage', 'partnership'] as const;
 export type UnionType = (typeof UNION_TYPES)[number];
@@ -479,8 +495,22 @@ export const updateUnionSchema = z
     endDate: fuzzyDateSchema.nullable(),
   })
   .partial()
-  .refine((v) => Object.values(v).some((x) => x !== undefined), 'Nothing to change');
+  .refine((v) => Object.values(v).some((x) => x !== undefined), 'Nothing to change')
+  .superRefine((v, ctx) => {
+    const message = unionDatesError(v);
+    if (message) ctx.addIssue({ code: 'custom', path: ['endDate'], message });
+  });
 export type UpdateUnionInput = z.input<typeof updateUnionSchema>;
+
+/** End before start, compared by sort year (decision 21); the API also runs it on the merged union. */
+export function unionDatesError(u: {
+  startDate?: FuzzyDate | null | undefined;
+  endDate?: FuzzyDate | null | undefined;
+}): string | null {
+  return u.startDate && u.endDate && sortYear(u.endDate) < sortYear(u.startDate)
+    ? 'The end can’t be before the start'
+    : null;
+}
 
 export const updateParentChildSchema = z.object({ kind: z.enum(CHILD_KINDS) });
 
@@ -689,13 +719,14 @@ export type TrashBatchDetail = z.infer<typeof trashBatchDetailSchema>;
 - Create: `packages/shared/src/family-graph.ts`, `packages/shared/src/family-graph.test.ts`
 - Modify: `packages/shared/src/index.ts`
 
-- [ ] **Step 1: Write the failing test** `packages/shared/src/family-graph.test.ts`
+- [ ] **Step 1: Write the failing test** `packages/shared/src/family-graph.test.ts`. The recursive `visit` in `hasCycle` is fine at family scale. Generations, not people, set the recursion depth.
 
 ```ts
 import { describe, expect, it } from 'vitest';
 import {
   ancestorsOf,
   descendantsOf,
+  hasCycle,
   type LiveGraph,
   planLinkDeletion,
   planPersonDeletion,
@@ -750,6 +781,15 @@ describe('walks', () => {
     expect(wouldCycle(g, ['dad'], ['dad'])).toBe(true);
     expect(wouldCycle(g, ['mum'], ['grandkid'])).toBe(false);
     expect(wouldCycle(g, ['new-person'], ['dad'])).toBe(false);
+  });
+  it('detects an existing cycle', () => {
+    expect(hasCycle(g)).toBe(false);
+    const looped: LiveGraph = {
+      ...g,
+      unions: [...g.unions, { id: 'u9', partnerAId: 'grandkid', partnerBId: null }],
+      parentChild: [...g.parentChild, { id: 'l-loop', unionId: 'u9', childId: 'dad' }],
+    };
+    expect(hasCycle(looped)).toBe(true);
   });
 });
 
@@ -889,6 +929,23 @@ export function wouldCycle(graph: LiveGraph, parentIds: string[], childIds: stri
   });
 }
 
+/** Whether the live graph contains a parent–child cycle (a restore check, decision 7). */
+export function hasCycle(graph: LiveGraph): boolean {
+  const { children } = indexGraph(graph);
+  const state = new Map<string, 1 | 2>(); // 1 = on the current path, 2 = done
+  const visit = (id: string): boolean => {
+    state.set(id, 1);
+    for (const c of children.get(id) ?? []) {
+      const s = state.get(c);
+      if (s === 1) return true;
+      if (s === undefined && visit(c)) return true;
+    }
+    state.set(id, 2);
+    return false;
+  };
+  return graph.persons.some((p) => state.get(p.id) === undefined && visit(p.id));
+}
+
 export interface DeletionSlot {
   unionId: string;
   slot: 'a' | 'b';
@@ -1020,12 +1077,23 @@ export function planLinkDeletion(graph: LiveGraph, linkId: string): DeletionPlan
 
 ```ts
     /** The Trash batch that soft-deleted this row (spec §4); null while live. */
-    deletionBatchId: uuid('deletion_batch_id').references((): AnyPgColumn => deletionBatches.id, {
-      onDelete: 'set null',
-    }),
+    deletionBatchId: uuid('deletion_batch_id'),
 ```
 
-  Then add an index to each of the three, for example `index('persons_deletion_batch_idx').on(t.deletionBatchId)`, and the same as `unions_deletion_batch_idx` and `parent_child_deletion_batch_idx`.
+  Then add these to each table's extras. For `persons`:
+
+```ts
+    // NO ACTION and composite (decision 21): a row can only name a batch of its own tree. Erase
+    // deletes tagged rows before the batch; a tree delete removes both in one statement.
+    foreignKey({
+      name: 'persons_deletion_batch_fk',
+      columns: [t.treeId, t.deletionBatchId],
+      foreignColumns: [deletionBatches.treeId, deletionBatches.id],
+    }),
+    index('persons_deletion_batch_idx').on(t.deletionBatchId),
+```
+
+  Add the same as `unions_deletion_batch_fk` / `unions_deletion_batch_idx` and `parent_child_deletion_batch_fk` / `parent_child_deletion_batch_idx`. MATCH SIMPLE means a null `deletion_batch_id` skips the check. `persons` extras already reference tables declared later (as `trees` does with `persons`). If TypeScript reports a cycle, annotate the extras callback's return type as `PgTableExtraConfigValue[]`, the same as `trees`.
 
   **New section** at the end of the file:
 
@@ -1061,7 +1129,11 @@ export const deletionBatches = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     restoredAt: timestamp('restored_at', { withTimezone: true }),
   },
-  (t) => [index('deletion_batches_tree_idx').on(t.treeId, t.createdAt)],
+  (t) => [
+    // Target of the composite deletion_batch FKs; a UNIQUE constraint so it exists inside CREATE TABLE.
+    unique('deletion_batches_tree_id_uq').on(t.treeId, t.id),
+    index('deletion_batches_tree_idx').on(t.treeId, t.createdAt),
+  ],
 );
 
 /** Every change to tree data (spec §8). person_ids: the people it concerns (a person's History). */
@@ -1097,14 +1169,14 @@ export const auditLog = pgTable(
 - [ ] **Step 2: Generate the migration.** Run `pnpm --filter @family-tree/api exec drizzle-kit generate --name people`. Open `apps/api/drizzle/0003_people.sql` and check:
   - `CREATE TYPE "deletion_mode"`.
   - Both tables.
-  - The three `deletion_batch_id` columns, with `ON DELETE set null` FKs.
+  - The three `deletion_batch_id` columns, with composite `(tree_id, deletion_batch_id)` FKs to `deletion_batches_tree_id_uq`, which must be created before them.
   - The GIN index (`USING gin ("person_ids")`).
   - If drizzle emits an FK before the table it references exists, move those `ALTER TABLE … ADD CONSTRAINT` lines to the end of the file.
 
 - [ ] **Step 3: Write the integration test** `apps/api/src/db/people-schema.int.test.ts`. Use the same structure as `tree-access-schema.int.test.ts`: `createDeps(loadConfig())`, direct inserts and `afterAll` cleanup.
   - **Setup:** a user and a tree, with persons A and B and a union (A, B).
   - **Test cases:**
-    1. **Batch deleted:** a batch, with `persons.deletion_batch_id` set on A. Deleting the batch row sets A's `deletion_batch_id` to null and keeps A.
+    1. **Batch FK:** with a batch and `persons.deletion_batch_id` set on A, deleting the batch row is rejected (NO ACTION). Clearing A's tag first, then deleting it, works. Tagging A with a batch of **another tree** is rejected (composite FK).
     2. **Slots default:** `slots` defaults to `[]` and round-trips `[{unionId, slot:'a', personId}]`.
     3. **Audit person ids:** an `audit_log` row with `person_ids = [A]` is found by `arrayContains(auditLog.personIds, [A.id])`.
     4. **User deleted:** deleting the user sets `audit_log.user_id` and `deletion_batches.deleted_by_user_id` to null.
@@ -1470,7 +1542,7 @@ import { and, asc, eq, isNull } from 'drizzle-orm';
 import type { Queryable } from '../db/client.js';
 import { parentChild, persons, residences, unions, users } from '../db/schema.js';
 import { notFound } from '../errors.js';
-import { can, inScope } from '../permissions/can.js';
+import { can } from '../permissions/can.js';
 import type { Access } from './access.js';
 import { isLivePerson, summaryColumns, toPersonDetail } from './people.js';
 
@@ -1574,7 +1646,7 @@ export async function loadPersonView(
     capabilities: {
       edit: can(access, 'person.edit', { kind: 'person', personId }),
       addRelative: can(access, 'person.add', { kind: 'relation', ends: [personId] }),
-      delete: access.role === 'owner' || inScope(access, personId),
+      delete: can(access, 'person.delete', { kind: 'people', personIds: [personId] }),
     },
   };
 }
@@ -1613,10 +1685,14 @@ export const personsRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, {
   });
 
   app.post('/api/v1/trees/:treeId/persons', async (req, reply) => {
-    const access = await loadAccess(db, idParam(req.params, 'treeId'), req.user!.id);
+    const treeId = idParam(req.params, 'treeId');
+    // Outsiders get their 404 before the body is looked at.
+    await loadAccess(db, treeId, req.user!.id);
     const { person, attach } = parseBody(createPersonSchema, req.body);
     const id = await db.transaction(async (tx) => {
-      await lockTreeGraph(tx, access.treeId);
+      await lockTreeGraph(tx, treeId);
+      // Re-read inside the lock: the steward scope must match the graph we're about to change.
+      const access = await loadAccess(tx, treeId, req.user!.id);
       const graph = await loadLiveGraph(tx, access.treeId);
       const ends = attach ? relativeEnds(graph, attach.to, attach) : [];
       authorize(access, 'person.add', { kind: 'relation', ends });
@@ -1757,7 +1833,9 @@ const view = async (jar: CookieJar, treeId: string, id: string) =>
      - An unknown subject gives 404.
   7. **Union edits:** `PATCH unions/:id { status: 'divorced', endDate: {qualifier:'exact', date1:'2001'} }` gives 204. The row is updated, and an audit `union.update` stores only the changed fields.
   8. **Link edits:** `PATCH parent-child/:id { kind: 'adoptive' }` gives 204, with an audit `link.update`.
-  9. **Wrong ids:** a union or link of another tree, or a soft-deleted one, gives 404.
+  9. **Wrong ids:** a union or link of another tree, or a soft-deleted one, gives 404, and no audit row is written.
+  9a. **Union dates:** `PATCH unions/:id { endDate: 1960 }` on a union starting in 1970 gives 400 `VALIDATION` (`details.endDate`).
+  9b. **Duplicate partners:** linking an existing person as `partner` of someone they already have a live union with gives 409 `CONFLICT`.
   10. **Viewer:** every write gives 403.
   11. **Audit:** each new union or link has a `union.create` / `link.create` row whose `personIds` include the partners and the child.
 
@@ -1910,9 +1988,14 @@ export async function attachRelative(
     }
   };
   switch (spec.as) {
-    case 'partner':
+    case 'partner': {
+      const pair = [subjectId, relativeId];
+      if (graph.unions.some((x) => pair.every((id) => partnersOf(x).includes(id)))) {
+        throw conflict('They are already partners');
+      }
       await createUnion(tx, actor, subjectId, relativeId, spec.union?.type ?? 'marriage', spec.union?.status ?? 'married');
       return;
+    }
     case 'child': {
       const parents = u ? partnersOf(u) : [subjectId];
       if (parents.includes(relativeId)) throw invalid('personId', 'A parent can’t also be the child');
@@ -1985,7 +2068,7 @@ async function fillSlot(tx: Tx, actor: AuditActor, u: GraphUnion, personId: stri
   const slot = u.partnerAId === null ? 'partnerAId' : 'partnerBId';
   const [row] = await tx
     .update(unions)
-    .set({ [slot]: personId })
+    .set(slot === 'partnerAId' ? { partnerAId: personId } : { partnerBId: personId })
     .where(and(eq(unions.id, u.id), isNull(unions[slot]), isNull(unions.deletedAt)))
     .returning();
   if (!row) throw conflict('Those parents changed; reload and try again');
@@ -2005,8 +2088,13 @@ async function fillSlot(tx: Tx, actor: AuditActor, u: GraphUnion, personId: stri
   **`apps/api/src/routes/relations.ts`:**
 
 ```ts
-import { addRelativeSchema, updateParentChildSchema, updateUnionSchema } from '@family-tree/shared';
-import { eq } from 'drizzle-orm';
+import {
+  addRelativeSchema,
+  unionDatesError,
+  updateParentChildSchema,
+  updateUnionSchema,
+} from '@family-tree/shared';
+import { and, eq, isNull } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 import { requireSession } from '../auth/session-guard.js';
 import { parentChild, unions } from '../db/schema.js';
@@ -2022,12 +2110,14 @@ export const relationsRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app,
   app.addHook('preHandler', requireSession(auth));
 
   app.post('/api/v1/trees/:treeId/persons/:personId/relatives', async (req, reply) => {
-    const access = await loadAccess(db, idParam(req.params, 'treeId'), req.user!.id);
+    const treeId = idParam(req.params, 'treeId');
+    await loadAccess(db, treeId, req.user!.id); // outsiders: 404 before anything else
     const subjectId = idParam(req.params, 'personId');
     const input = parseBody(addRelativeSchema, req.body);
     await db.transaction(async (tx) => {
-      await lockTreeGraph(tx, access.treeId);
-      const graph = await loadLiveGraph(tx, access.treeId);
+      await lockTreeGraph(tx, treeId);
+      const access = await loadAccess(tx, treeId, req.user!.id);
+      const graph = await loadLiveGraph(tx, treeId);
       const live = (id: string) => graph.persons.some((p) => p.id === id);
       if (!live(subjectId)) throw notFound();
       if (!live(input.personId)) throw invalid('personId', 'Choose a person in this tree');
@@ -2046,10 +2136,18 @@ export const relationsRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app,
     const input = parseBody(updateUnionSchema, req.body);
     // Drop absent keys first: spreading `undefined` over the row would read as "cleared".
     const given = Object.fromEntries(Object.entries(input).filter(([, v]) => v !== undefined));
-    const changes = changedFields(u, { ...u, ...given }, UNION_EDIT_FIELDS);
+    const merged = { ...u, ...given };
+    const datesError = unionDatesError(merged);
+    if (datesError) throw invalid('endDate', datesError);
+    const changes = changedFields(u, merged, UNION_EDIT_FIELDS);
     if (!changes) return reply.code(204).send();
     await db.transaction(async (tx) => {
-      await tx.update(unions).set(changes.after).where(eq(unions.id, u.id));
+      const [row] = await tx
+        .update(unions)
+        .set(changes.after)
+        .where(and(eq(unions.treeId, access.treeId), eq(unions.id, u.id), isNull(unions.deletedAt)))
+        .returning({ id: unions.id });
+      if (!row) throw notFound(); // deleted meanwhile: no write, no audit
       await audit(tx, access, { action: 'union.update', entityType: 'union', entityId: u.id, personIds: u.partners, ...changes });
     });
     return reply.code(204).send();
@@ -2063,7 +2161,12 @@ export const relationsRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app,
     const { kind } = parseBody(updateParentChildSchema, req.body);
     if (kind === l.kind) return reply.code(204).send();
     await db.transaction(async (tx) => {
-      await tx.update(parentChild).set({ kind }).where(eq(parentChild.id, l.id));
+      const [row] = await tx
+        .update(parentChild)
+        .set({ kind })
+        .where(and(eq(parentChild.treeId, access.treeId), eq(parentChild.id, l.id), isNull(parentChild.deletedAt)))
+        .returning({ id: parentChild.id });
+      if (!row) throw notFound();
       await audit(tx, access, { action: 'link.update', entityType: 'link', entityId: l.id, personIds: ends, before: { kind: l.kind }, after: { kind } });
     });
     return reply.code(204).send();
@@ -2099,6 +2202,7 @@ export const relationsRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app,
   2. **Edit:** PATCH with all three fields gives 204.
   3. **Remove:** DELETE gives 204. The row is gone and the audit has `residence.create`, `residence.update` and `residence.delete`, each with `personIds: [person]`. The delete row's `before` holds the place.
   4. **Wrong ids:** a residence of a soft-deleted person gives 404 for PATCH and DELETE, and a residence of another tree gives 404.
+  4a. **Cap:** with 50 residences inserted directly, adding one more gives 400 `VALIDATION`.
   5. **Steward:** with a viewer steward of Robert's branch (Hale shape, as in `stewards.int.test.ts`), adding to Dan gives 201 and adding to George gives 403.
 
   **`persons.int.test.ts`, History:**
@@ -2108,6 +2212,7 @@ export const relationsRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app,
   - `changes` on a `person.update` is `[{ field: 'surname', before: 'King', after: 'Lovelace' }]`. Other entries have `changes: []`.
   - Another person's edits don't appear.
   - Viewers can read History.
+  - **No leaks to viewers:** create an invite that targets the person, and a steward grant anchored on them (through the API, after Task 10). A viewer's History of that person contains no `invite.*`, `steward.*` or `member.*` entry. Also insert one such audit row directly, with `person_ids` set to the person, and check the action filter still hides it.
 
 - [ ] **Step 2: Run them; they fail.**
 
@@ -2135,7 +2240,7 @@ const residenceFields = (r: { place: string; fromDate: unknown; toDate: unknown 
   - **POST:**
     1. `requireLivePerson`, then `authorize(access, 'person.edit', { kind: 'person', personId })`.
     2. Parse `residenceInputSchema`.
-    3. In a transaction: insert, then `audit({ action: 'residence.create', entityType: 'residence', entityId, personIds: [personId], after: residenceFields(row) })`. Reply 201 `{ id }`.
+    3. In a transaction, under a per-person lock (`select … from persons where id = $1 for update`): count the person's residences. At `RESIDENCES_MAX` (50), throw `invalid('place', 'A person can have at most 50 places of residence')`. Otherwise insert, then `audit({ action: 'residence.create', entityType: 'residence', entityId, personIds: [personId], after: residenceFields(row) })`. Reply 201 `{ id }`.
   - **PATCH:** `requireResidence`, `authorize` on `r.personId`, parse `residenceInputSchema` (the full record), then `changedFields(r, input, ['place','fromDate','toDate'])`. Update and audit `residence.update` when something changed. 204.
   - **DELETE:** `requireResidence`, `authorize`, then in a transaction: `db.delete(residences)` and audit `residence.delete` with `before: residenceFields(r)`. 204.
 
@@ -2158,7 +2263,14 @@ const residenceFields = (r: { place: string; fromDate: unknown; toDate: unknown 
       })
       .from(auditLog)
       .leftJoin(users, eq(users.id, auditLog.userId))
-      .where(and(eq(auditLog.treeId, access.treeId), arrayContains(auditLog.personIds, [person.id])))
+      .where(
+        and(
+          eq(auditLog.treeId, access.treeId),
+          arrayContains(auditLog.personIds, [person.id]),
+          // Decision 13: only changes to people and relations, never member/steward/invite rows.
+          or(...HISTORY_ACTION_PREFIXES.map((prefix) => like(auditLog.action, `${prefix}%`))),
+        ),
+      )
       .orderBy(desc(auditLog.createdAt), desc(auditLog.id))
       .limit(HISTORY_LIMIT);
     const entries: HistoryEntry[] = rows.map((r) => ({
@@ -2179,7 +2291,7 @@ const residenceFields = (r: { place: string; fromDate: unknown; toDate: unknown 
   });
 ```
 
-  `arrayContains` comes from `drizzle-orm` and compiles to `person_ids @> $1`, which uses the GIN index. Entries created in the same millisecond tie-break on `id`, which is random. So the test should compare action **sets** for rows written in one transaction, or create them in separate requests (it does).
+  `like` and `or` come from `drizzle-orm`. `arrayContains` comes from `drizzle-orm` and compiles to `person_ids @> $1`, which uses the GIN index. Entries created in the same millisecond tie-break on `id`, which is random. So the test should compare action **sets** for rows written in one transaction, or create them in separate requests (it does).
 
 - [ ] **Step 4: Run the tests; they pass.** Register `residencesRoutes` in `app.ts`.
 
@@ -2396,11 +2508,13 @@ export const deletionRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, 
   });
 
   app.post('/api/v1/trees/:treeId/persons/:personId/delete', async (req) => {
-    const access = await loadAccess(db, idParam(req.params, 'treeId'), req.user!.id);
+    const treeId = idParam(req.params, 'treeId');
+    await loadAccess(db, treeId, req.user!.id); // outsiders: 404 before the body
     const personId = idParam(req.params, 'personId');
     const { mode } = parseBody(deletePersonSchema, req.body);
     const batchId = await db.transaction(async (tx) => {
-      await lockTreeGraph(tx, access.treeId);
+      await lockTreeGraph(tx, treeId);
+      const access = await loadAccess(tx, treeId, req.user!.id);
       // Serialises with a root change (PATCH /trees/:id) and reads the current root.
       const [tree] = await tx
         .select({ rootPersonId: trees.rootPersonId })
@@ -2418,10 +2532,11 @@ export const deletionRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, 
   });
 
   app.post('/api/v1/trees/:treeId/unions/:unionId/delete', async (req) => {
-    const access = await loadAccess(db, idParam(req.params, 'treeId'), req.user!.id);
+    const treeId = idParam(req.params, 'treeId');
     const unionId = idParam(req.params, 'unionId');
     const batchId = await db.transaction(async (tx) => {
-      await lockTreeGraph(tx, access.treeId);
+      await lockTreeGraph(tx, treeId);
+      const access = await loadAccess(tx, treeId, req.user!.id);
       const graph = await loadLiveGraph(tx, access.treeId);
       if (!graph.unions.some((u) => u.id === unionId)) throw notFound();
       const plan = planUnionDeletion(graph, unionId);
@@ -2432,10 +2547,11 @@ export const deletionRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, 
   });
 
   app.post('/api/v1/trees/:treeId/parent-child/:linkId/delete', async (req) => {
-    const access = await loadAccess(db, idParam(req.params, 'treeId'), req.user!.id);
+    const treeId = idParam(req.params, 'treeId');
     const linkId = idParam(req.params, 'linkId');
     const batchId = await db.transaction(async (tx) => {
-      await lockTreeGraph(tx, access.treeId);
+      await lockTreeGraph(tx, treeId);
+      const access = await loadAccess(tx, treeId, req.user!.id);
       const graph = await loadLiveGraph(tx, access.treeId);
       if (!graph.parentChild.some((l) => l.id === linkId)) throw notFound();
       const plan = planLinkDeletion(graph, linkId);
@@ -2450,6 +2566,7 @@ export const deletionRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, 
   **Notes on the code above:**
   - `loadLiveGraph` reads by `tree_id`, so another tree's union or link id isn't in the graph and gives a 404.
   - The preview reads the root from `access.rootPersonId`. The delete re-reads it under the lock.
+  - **Locks:** the delete routes take `lockTreeGraph` **before** `loadAccess(tx, …)`, so the steward grant scopes come from the same graph the plan is computed on. The advisory lock on a tree id that's not the user's is harmless: `loadAccess` 404s right after. The lock order is advisory lock, then the `trees` row, then rows (ground rules).
   - Register `deletionRoutes` in `app.ts`.
 
 - [ ] **Step 4: Run the test; it passes.** Also re-run `trees/branch.int.test.ts`: the branch CTE must ignore soft-deleted rows. It already filters `deleted_at`, so it needs no change.
@@ -2495,6 +2612,10 @@ export const deletionRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, 
   5. **Duplicate-link conflict:**
      - Delete Leo's link (relation batch). Re-link Leo to Dan+Ann with `relatives` `as: 'child'`.
      - Restoring the link batch gives 409, and nothing changed.
+  5a. **Cycle on restore:**
+      - Delete the link Leo→(Dan+Ann) (relation batch b).
+      - Make Dan Leo's child: `POST …/persons/<Leo>/relatives { personId: Dan, as: 'child' }`. That's allowed now that Leo is no longer Dan's child.
+      - Restoring b gives 409 `CONFLICT` (`hasCycle`), and nothing changed: the snapshot is equal and b is still listed.
   6. **Order independence:**
      - Delete Ann (`person`): Dan+Ann becomes (Dan, null). Then delete Dan: the union has no partner left, so it's soft-deleted in Dan's batch.
      - Restore Ann's batch first: the union is still hidden (it's in Dan's batch), and Ann's slot is restored on the row.
@@ -2510,6 +2631,12 @@ export const deletionRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, 
      - The batch row is gone.
      - Audit rows with `entityId` Dan (`person.create` etc.) are gone.
      - The audit has `trash.erase`, plus `steward.revoke` ×2 and `invite.revoke` ×2.
+  7a. **Erase never destroys a live union:**
+      - Delete the union Leo+Zoe as b1. Delete Zoe (`person`) as b2: Zoe's only union is already deleted, so b2 just takes Zoe.
+      - Restore b1: the union is live again, still holding Zoe's id, while Zoe is deleted.
+      - Erase b2: 204. The Leo+Zoe union row still exists, is live, has Zoe's slot emptied (`partner_b_id` null) and keeps Leo.
+      - Without the slot-emptying step the partner FK cascade would have deleted it. Assert the row by id.
+  7b. **Erase removes every audit row naming the erased person:** after 7, no `audit_log` row of the tree has Dan's id in `person_ids`. That includes the `union.update` or `link.*` rows that named him.
   8. **Permissions:**
      - The steward S and the editor E get 403 on list, detail, restore and erase.
      - An outsider gets 404 (also covered by isolation).
@@ -2520,7 +2647,7 @@ export const deletionRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, 
 - [ ] **Step 3: Implement** `apps/api/src/trees/trash.ts`
 
 ```ts
-import type { TrashBatch, TrashBatchDetail, TrashRoot } from '@family-tree/shared';
+import { hasCycle, type TrashBatch, type TrashBatchDetail, type TrashRoot } from '@family-tree/shared';
 import { and, arrayOverlaps, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import type { Queryable, Tx } from '../db/client.js';
 import {
@@ -2536,7 +2663,7 @@ import {
 } from '../db/schema.js';
 import { conflict, isUniqueViolation, notFound } from '../errors.js';
 import { audit, type AuditActor } from './audit.js';
-import { lockTreeGraph } from './graph.js';
+import { loadLiveGraph } from './graph.js';
 import { fullName, summaryColumns } from './people.js';
 
 type BatchRow = typeof deletionBatches.$inferSelect;
@@ -2632,7 +2759,7 @@ export async function trashBatchDetail(db: Queryable, treeId: string, batchId: s
   };
 }
 
-/** Locks and returns an unrestored batch of this tree, or 404. Take lockTreeGraph first. */
+/** Locks and returns an unrestored batch of this tree, or 404. The caller took lockTreeGraph first. */
 async function lockBatch(tx: Tx, treeId: string, batchId: string) {
   const [b] = await tx
     .select()
@@ -2646,10 +2773,9 @@ async function lockBatch(tx: Tx, treeId: string, batchId: string) {
 const restoreConflict = () =>
   conflict('This can’t be restored because the family has changed since it was deleted');
 
-/** All or nothing (decision 7). */
+/** All or nothing (decision 7). The caller holds lockTreeGraph and has authorised. */
 export async function restoreBatch(tx: Tx, actor: AuditActor, batchId: string) {
   const { treeId } = actor;
-  await lockTreeGraph(tx, treeId);
   const b = await lockBatch(tx, treeId, batchId);
   for (const s of b.slots) {
     const [u] = await tx
@@ -2680,6 +2806,8 @@ export async function restoreBatch(tx: Tx, actor: AuditActor, batchId: string) {
     if (isUniqueViolation(err)) throw restoreConflict();
     throw err;
   }
+  // A link revived here may close a loop with links added since (decision 7).
+  if (hasCycle(await loadLiveGraph(tx, treeId))) throw restoreConflict();
   await tx.update(deletionBatches).set({ restoredAt: sql`now()` }).where(eq(deletionBatches.id, b.id));
   await audit(tx, actor, {
     action: 'trash.restore',
@@ -2690,10 +2818,9 @@ export async function restoreBatch(tx: Tx, actor: AuditActor, batchId: string) {
   });
 }
 
-/** Decision 8. */
+/** Decision 8. The caller holds lockTreeGraph and has authorised. */
 export async function eraseBatch(tx: Tx, actor: AuditActor, batchId: string) {
   const { treeId } = actor;
-  await lockTreeGraph(tx, treeId);
   const b = await lockBatch(tx, treeId, batchId);
   const ids = (await tx.select({ id: persons.id }).from(persons).where(eq(persons.deletionBatchId, b.id))).map((r) => r.id);
   const unionIds = (await tx.select({ id: unions.id }).from(unions).where(eq(unions.deletionBatchId, b.id))).map((r) => r.id);
@@ -2739,6 +2866,25 @@ export async function eraseBatch(tx: Tx, actor: AuditActor, batchId: string) {
     if (gone.size > 0) await tx.delete(branchStewards).where(inArray(branchStewards.id, [...gone]));
   }
 
+  if (ids.length > 0) {
+    // Unions outside this batch that still hold an erased person next to someone else (for
+    // example a union restored from another batch): empty that slot, or the partner FK's
+    // ON DELETE CASCADE would destroy a union that may be live. A union whose only partner is
+    // erased goes with them.
+    const outside = await tx
+      .select({ id: unions.id, a: unions.partnerAId, b: unions.partnerBId, batch: unions.deletionBatchId })
+      .from(unions)
+      .where(and(eq(unions.treeId, treeId), or(inArray(unions.partnerAId, ids), inArray(unions.partnerBId, ids))));
+    const erasedSet = new Set(ids);
+    for (const u of outside) {
+      if (u.batch === b.id) continue;
+      const aGone = u.a !== null && erasedSet.has(u.a);
+      const bGone = u.b !== null && erasedSet.has(u.b);
+      if (aGone && !bGone && u.b !== null) await tx.update(unions).set({ partnerAId: null }).where(eq(unions.id, u.id));
+      if (bGone && !aGone && u.a !== null) await tx.update(unions).set({ partnerBId: null }).where(eq(unions.id, u.id));
+    }
+  }
+
   await tx.delete(parentChild).where(eq(parentChild.deletionBatchId, b.id));
   await tx.delete(unions).where(eq(unions.deletionBatchId, b.id));
   // Cascades to their residences and to rows of other batches that still point at them.
@@ -2751,7 +2897,8 @@ export async function eraseBatch(tx: Tx, actor: AuditActor, batchId: string) {
         eq(auditLog.treeId, treeId),
         or(
           inArray(auditLog.entityId, erased),
-          ids.length > 0 ? and(eq(auditLog.entityType, 'residence'), arrayOverlaps(auditLog.personIds, ids)) : undefined,
+          // Every row that names an erased person (decision 8).
+          ids.length > 0 ? arrayOverlaps(auditLog.personIds, ids) : undefined,
         ),
       ),
     );
@@ -2786,25 +2933,33 @@ export const trashRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, { a
   });
 
   app.post(`${base}/:batchId/restore`, async (req, reply) => {
-    const access = await loadAccess(db, idParam(req.params, 'treeId'), req.user!.id);
-    authorize(access, 'trash.restore', TREE);
+    const treeId = idParam(req.params, 'treeId');
     const batchId = idParam(req.params, 'batchId');
-    await db.transaction((tx) => restoreBatch(tx, access, batchId));
+    await db.transaction(async (tx) => {
+      await lockTreeGraph(tx, treeId);
+      const access = await loadAccess(tx, treeId, req.user!.id);
+      authorize(access, 'trash.restore', TREE);
+      await restoreBatch(tx, access, batchId);
+    });
     return reply.code(204).send();
   });
 
   app.delete(`${base}/:batchId`, async (req, reply) => {
-    const access = await loadAccess(db, idParam(req.params, 'treeId'), req.user!.id);
-    authorize(access, 'trash.erase', TREE);
+    const treeId = idParam(req.params, 'treeId');
     const batchId = idParam(req.params, 'batchId');
-    await db.transaction((tx) => eraseBatch(tx, access, batchId));
+    await db.transaction(async (tx) => {
+      await lockTreeGraph(tx, treeId);
+      const access = await loadAccess(tx, treeId, req.user!.id);
+      authorize(access, 'trash.erase', TREE);
+      await eraseBatch(tx, access, batchId);
+    });
     return reply.code(204).send();
   });
 };
 ```
 
   **Notes on the code above:**
-  - Add the imports (`TREE`, `authorize`, `loadAccess`, `idParam`, `requireSession`, the trash functions), and register `trashRoutes` in `app.ts`.
+  - Add the imports (`TREE`, `authorize`, `loadAccess`, `lockTreeGraph`, `idParam`, `requireSession`, the trash functions), and register `trashRoutes` in `app.ts`.
   - The count subqueries in `summarise` select by `deletion_batch_id`. The detail queries are scoped by batch id only, which is safe because `summarise` already proved the batch belongs to this tree.
   - In `restoreBatch`, an `AppError` thrown inside the transaction rolls everything back, including slots already put back.
   - **`tree-helpers.ts`:** add `softDeleteBatch(db, treeId, userId, personIds)`. It inserts a `person` batch and tags the given people, for isolation snapshots.
@@ -2823,6 +2978,8 @@ export const trashRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, { a
 
 Each change below happens **inside the same transaction** as the write. Where a route writes with a single `db.update`/`db.insert` today, wrap the write in `db.transaction(async (tx) => { …write with tx…; await audit(tx, …) })`. Never put tokens or token hashes in `before`/`after`.
 
+**`personIds` rule (decision 13):** `member.*`, `steward.*` and `invite.*` rows **never** set `personIds`. The anchor and target ids stay in `after`, which only a future owner-only view reads. Only `tree.*` and `person.*` rows below name people.
+
 | Route | Action | Entity | `before` → `after` | `personIds` |
 |---|---|---|---|---|
 | POST /trees | `tree.create`, then `person.create` | tree / person | — → `{ name }` / the root's fields | [root] for the person row |
@@ -2832,12 +2989,16 @@ Each change below happens **inside the same transaction** as the write. Where a 
 | POST /trees/:id/restore | `tree.restore` | tree | — | — |
 | PATCH members/:userId | `member.role` | member (entityId = userId) | `{ role }` → `{ role }` | — |
 | DELETE members/:userId | `member.remove` | member | `{ role }` → — | — |
+| DELETE members/:userId (grants) | `steward.revoke` for every grant the removal cascades away: the member's own and every grant derived from them. Collect them before the delete, with the same closure walk as `eraseBatch` | grant | `{ userId }` → `{ reason: 'member removed' }` | — |
 | POST transfer | `ownership.transfer` | member (the new owner) | `{ ownerUserId: old }` → `{ ownerUserId: new }` | — |
-| POST stewards | `steward.grant` | grant | — → `{ userId, anchorPersonId, parentGrantId }` | [anchor] |
-| DELETE stewards/:id | `steward.revoke` | grant | `{ userId, anchorPersonId }` → `{ cascades: true }` | [anchor] |
-| POST invites | `invite.create` | invite | — → `{ role, stewardAnchorPersonId, targetPersonId }` | anchor and target, if set |
+| POST transfer (grants) | `steward.revoke` for each of the new owner's own grants it deletes | grant | `{ userId }` → `{ reason: 'became owner' }` | — |
+| POST stewards | `steward.grant` | grant | — → `{ userId, anchorPersonId, parentGrantId }` | — |
+| DELETE stewards/:id | `steward.revoke` for the grant **and** each derived grant the cascade removes | grant | `{ userId, anchorPersonId }` → `{ reason: 'revoked' }` | — |
+| POST invites | `invite.create` | invite | — → `{ role, stewardAnchorPersonId, targetPersonId }` | — |
 | DELETE invites/:id | `invite.revoke` | invite | — | — (only when a row was actually revoked: add `.returning({ id })`) |
-| POST invites/accept | `member.join` (actor = the joining user), plus `steward.grant` when a grant row was inserted (add `.returning`) | member / grant | — → `{ role, inviteId, personId }` | [personId] if claimed |
+| POST invites/accept | `member.join` (actor = the joining user), plus `steward.grant` when a grant row was inserted (add `.returning`) | member / grant | — → `{ role, inviteId, personId }` | — |
+
+**`PATCH /trees/:id` locking (ground rules, "Global lock order"):** inside its transaction, call `await lockTreeGraph(tx, access.treeId)` **first**, before the `persons … FOR SHARE` check and the `trees` update. The person delete takes the advisory lock, then `trees FOR UPDATE`, then updates persons. Without this, `PATCH /trees` (persons FOR SHARE, then update trees) could deadlock with it. `DELETE /trees/:id` and the tree restore touch only the `trees` row, so they need no advisory lock.
 
   **Notes on the table:**
   - In `POST /trees`, the actor is `{ treeId: tree.id, userId: user.id }`, because there is no `Access` yet.
@@ -2846,25 +3007,37 @@ Each change below happens **inside the same transaction** as the write. Where a 
 
 - [ ] **Step 1: Write the failing test** `audit.int.test.ts`. It's one flow, written with the API only:
   - **The steps:**
-    1. Create a tree, rename it, and change the root to a second person.
+    1. Create a tree, rename it, create a second person through `POST …/persons`, and change the root to them.
     2. Create an editor invite with a steward anchor. A second user (with 2FA) accepts it.
     3. Change their role to viewer.
     4. The owner grants them another anchor, then revokes it.
     5. Create and revoke a viewer invite.
     6. Remove the member.
     7. Delete the tree, then restore it.
-  - **Expected:** `auditRows(db, treeId).map(r => r.action)` equals this exact sequence:
+  - **Expected:** rows written in one transaction share `created_at`, because Postgres `now()` is the transaction start. So group `auditRows(db, treeId)` by `createdAt` (in order), sort the actions inside each group, and compare with `toEqual`:
     ```
-    tree.create, person.create, tree.rename, tree.changeRoot,
-    invite.create, member.join, steward.grant, member.role,
-    steward.grant, steward.revoke, invite.create, invite.revoke,
-    member.remove, tree.delete, tree.restore
+    [person.create, tree.create]          create tree (root card)
+    [tree.rename]
+    [person.create]                       second person via the API
+    [tree.changeRoot]
+    [invite.create]
+    [member.join, steward.grant]          accept (with the invite's anchor)
+    [member.role]
+    [steward.grant]
+    [steward.revoke]
+    [invite.create]
+    [invite.revoke]
+    [member.remove, steward.revoke]       removal cascades the invite's grant away
+    [tree.delete]
+    [tree.restore]
     ```
-    Use `toEqual`. Each request is separate, so `created_at` orders them; if two rows tie, sort by action.
   - **Also assert:**
     - `member.join.userId` is the second user.
     - No row's `JSON.stringify(before)` or `JSON.stringify(after)` contains the invite token or its hash.
     - Revoking an already revoked invite adds no second `invite.revoke`.
+    - No `member.*`, `steward.*` or `invite.*` row has a non-empty `personIds`.
+    - Revoking a grant that has a derived grant writes two `steward.revoke` rows.
+  - **No deadlock:** 20 times, fire `PATCH /trees/:id { rootPersonId: P }` and `POST …/persons/P/delete { mode: 'person' }` concurrently (`Promise.all`) on fresh people. Each pair settles with 2xx/4xx, never 500. Postgres reports a deadlock as `40P01`, which surfaces as 500 `INTERNAL`.
 
 - [ ] **Step 2: Run it; it fails.** **Step 3: Implement** the table above. Re-run every existing `routes/*.int.test.ts`: none may break.
 
@@ -2980,8 +3153,13 @@ export function startPurgeJob(db: Db, log: JobLog, intervalMs: number): () => vo
   - It may run in production: it only does what the scheduled job does.
 
   **Scripts:**
-  - `apps/api/package.json`: `"purge-trees": "NODE_OPTIONS=--conditions=development tsx src/trees/purge-cli.ts"`.
+  - `apps/api/package.json`:
+    - `"purge-trees": "NODE_OPTIONS=--conditions=development tsx src/trees/purge-cli.ts"` (dev, with tsx).
+    - `"purge-trees:prod": "node dist/trees/purge-cli.js"`.
   - Root `package.json`: `"purge-trees": "docker compose exec api pnpm --filter @family-tree/api purge-trees"`.
+  - **Production image:** `apps/api/Dockerfile` builds with `pnpm --filter @family-tree/api... build` (`tsc -p tsconfig.build.json`, so `src/trees/purge-cli.ts` becomes `dist/trees/purge-cli.js`). It ships `pnpm deploy --prod /out`, which contains `dist/` and the prod dependencies, but no tsx and no pnpm.
+  - So in production the one-off command is `docker compose exec api node dist/trees/purge-cli.js`. Usually it isn't needed, because the in-process job runs.
+  - Verify it: `pnpm --filter @family-tree/api build && ls apps/api/dist/trees/purge-cli.js`. Phase 7's `self-hosting.md` documents the command. `tsconfig.build.json` must not exclude `*-cli.ts`; check it.
 
   **`.env.production.example`:** add `# TREE_PURGE_INTERVAL_MINUTES=60   # 0 turns the in-process purge off`.
 
@@ -3744,7 +3922,7 @@ export function FuzzyDateField({
 ## Carry-forward notes for later phases
 
 - **Phase 5 (graph and canvas):**
-  - The graph endpoint authorises with `tree.view`. Per person it returns `canEdit`, `canAddRelative` and `canDelete`, computed exactly as `loadPersonView` does: `can(person.edit)`, `can(person.add, [id])`, and owner or in scope. Compute these in one pass, not per card.
+  - The graph endpoint authorises with `tree.view`. Per person it returns `canEdit`, `canAddRelative` and `canDelete`, computed exactly as `loadPersonView` does: `can(person.edit)`, `can(person.add, [id])` and `can(person.delete, [id])`. Compute these in one pass, not per card.
   - The card "+" buttons call `createPerson` with `attach` (`as`, `unionId`). "Which union?" for a child of someone with several partners is the `unionId` choice from `AddRelativeForm`. Reuse that form.
   - Clicking a union node edits it with `PATCH /unions/:id` (`updateUnion`).
   - The **duplicate check** goes in front of `createPerson`, in `AddPersonForm` and `AddRelativeForm`. Add `GET /trees/:id/persons/similar?name=&birthYear=`. With `pg_trgm` it belongs in phase 6; in phase 5, use a plain `ILIKE` and year match, or schedule it with the search work.
