@@ -170,9 +170,10 @@
       - Over the limit is `403 QUOTA_EXCEEDED`, like the tree limit.
     - **Per person:** at most 50 photos.
     - **Per user:** 30 uploads per 10 minutes (a rate limit). The spec has no per-user byte quota, so none is added.
+    - **Per process:** 2 photos decode at once and at most 8 wait. Beyond that the upload is `503 RATE_LIMITED` with `Retry-After: 5`, not an unbounded queue of 10 MB buffers.
 15. **Errors for photos:**
     - A rejected file is `400 VALIDATION` with `details: { reason }`. The reason is `type`, `tooLarge`, `dimensions`, `unreadable` or `tooMany`.
-    - Fastify's `FST_ERR_CTP_BODY_TOO_LARGE` (413) and `FST_ERR_CTP_INVALID_MEDIA_TYPE` (415) are mapped to the same shape (`tooLarge`, `type`), keeping their status.
+    - Fastify's `FST_ERR_CTP_BODY_TOO_LARGE` (413) and `FST_ERR_CTP_INVALID_MEDIA_TYPE` (415) are mapped to the same shape (`tooLarge`, `type`), keeping their status, **on the upload route only**, by an error handler inside the photos plugin. Other routes keep the existing mapping.
     - The web maps each reason to a fixed message.
 16. **Audit and History:**
     - New actions: `photo.create` (after: width, height, bytes), `photo.primary` and `photo.delete` (before: width, height, bytes).
@@ -188,7 +189,7 @@
     - **Parameters:**
       - `q`: up to 5 words;
       - `bornFrom`, `bornTo`, `diedFrom`, `diedTo` (on `sort_year`);
-      - `place`: a case-insensitive substring of the birth place, death place or any residence;
+      - `place`: a case- and accent-insensitive substring (`lower(family_unaccent(…))` on both sides) of the birth place, death place or any residence;
       - `status`: `living` or `deceased`;
       - `branch`: a person id, using the spec §4 rule without rule 5, the same as the full view's branch (Phase 5 decision 4);
       - `limit`: default 20, maximum 50.
@@ -208,7 +209,7 @@
     - The candidate query becomes a trigram prefilter:
       - the given name `<%` `search_name`, at threshold 0.3;
       - the birth year within ±2, or unknown;
-      - up to 200 candidates by similarity.
+      - up to 200 candidates, ordered by given-name plus surname `word_similarity`, then `abs(birth_sort_year - year) nulls last`, then id.
     - `findSimilar` then applies the Phase 5 rules and ranking to them.
 20. **Relationship path** (spec §6 "How are we related?"):
     - **The search:** breadth-first over **parent, child and partner** edges, with all four child kinds as parent links (spec §3). Neighbours are visited in a fixed order, parents, then children, then partners, then by id, so the shortest path is deterministic.
@@ -405,12 +406,21 @@ const out = await sharp(jpeg, { autoOrient: true, limitInputPixels: 50e6, failOn
   .resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true }).webp({ quality: 82 })
   .toBuffer({ resolveWithObject: true });
 const m = await sharp(out.data).metadata();
-console.log(JSON.stringify({ vips: sharp.versions.vips, w: out.info.width, h: out.info.height, exif: !!m.exif, icc: !!m.icc, marker: out.data.includes(Buffer.from('secret-marker')) }));
+// Decode PNG and WebP too, and run the thumbnail's attention crop (other SIMD paths).
+const decoded = [];
+for (const fmt of ['png', 'webp']) {
+  const src = await sharp({ create: { width: 900, height: 600, channels: 3, background: '#36c' } })[fmt]().toBuffer();
+  const t = await sharp(src, { autoOrient: true, limitInputPixels: 50e6, failOn: 'error', sequentialRead: true })
+    .resize({ width: 256, height: 256, fit: 'cover', position: 'attention' }).webp({ quality: 78 })
+    .toBuffer({ resolveWithObject: true });
+  decoded.push(`${fmt}:${t.info.width}x${t.info.height}`);
+}
+console.log(JSON.stringify({ vips: sharp.versions.vips, w: out.info.width, h: out.info.height, exif: !!m.exif, icc: !!m.icc, marker: out.data.includes(Buffer.from('secret-marker')), decoded }));
 ```
 
   Run: `node <scratchpad>/sharp-check.mjs apps/api`
 
-  Expected: `{"vips":"8.18.7","w":1200,"h":1600,"exif":false,"icc":false,"marker":false}`. The orientation-6 input is rotated, so it is 1200 wide and 1600 high, with no metadata. "Illegal instruction" (exit code 132) means the fallback of decision 1.
+  Expected: `{"vips":"8.18.7","w":1200,"h":1600,"exif":false,"icc":false,"marker":false,"decoded":["png:256x256","webp:256x256"]}`. If the attention crop fails with `sequentialRead: true` ("out of order read"), drop `sequentialRead` for the thumbnail in Task 7's `processPhoto`, and say so in the commit. The orientation-6 input is rotated, so it is 1200 wide and 1600 high, with no metadata. "Illegal instruction" (exit code 132) means the fallback of decision 1.
 
 - [ ] **Step 5: The same check in the dev container and in the production image:**
 
@@ -635,6 +645,7 @@ function family() {
 // "me" is a woman; her father's family has two generations above, her husband's family one.
 const { g, people, union } = family();
 people({
+  stepKid: 'male',
   ggp: 'male', gp: 'male', gm: 'female', gpBro: 'male', pc: 'female', sc: 'male', scKid: 'female',
   dad: 'male', mum: 'female', aunt: 'female', auntHus: 'male', cousin: 'male', cw: 'female',
   cKid: 'female', me: 'female', sis: 'female', sisHus: 'male', niece: 'female', nx: 'unknown',
@@ -649,7 +660,7 @@ union('U_sc', 'sc', null, ['scKid']);
 union('U_g', 'gp', 'gm', ['dad', 'aunt']);
 union('U_au', 'aunt', 'auntHus', ['cousin']);
 union('U_c', 'cousin', 'cw', ['cKid']);
-union('U_dm', 'dad', 'mum', ['me', 'sis']);
+union('U_dm', 'dad', 'mum', ['me', 'sis', ['stepKid', 'step']]);
 union('U_dx', 'dad', 'ex', ['halfBro'], 'marriage', 'divorced');
 union('U_hb', 'halfBro', null, ['hbKid']);
 union('U_sh', 'sis', 'sisHus', ['niece']);
@@ -693,6 +704,7 @@ describe('kinship from "me"', () => {
     ['stepdad', 'stepfather', 'your mother’s partner'],
     ['stepsis', 'stepsister', 'your mother’s partner’s daughter'],
     ['ex', 'former stepmother', 'your father’s former wife'],
+    ['stepKid', 'stepbrother', 'your stepbrother'],
   ])('%s is my %s', (to, term, chain) => {
     const steps = fromMe(to)!;
     expect(kinshipTerm(steps)).toBe(term);
@@ -734,6 +746,19 @@ describe('kinship in other directions', () => {
     expect(kinshipTerm(relationshipPath(line, 'a5', 'a0')!)).toBe('3rd great-grandchild');
     expect(kinshipTerm(relationshipPath(line, 'a3', 'a2')!)).toBe('child');
     expect(kinshipTerm(fromMe('nx')!.slice(0, 3))).toBe('niece'); // the path prefix still words
+  });
+
+  it('prefers the shorter path, and blood over marriage at equal length', () => {
+    const { g: t, people: ps, union: u } = family();
+    ps({ g1: 'male', a: 'male', b: 'male', x: 'female', y: 'male', z: 'female' });
+    // x and z are first cousins (UUDD, 4 steps) through g1, and z is also x's brother's wife (UDP, 3).
+    u('G', 'g1', null, ['a', 'b']);
+    u('A', 'a', null, ['x', 'y']);
+    u('B', 'b', null, ['z']);
+    u('YZ', 'y', 'z');
+    expect(kinshipTerm(relationshipPath(t, 'x', 'z')!)).toBe('sister-in-law');
+    // y and z: partners (1 step) beats first cousins (4).
+    expect(kinshipTerm(relationshipPath(t, 'y', 'z')!)).toBe('wife');
   });
 
   it('formats ordinals', () => {
@@ -778,7 +803,7 @@ describe('the path itself', () => {
 
 - [ ] **Step 2: Run it; it fails** (no module).
 
-- [ ] **Step 3: Implement `kinship.ts`.** This code was run against the cases above while the plan was written; keep it as it is.
+- [ ] **Step 3: Implement `kinship.ts`.** The core of this code was run against the cases above while the plan was written. The step-sibling wording and the tie test were added after review; if a case disagrees, fix the code, not the expectation, unless the expectation is clearly wrong.
 
 ```ts
 import { z } from 'zod';
@@ -924,7 +949,7 @@ const greats = (n: number) => (n <= 0 ? '' : n <= 2 ? 'great-'.repeat(n) : `${nt
 /** One step, or a sibling: a parent step followed by a child step. */
 type Chunk =
   | { kind: 'parent' | 'child' | 'partner'; step: KinStep }
-  | { kind: 'sibling'; step: KinStep; half: boolean };
+  | { kind: 'sibling'; step: KinStep; up: KinStep; half: boolean };
 
 function chunksOf(steps: readonly KinStep[]): Chunk[] {
   const out: Chunk[] = [];
@@ -933,7 +958,7 @@ function chunksOf(steps: readonly KinStep[]): Chunk[] {
     const next = steps[i + 1];
     if (s.move === 'parent' && next?.move === 'child') {
       // Children of the same union are full siblings; through different unions, half.
-      out.push({ kind: 'sibling', step: next, half: s.unionId !== next.unionId });
+      out.push({ kind: 'sibling', step: next, up: s, half: s.unionId !== next.unionId });
       i++;
     } else out.push({ kind: s.move, step: s });
   }
@@ -970,8 +995,12 @@ function chunkWord(c: Chunk): string {
       return childWord(c.step);
     case 'partner':
       return partnerWord(c.step);
-    case 'sibling':
-      return `${c.half ? 'half-' : ''}${bySex(c.step.sex, 'brother', 'sister', 'sibling')}`;
+    case 'sibling': {
+      // A step link on either side of the turn makes a step-sibling, not a full or half one.
+      const viaStep = c.up.kind === 'step' || c.step.kind === 'step';
+      const prefix = viaStep ? 'step' : c.half ? 'half-' : '';
+      return `${prefix}${bySex(c.step.sex, 'brother', 'sister', 'sibling')}`;
+    }
   }
 }
 
@@ -1019,6 +1048,10 @@ export function kinshipTerm(steps: readonly KinStep[]): string | null {
     const up = blood[1]!.length;
     const down = blood[2]!.length;
     const half = up > 0 && down > 0 && steps[up - 1]!.unionId !== steps[up]!.unionId;
+    // A sibling through a step link (a parent's stepchild, recorded as kind 'step').
+    if (up === 1 && down === 1 && (steps[0]!.kind === 'step' || steps[1]!.kind === 'step')) {
+      return bySex(sex, 'stepbrother', 'stepsister', 'step-sibling');
+    }
     return bloodTerm(up, down, sex, half);
   }
   const term = relationByMarriage(pattern, sex);
@@ -1057,7 +1090,11 @@ function relationByMarriage(pattern: string, sex: Sex): string | null {
 }
 ```
 
-  Two things to know about this code:
+  **Step links at a sibling turn:** a child linked to a parent's union with kind `step` is that parent's other children's step-sibling. The chain and the term say "stepbrother"/"stepsister", not "brother" or "half-brother".
+
+  **In-law vs blood ties:** BFS keeps the first shortest path it finds, so the closest connection wins, not every connection. A shorter in-law path beats a longer blood one. At **equal** length, the neighbour order (parents, then children, then partners) reaches the blood path first, because its first step is a parent or child move, so blood wins the tie. Put this in `kinPathsFrom`'s doc comment, and add a test (in Step 1).
+
+  Two more things to know about this code:
   - A "UP" path (a parent's partner) is always a step-parent. If that partner were also a parent, the one-step path would be shorter, so BFS would have found it instead.
   - The same goes for "PD" (a partner's child) and "UPD" (a step-sibling).
 
@@ -1304,6 +1341,8 @@ describe('ObjectStore against SeaweedFS', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('image/webp');
     expect(res.headers.get('cache-control')).toBe('private, max-age=900');
+    expect(res.headers.get('content-disposition')).toBe('inline');
+    expect(new URL(url).searchParams.get('response-content-type')).toBe('image/webp');
     expect(new Uint8Array(await res.arrayBuffer())).toEqual(bytes);
   });
 
@@ -1412,7 +1451,14 @@ export function createObjectStore(config: Config, shared?: S3Client): ObjectStor
       const window = Math.floor(now / SIGN_WINDOW_MS) * SIGN_WINDOW_MS;
       const hit = cache.get(key);
       if (hit?.window === window) return hit.url;
-      const url = await getSignedUrl(signer, new GetObjectCommand({ Bucket, Key: key }), {
+      // Signed into the URL: always an inline WebP, whatever metadata the object carries.
+      const command = new GetObjectCommand({
+        Bucket,
+        Key: key,
+        ResponseContentType: 'image/webp',
+        ResponseContentDisposition: 'inline',
+      });
+      const url = await getSignedUrl(signer, command, {
         expiresIn: PHOTO_URL_TTL_SECONDS,
         signingDate: new Date(window),
       });
@@ -1528,8 +1574,9 @@ pnpm --filter @family-tree/api exec drizzle-kit generate --custom --name search_
 ```sql
 -- Spec §3 search: trigram matching, accent-insensitive. Both extensions ship with Postgres
 -- (contrib, present in postgres:17-alpine) and are "trusted", so a database owner can create them.
-CREATE EXTENSION IF NOT EXISTS pg_trgm;--> statement-breakpoint
-CREATE EXTENSION IF NOT EXISTS unaccent;--> statement-breakpoint
+-- WITH SCHEMA public: the wrapper below names public.unaccent explicitly.
+CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;--> statement-breakpoint
+CREATE EXTENSION IF NOT EXISTS unaccent WITH SCHEMA public;--> statement-breakpoint
 -- unaccent() is only STABLE (it reads a dictionary); generated columns and index expressions need
 -- IMMUTABLE. Naming the dictionary explicitly makes the result fixed, so the wrapper is safe.
 CREATE OR REPLACE FUNCTION family_unaccent(text) RETURNS text
@@ -1552,11 +1599,14 @@ CREATE OR REPLACE FUNCTION family_unaccent(text) RETURNS text
 
 ```ts
     index('persons_search_name_trgm_idx').using('gin', t.searchName.op('gin_trgm_ops')),
-    index('persons_birth_place_trgm_idx').using('gin', t.birthPlace.op('gin_trgm_ops')),
-    index('persons_death_place_trgm_idx').using('gin', t.deathPlace.op('gin_trgm_ops')),
+    // Expression indexes matching the accent-insensitive place filter (decision 18).
+    index('persons_birth_place_trgm_idx').using('gin', sql`lower(family_unaccent(${t.birthPlace})) gin_trgm_ops`),
+    index('persons_death_place_trgm_idx').using('gin', sql`lower(family_unaccent(${t.deathPlace})) gin_trgm_ops`),
 ```
 
-  **`residences`:** add `index('residences_place_trgm_idx').using('gin', t.place.op('gin_trgm_ops'))`.
+  **`residences`:** add `index('residences_place_trgm_idx').using('gin', sql\`lower(family_unaccent(${t.place})) gin_trgm_ops\`)`.
+
+  If drizzle-kit can't render an expression with an operator class, write these three place indexes by hand at the end of `0006_photos_search.sql` (`CREATE INDEX … USING gin (lower(family_unaccent("birth_place")) gin_trgm_ops)`). Then leave them out of `schema.ts`, with a comment saying so.
 
   **New tables** (after `residences`):
 
@@ -1674,7 +1724,12 @@ const GPS = {
 const canvas = (width: number, height: number, background = '#3366cc') =>
   sharp({ create: { width, height, channels: 3, background } });
 
-/** A JPEG with camera, copyright and GPS EXIF, optionally with an EXIF orientation. */
+const XMP = `<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:rights>${SECRET}</dc:rights></rdf:Description></rdf:RDF></x:xmpmeta>`;
+
+/**
+ * A JPEG with camera, copyright and GPS EXIF, a Display P3 ICC profile and an XMP packet holding
+ * SECRET, optionally with an EXIF orientation.
+ */
 export function jpegWithExif({
   width = 400,
   height = 200,
@@ -1682,22 +1737,41 @@ export function jpegWithExif({
 }: { width?: number; height?: number; orientation?: number } = {}) {
   let img = canvas(width, height).jpeg();
   if (orientation) img = img.withMetadata({ orientation });
-  return img.withExif({ IFD0: { Copyright: SECRET, Make: 'TestCam' }, IFD3: GPS }).toBuffer();
+  return img
+    .withExif({ IFD0: { Copyright: SECRET, Make: 'TestCam' }, IFD3: GPS })
+    .withIccProfile('p3') // sharp ships a P3 profile under this name
+    .withXmp(XMP)
+    .toBuffer();
+}
+
+/** A PNG with a tEXt chunk and an eXIf chunk, both holding SECRET (inserted after IHDR). */
+export async function pngWithTextChunks(): Promise<Buffer> {
+  const plain = await png(64, 64);
+  const ihdrEnd = 8 + 4 + 4 + 13 + 4; // signature, then IHDR (length, type, data, crc)
+  const exif = (await sharp(await jpegWithExif()).metadata()).exif!;
+  return Buffer.concat([
+    plain.subarray(0, ihdrEnd),
+    pngChunk('tEXt', Buffer.from(`Comment\0${SECRET}`, 'latin1')),
+    pngChunk('eXIf', exif.subarray(6)), // the TIFF part, without "Exif\0\0"
+    plain.subarray(ihdrEnd),
+  ]);
 }
 export const png = (w = 300, h = 300) => canvas(w, h, '#cc6633').png().toBuffer();
 export const webp = (w = 300, h = 300) => canvas(w, h, '#33cc66').webp().toBuffer();
 export const gif = () => canvas(20, 20).gif().toBuffer();
 
+function pngChunk(type: string, data: Buffer): Buffer {
+  const len = Buffer.alloc(4);
+  len.writeUInt32BE(data.length);
+  const typed = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(typed));
+  return Buffer.concat([len, typed, crc]);
+}
+
 /** A PNG whose header claims width × height but carries no pixels: the decompression-bomb shape. */
 export function pngHeaderOnly(width: number, height: number): Buffer {
-  const chunk = (type: string, data: Buffer) => {
-    const len = Buffer.alloc(4);
-    len.writeUInt32BE(data.length);
-    const typed = Buffer.concat([Buffer.from(type, 'ascii'), data]);
-    const crc = Buffer.alloc(4);
-    crc.writeUInt32BE(crc32(typed));
-    return Buffer.concat([len, typed, crc]);
-  };
+  const chunk = pngChunk;
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(width, 0);
   ihdr.writeUInt32BE(height, 4);
@@ -1712,12 +1786,22 @@ export function pngHeaderOnly(width: number, height: number): Buffer {
 }
 ```
 
+  Check the installed sharp's `lib/index.d.ts` for `withIccProfile('p3')` and `withXmp()`; both should be in 0.35. If `withXmp` is missing, drop the XMP part and note it in the commit. The ICC assertion must stay.
+
 - [ ] **Step 2: Write the failing `process.test.ts`:**
 
 ```ts
 import sharp from 'sharp';
 import { describe, expect, it } from 'vitest';
-import { gif, jpegWithExif, png, pngHeaderOnly, SECRET, webp } from '../../test/photo-fixtures.js';
+import {
+  gif,
+  jpegWithExif,
+  png,
+  pngHeaderOnly,
+  pngWithTextChunks,
+  SECRET,
+  webp,
+} from '../../test/photo-fixtures.js';
 import { PhotoRejected, processPhoto, sniffImageFormat } from './process.js';
 
 const rejected = async (p: Promise<unknown>, reason: string) => {
@@ -1739,9 +1823,13 @@ describe('sniffImageFormat', () => {
 });
 
 describe('processPhoto (spec §8)', () => {
-  it('strips EXIF and GPS: nothing of the original metadata survives', async () => {
+  it('strips EXIF, GPS, XMP and the ICC profile: nothing of the original metadata survives', async () => {
     const input = await jpegWithExif();
-    expect((await sharp(input).metadata()).exif).toBeDefined(); // the fixture really has it
+    // The fixture really has all of it.
+    const inMeta = await sharp(input).metadata();
+    expect(inMeta.exif).toBeDefined();
+    expect(inMeta.icc).toBeDefined();
+    expect(inMeta.xmp?.includes(Buffer.from(SECRET))).toBe(true);
     const out = await processPhoto(input);
     for (const buf of [out.full, out.thumb]) {
       const m = await sharp(buf).metadata();
@@ -1751,6 +1839,16 @@ describe('processPhoto (spec §8)', () => {
       expect(m.icc).toBeUndefined();
       expect(buf.includes(Buffer.from(SECRET))).toBe(false);
       expect(buf.includes(Buffer.from('TestCam'))).toBe(false);
+    }
+  });
+
+  it('drops PNG tEXt and eXIf chunks', async () => {
+    const input = await pngWithTextChunks();
+    expect(input.includes(Buffer.from(SECRET))).toBe(true);
+    const out = await processPhoto(input);
+    for (const buf of [out.full, out.thumb]) {
+      expect(buf.includes(Buffer.from(SECRET))).toBe(false);
+      expect((await sharp(buf).metadata()).exif).toBeUndefined();
     }
   });
 
@@ -1884,6 +1982,7 @@ export async function processPhoto(buf: Buffer): Promise<ProcessedPhoto> {
       .resize({ width: PHOTO_FULL_SIDE, height: PHOTO_FULL_SIDE, fit: 'inside', withoutEnlargement: true })
       .webp({ quality: 82 })
       .toBuffer({ resolveWithObject: true });
+    // If the attention crop errors with sequentialRead (Task 1 Step 4), open the thumbnail without it.
     const thumb = await open(buf)
       .resize({ width: PHOTO_THUMB_SIDE, height: PHOTO_THUMB_SIDE, fit: 'cover', position: 'attention' })
       .webp({ quality: 78 })
@@ -1900,12 +1999,22 @@ export async function processPhoto(buf: Buffer): Promise<ProcessedPhoto> {
 - [ ] **Step 5: `photos/limiter.ts`** and its test:
 
 ```ts
-/** Runs at most `n` jobs at once; the rest wait in order (decision 3). */
-export function limiter(n: number) {
+export class LimiterFull extends Error {
+  override name = 'LimiterFull';
+}
+
+/**
+ * Runs at most `n` jobs at once; up to `maxWaiting` more wait in order, and beyond that the call
+ * rejects at once with LimiterFull (decision 3), so a burst can't pile up buffered uploads.
+ */
+export function limiter(n: number, maxWaiting = Number.POSITIVE_INFINITY) {
   let active = 0;
   const waiting: (() => void)[] = [];
   return async <T>(job: () => Promise<T>): Promise<T> => {
-    if (active >= n) await new Promise<void>((resolve) => waiting.push(resolve));
+    if (active >= n) {
+      if (waiting.length >= maxWaiting) throw new LimiterFull('too many jobs waiting');
+      await new Promise<void>((resolve) => waiting.push(resolve));
+    }
     active++;
     try {
       return await job();
@@ -1921,6 +2030,7 @@ export function limiter(n: number) {
   - Start 5 jobs on `limiter(2)`, each awaiting a deferred promise you control.
   - Assert that at most 2 run at a time (track a counter), and that they finish in order.
   - A rejecting job releases its slot.
+  - With `limiter(1, 2)`, the 4th concurrent call rejects at once with `LimiterFull`, and the first three all finish.
 
 - [ ] **Step 6: Run both tests; they pass.** sharp runs locally in the unit suite, so `pnpm test` covers it without Docker.
 
@@ -1982,7 +2092,13 @@ export async function drainStorageDeletions(
     .select({ key: storageDeletions.key })
     .from(storageDeletions)
     .where(keys ? inArray(storageDeletions.key, [...keys]) : undefined)
-    .orderBy(asc(storageDeletions.createdAt))
+    // Backoff: fewest attempts first, then least recently tried, then oldest. A key that keeps
+    // failing can't hold up the rest of the queue.
+    .orderBy(
+      asc(storageDeletions.attempts),
+      sql`${storageDeletions.lastTriedAt} asc nulls first`,
+      asc(storageDeletions.createdAt),
+    )
     .limit(limit);
   let deleted = 0;
   let failed = 0;
@@ -2017,7 +2133,7 @@ export async function drainStorageDeletions(
      - the log spy got one error;
      - a later drain with the real store removes it.
   3. `queuePhotoObjects(db, eq(photos.personId, p.id))` for a person with two photo rows returns their four keys, and queueing again returns `[]` (already queued).
-  4. Draining with no `keys` takes the oldest first and respects `limit`.
+  4. Draining with no `keys` respects `limit`, and orders by fewest `attempts`, then least recently tried, then oldest. A key with `attempts = 5` is drained after a new one.
 
   Use unique key prefixes per test, and clean up any outbox rows left at the end.
 
@@ -2280,7 +2396,8 @@ export const signThumbs = (store: ObjectStore, keys: readonly (string | null)[])
   11. **Concurrency:** two uploads at once to a person with no photos end with exactly one primary.
   12. **Person view:** `GET /persons/:id` has `photos`, primary first, with working signed URLs, and `photoUsage`. A viewer sees the same photos.
   13. **Rate limit:** the 31st upload within 10 minutes by one user gets 429. Use a fresh user; process small PNGs.
-  14. **Audit hygiene:** no audit row of the tree contains `storage_key` text, `trees/` or `X-Amz-`.
+  14. **Busy:** register the plugin in a test app with the `photoJobs: limiter(0, 0)` option (every call is "full"). An upload answers **503** `RATE_LIMITED` with `Retry-After: 5`, and leaves no row or object. The real limiter: `limiter(1, 8)` admits 9 concurrent calls and refuses the 10th (unit test in `limiter.test.ts`). The web maps it through `toAuthError`'s `RATE_LIMITED` → `MESSAGES.tooMany`.
+  15. **Audit hygiene:** no audit row of the tree contains `storage_key` text, `trees/` or `X-Amz-`.
 
   Add to `isolation.int.test.ts`:
   - In `setup()`, add a photo row (`addPhotoRow(db, treeId, person.id)`), and `ids.photo`.
@@ -2315,7 +2432,7 @@ import {
   requireLivePhoto,
   toPhoto,
 } from '../photos/photos.js';
-import { limiter } from '../photos/limiter.js';
+import { LimiterFull, limiter } from '../photos/limiter.js';
 import { PhotoRejected, processPhoto } from '../photos/process.js';
 import { extraLimit } from '../security/limits.js';
 import { drainStorageDeletions, queueObjectDeletes } from '../storage/deletions.js';
@@ -2324,18 +2441,21 @@ import { audit } from '../trees/audit.js';
 import { isLivePerson, requireLivePerson } from '../trees/people.js';
 import type { TreeRouteOptions } from './trees.js';
 
-/** At most two photos decode at once per process (decision 3). */
-const photoJobs = limiter(2);
+const UPLOAD_URL = '/api/v1/trees/:treeId/persons/:personId/photos';
+
+/** At most two photos decode at once per process, and eight wait (decision 3). */
+export const PHOTO_JOBS_WAITING_MAX = 8;
+const busy = () =>
+  new AppError('RATE_LIMITED', 503, 'Too many photos are being processed, try again shortly');
 
 export const photoRejected = (reason: PhotoRejectReason) =>
   new AppError('VALIDATION', 400, 'The photo was not accepted', { reason });
 const quotaFull = (limitBytes: number) =>
   new AppError('QUOTA_EXCEEDED', 403, 'This tree has used its photo storage', { limitBytes });
 
-export const photosRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
-  app,
-  { auth, db, config, storage },
-) => {
+export const photosRoutes: FastifyPluginAsync<
+  TreeRouteOptions & { photoJobs?: ReturnType<typeof limiter> }
+> = async (app, { auth, db, config, storage, photoJobs = limiter(2, PHOTO_JOBS_WAITING_MAX) }) => {
   // onRequest, not preHandler: the upload route decides who may send a body before it is read.
   app.addHook('onRequest', requireSession(auth));
 
@@ -2361,7 +2481,7 @@ export const photosRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
   const uploads = new WeakMap<FastifyRequest, { access: Access; personId: string }>();
 
   app.post(
-    '/api/v1/trees/:treeId/persons/:personId/photos',
+    UPLOAD_URL,
     {
       bodyLimit: PHOTO_UPLOAD_MAX_BYTES,
       // Who may upload is settled before the body is read: outsiders and viewers are never
@@ -2387,6 +2507,10 @@ export const photosRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
       try {
         processed = await photoJobs(() => processPhoto(req.body as Buffer));
       } catch (err) {
+        if (err instanceof LimiterFull) {
+          void reply.header('retry-after', '5');
+          throw busy();
+        }
         if (err instanceof PhotoRejected) throw photoRejected(err.reason);
         throw err;
       }
@@ -2513,19 +2637,33 @@ export const photosRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
 
   **`app.ts`:**
   - Register `photosRoutes` after `residencesRoutes`.
-  - In `setErrorHandler`, before the generic 4xx branch:
+  - The app's error handler is **not** changed: every other route keeps today's mapping (a 413 or 415 stays the generic 4xx `BAD_REQUEST`).
+  - Instead, the **photos plugin** sets its own error handler. It rewrites the two parser errors on the upload route only, and hands everything else to the inherited handler. Inside `photosRoutes`, after the content-type parser:
 
 ```ts
-    // Photo uploads (decision 15): a body over the limit, or a Content-Type no parser accepts.
-    if (err.code === 'FST_ERR_CTP_BODY_TOO_LARGE') {
-      return send(413, { code: 'VALIDATION', message: 'The photo was not accepted', details: { reason: 'tooLarge' } });
+  // Decision 15, upload route only: a body over the limit, or a Content-Type no parser accepts,
+  // becomes the photo error shape. Everything else keeps the app's handler and its shape.
+  const appHandler = app.errorHandler;
+  app.setErrorHandler(function (err, req, reply) {
+    const reason =
+      err.code === 'FST_ERR_CTP_BODY_TOO_LARGE'
+        ? 'tooLarge'
+        : err.code === 'FST_ERR_CTP_INVALID_MEDIA_TYPE'
+          ? 'type'
+          : null;
+    if (reason !== null && req.routeOptions.url === UPLOAD_URL) {
+      return reply.code(err.statusCode ?? 400).send({
+        error: { code: 'VALIDATION', message: 'The photo was not accepted', details: { reason } },
+      });
     }
-    if (err.code === 'FST_ERR_CTP_INVALID_MEDIA_TYPE') {
-      return send(415, { code: 'VALIDATION', message: 'The photo was not accepted', details: { reason: 'type' } });
-    }
+    return appHandler.call(this, err, req, reply);
+  });
 ```
 
-  `FST_ERR_CTP_INVALID_MEDIA_TYPE` can come from any JSON route given an odd Content-Type. A `VALIDATION`/`type` answer there is harmless: it was a 4xx `BAD_REQUEST` before, and the web never sends one.
+    Inside the encapsulated plugin, `app.errorHandler` is the inherited root handler, so non-photo errors keep exactly the existing shape.
+  - **Tests:**
+    - In `photos.int.test.ts`, the 413 and 415 cases have `details.reason`.
+    - An existing JSON route (for example `POST /persons` in `persons.int.test.ts`) given `content-type: image/gif` still answers the old generic `BAD_REQUEST`, with no `reason`.
 
 - [ ] **Step 7: Run** the photo tests, the isolation suite and `pnpm test:int`. Everything passes. Fill in the Task 8 `it.todo` (restore shows the photo again).
 
@@ -2615,7 +2753,7 @@ export async function withPhotoUrls(
 
 ```ts
 import { BIRTH_YEAR_SLACK, type ParsedSearchQuery, SEARCH_WORDS_MAX } from '@family-tree/shared';
-import { and, asc, between, desc, eq, gte, ilike, isNull, lte, or, type SQL, sql } from 'drizzle-orm';
+import { and, asc, between, desc, eq, gte, isNull, lte, or, type SQL, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { persons, photos, residences } from '../db/schema.js';
 import { branchQuery } from './branch.js';
@@ -2652,13 +2790,16 @@ export function searchPersons(db: Db, treeId: string, q: ParsedSearchQuery) {
   if (q.diedTo !== undefined) conds.push(lte(persons.deathSortYear, q.diedTo));
   if (q.status) conds.push(eq(persons.isLiving, q.status === 'living'));
   if (q.place) {
-    const pattern = `%${likeEscape(q.place)}%`;
+    // Accent- and case-insensitive on both sides: "montreal" finds "Montréal".
+    const pattern = sql`'%' || ${norm(likeEscape(q.place))} || '%'`;
+    const matches = (col: typeof persons.birthPlace | typeof residences.place) =>
+      sql`lower(family_unaccent(${col})) like ${pattern}`;
     conds.push(
       or(
-        ilike(persons.birthPlace, pattern),
-        ilike(persons.deathPlace, pattern),
+        matches(persons.birthPlace),
+        matches(persons.deathPlace),
         sql`exists (select 1 from ${residences} where ${residences.personId} = ${persons.id}
-          and ${residences.deletedAt} is null and ${residences.place} ilike ${pattern})`,
+          and ${residences.deletedAt} is null and ${matches(residences.place)})`,
       ),
     );
   }
@@ -2686,8 +2827,21 @@ export function searchPersons(db: Db, treeId: string, q: ParsedSearchQuery) {
 }
 
 /** Trigram candidates for the duplicate check; findSimilar does the final rules (decision 19). */
-export function similarCandidates(db: Db, treeId: string, q: { givenName: string; birthYear?: number }) {
+export function similarCandidates(
+  db: Db,
+  treeId: string,
+  q: { givenName: string; surname?: string | undefined; birthYear?: number | undefined },
+) {
   const given = norm(q.givenName);
+  // Given-name plus surname similarity, then the closest birth year, so the 200-row cap never
+  // drops the best match in a tree full of one first name.
+  const nameScore = q.surname
+    ? sql`word_similarity(${given}, ${persons.searchName}) + word_similarity(${norm(q.surname)}, ${persons.searchName})`
+    : sql`word_similarity(${given}, ${persons.searchName})`;
+  const yearGap =
+    q.birthYear === undefined
+      ? sql`0`
+      : sql`abs(${persons.birthSortYear} - ${q.birthYear}) nulls last`;
   return db.transaction(
     async (tx) => {
       await tx.execute(threshold(SIMILAR_THRESHOLD));
@@ -2707,7 +2861,7 @@ export function similarCandidates(db: Db, treeId: string, q: { givenName: string
                 ),
           ),
         )
-        .orderBy(desc(sql`word_similarity(${given}, ${persons.searchName})`), asc(persons.id))
+        .orderBy(desc(nameScore), yearGap, asc(persons.id))
         .limit(SIMILAR_CANDIDATES);
     },
     { accessMode: 'read only' },
@@ -2741,6 +2895,7 @@ export function similarCandidates(db: Db, treeId: string, q: { givenName: string
      - `place=leeds` gives Robert (birth place and residence).
      - `place=toronto` gives Robert (death place).
      - `place=100%` doesn't match everything (escaping).
+     - `place=LEÉDS` (case and accent) still gives Robert.
      - `branch=<Susan>` is Susan's branch: her ancestors, their descendants and partners. It includes Noah and excludes nobody of the Hale core. Compare with `branchPersonIds(db, tree, susan, null)`.
      - `q=Hale&status=living&bornFrom=1980` gives Emma, Mia, Leo and Noah.
   4. **Scope:** deleted people and other trees' people never appear (a `Margaret` in tree B, a deleted `Margaret` in tree A).
@@ -2776,7 +2931,7 @@ export function similarCandidates(db: Db, treeId: string, q: { givenName: string
   17. New cases:
       - `givenName=Jose&surname=Nunez` finds José Núñez (accents).
       - `givenName=Pepe` finds José through the nickname.
-      - A tree with 300 `Anna`s returns at most 5, and still includes the exact birth-year match first.
+      - **300 Annas:** a tree with 300 `Anna`s. Generate their uuids, sort them, and give only the **highest id** surname `Price` and birth year 1960; the others get other surnames and years. `givenName=Anna&surname=Price&birthYear=1960` returns at most 5, with that Anna first. Ordering by id alone would cut her off at the 200-row cap.
 
 - [ ] **Step 3: Run it; it fails.**
 
@@ -2927,8 +3082,9 @@ export const searchRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, { 
   4. **`search(t, { q: 'ann', status: 'living', bornFrom: undefined })`:**
      - It GETs `/trees/t/search?q=ann&status=living` (blank and undefined are left out).
      - It returns `results`.
-  5. **`relationship(t, a, b)`** GETs `/trees/t/relationship?from=a&to=b` and parses.
-  6. **`TREES_API_METHODS`** includes the five new methods. The `satisfies Record` check enforces it.
+  5. **`search(t, q, controller.signal)`** passes the signal to `fetch`. An aborted search resolves to the same result `getGraph` gives when aborted, and never throws.
+  6. **`relationship(t, a, b)`** GETs `/trees/t/relationship?from=a&to=b` and parses.
+  7. **`TREES_API_METHODS`** includes the five new methods. The `satisfies Record` check enforces it.
 
 - [ ] **Step 3: Implement `trees/api.ts`.**
 
@@ -2938,13 +3094,13 @@ export const searchRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, { 
   uploadPhoto(treeId: string, personId: string, file: Blob): Promise<Result<UploadedPhoto>>;
   setPrimaryPhoto(treeId: string, photoId: string): Promise<Result<void>>;
   deletePhoto(treeId: string, photoId: string): Promise<Result<void>>;
-  search(treeId: string, query: SearchQuery): Promise<Result<SearchResult[]>>;
+  search(treeId: string, query: SearchQuery, signal?: AbortSignal): Promise<Result<SearchResult[]>>;
   relationship(treeId: string, from: string, to: string): Promise<Result<Relationship>>;
 ```
 
   Add the same keys to `TREES_API_METHODS`.
 
-  **`request`** accepts a `Blob` body and a `reasons` map:
+  **`request`** already takes `signal?: AbortSignal` as its 7th parameter (used by `getGraph`). Keep that parameter where it is. Add the `reasons` map as an **8th** parameter, and teach `request` to send a `Blob` body:
 
 ```ts
   async function request<T>(
@@ -2954,6 +3110,8 @@ export const searchRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, { 
     parser?: Parser<T>,
     kind: CallKind = 'session',
     codes?: Partial<Record<string, string>>,
+    signal?: AbortSignal,
+    /** VALIDATION `details.reason` → fixed message (photos, decision 15). */
     reasons?: Partial<Record<string, string>>,
   ): Promise<Result<T>> {
     …
@@ -2986,6 +3144,7 @@ export const searchRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, { 
         uploadedPhotoSchema,
         'session',
         { QUOTA_EXCEEDED: MESSAGES.photoQuota, NOT_FOUND: MESSAGES.personNotFound },
+        undefined,
         {
           type: MESSAGES.photoType,
           tooLarge: MESSAGES.photoTooLarge,
@@ -3002,9 +3161,17 @@ export const searchRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, { 
       request('DELETE', `${t(id)}/photos/${enc(photoId)}`, undefined, undefined, 'session', {
         NOT_FOUND: MESSAGES.itemGone,
       }),
-    search: (id, query) =>
+    search: (id, query, signal) =>
       map(
-        request('GET', `${t(id)}/search${qs(query as Record<string, string | number | undefined>)}`, undefined, searchResponseSchema),
+        request(
+          'GET',
+          `${t(id)}/search${qs(query as Record<string, string | number | undefined>)}`,
+          undefined,
+          searchResponseSchema,
+          'session',
+          undefined,
+          signal,
+        ),
         (d) => d.results,
       ),
     relationship: (id, from, to) =>
@@ -3227,7 +3394,7 @@ export function PersonPhoto({
 - [ ] **Step 4: `photos/PhotoCropper.tsx`:**
 
 ```tsx
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { type CropBox, initialCrop, moveCrop, type Size, ZOOM_MAX, zoomCrop } from './crop';
 
 const VIEW = 320;
@@ -3250,8 +3417,14 @@ export function PhotoCropper({
   onDone: (box: CropBox | null) => void;
   onCancel: () => void;
 }) {
-  const url = useMemo(() => URL.createObjectURL(file), [file]);
-  useEffect(() => () => URL.revokeObjectURL(url), [url]);
+  // Created and revoked in one effect: StrictMode runs effects twice in dev, and a URL made in
+  // useMemo would be revoked by the first cleanup and never recreated.
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    const u = URL.createObjectURL(file);
+    setUrl(u);
+    return () => URL.revokeObjectURL(u);
+  }, [file]);
   const [img, setImg] = useState<Size | null>(null);
   const [box, setBox] = useState<CropBox | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -3265,6 +3438,7 @@ export function PhotoCropper({
         className="crop-view"
         style={img ? { width: img.width * scale, height: img.height * scale } : undefined}
       >
+        {url && (
         <img
           src={url}
           alt="The chosen photo"
@@ -3274,6 +3448,7 @@ export function PhotoCropper({
             setBox(initialCrop(s));
           }}
         />
+        )}
         {img && box && (
           <div
             className="crop-box"
@@ -3365,17 +3540,18 @@ export function PhotoCropper({
      - After `loadCropper(400, 200)`, **Upload this part** calls `cropToBlob(file, { x: 100, y: 0, size: 200 })`, and `uploadPhoto` gets the mocked blob.
      - Pressing ArrowLeft on the "Crop area" group moves it (its `style.left` decreases).
      - Zoom 2 makes it smaller.
-  4. **Client checks:** no `uploadPhoto` call in either case.
+  4. **StrictMode:** rendered inside `<StrictMode>`, the cropper's `img` has a `src` that was created and not yet revoked (spy on `URL.createObjectURL` and `URL.revokeObjectURL`). Unmounting revokes it.
+  5. **Client checks:** no `uploadPhoto` call in either case.
      - A GIF given through `fireEvent.change(input, { target: { files: [gif] } })`, which bypasses `accept`, shows `MESSAGES.photoType`.
      - A 10 MB + 1 byte JPEG shows `MESSAGES.photoTooLarge`.
-  5. **Server errors:**
+  6. **Server errors:**
      - `trees.failNext('uploadPhoto', { code: 'VALIDATION', message: MESSAGES.photoDimensions })` shows that message, and the cropper stays open so the user can cancel.
      - QUOTA shows `MESSAGES.photoQuota`.
-  6. **Actions:**
+  7. **Actions:**
      - With two photos, **Make main photo** on the second calls `setPrimaryPhoto` and moves the badge.
      - **Delete**, then **Delete photo**, calls `deletePhoto` and leaves one.
      - Both refresh the view.
-  7. **Viewer:** the photos show with the badge, but there's no "Add a photo", no "Make main photo" and no "Delete".
+  8. **Viewer:** the photos show with the badge, but there's no "Add a photo", no "Make main photo" and no "Delete".
 
 - [ ] **Step 6: Implement `pages/tree/PhotosTab.tsx`:**
 
@@ -3534,17 +3710,18 @@ export function PhotosTab({ treeId, view, reload, onChanged }: TabProps) {
 - [ ] **Step 8: CSS** (`styles.css`):
 
 ```css
-.panel-photo { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; float: right; display: grid; place-items: center; background: #e5e7eb; font-weight: 600; }
+/* Colours come from the theme tokens only (the app is `color-scheme: light dark`). */
+.panel-photo { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; float: right; display: grid; place-items: center; background: var(--surface); color: CanvasText; border: 1px solid var(--border); font-weight: 600; }
 .photo-grid { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 0.75rem; }
-.photo-thumb { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; display: grid; place-items: center; background: #e5e7eb; }
-.photo.is-primary .photo-thumb { outline: 3px solid #1d4ed8; outline-offset: 2px; }
-.badge { display: inline-block; font-size: 0.8rem; background: #dbeafe; color: #1e3a8a; border-radius: 999px; padding: 0 0.5rem; }
+.photo-thumb { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; display: grid; place-items: center; background: var(--surface); color: CanvasText; border: 1px solid var(--border); }
+.photo.is-primary .photo-thumb { outline: 3px solid var(--accent); outline-offset: 2px; }
+.badge { display: inline-block; font-size: 0.8rem; background: color-mix(in srgb, var(--accent) 18%, Canvas); color: CanvasText; border: 1px solid color-mix(in srgb, var(--accent) 45%, Canvas); border-radius: 999px; padding: 0 0.5rem; }
 .photo-actions { margin: 0.25rem 0 0; display: flex; flex-wrap: wrap; gap: 0.25rem; }
-.cropper .crop-view { position: relative; max-width: 100%; touch-action: none; user-select: none; }
+.cropper .crop-view { position: relative; max-width: 100%; overflow: hidden; touch-action: none; user-select: none; }
 .cropper .crop-view img { width: 100%; height: 100%; display: block; }
-.crop-box { position: absolute; box-shadow: 0 0 0 9999px rgb(0 0 0 / 45%); outline: 2px solid #fff; cursor: move; }
-.crop-box:focus-visible { outline: 3px solid #fbbf24; }
-.crop-view { overflow: hidden; }
+/* The dimmed surround is over the photo itself, so a translucent Canvas works in both themes. */
+.crop-box { position: absolute; box-shadow: 0 0 0 9999px color-mix(in srgb, Canvas 55%, transparent); outline: 2px solid CanvasText; cursor: move; }
+.crop-box:focus-visible { outline: 3px solid var(--accent); }
 ```
 
 - [ ] **Step 9: Run** the web tests, `pnpm lint` and `pnpm typecheck`. They pass.
@@ -3679,10 +3856,10 @@ export function PersonPicker({
      - The button reads "Filters (2)".
      - Choosing "In the branch of" Susan adds `branch: <susan>`.
      - **Clear filters** resets them.
-  6. **Nothing is sent** when the box is empty with no filters, or when Born from is after Born to. The range error shows "From must not be after to".
+  6. **Nothing is sent** when the box is empty with no filters, or when Born from is after Born to. The range error shows "From must not be after to". Typing "19x0" in Born from shows "Enter years as numbers, for example 1950", and nothing is sent.
   7. **Stale responses:**
      - Use a stub `TreesApi`, given through `TreesApiProvider`, whose first `search` resolves after its second.
-     - Only the second result list is shown.
+     - Only the second result list is shown, and the first call's `signal` is `aborted` by the time the second starts.
   8. **Errors:** `failNext('search', RATE_LIMITED)` shows `MESSAGES.tooMany`.
 
 - [ ] **Step 3: Implement `canvas/SearchBox.tsx`:**
@@ -3746,11 +3923,16 @@ export function SearchBox({
   const [error, setError] = useState<string | null>(null);
   const seq = useRef(0);
 
-  const parsed = searchQuerySchema.safeParse({ q, ...filters });
-  const rangeError = parsed.success
-    ? null
-    : (parsed.error.issues.find((i) => i.path[0] === 'bornTo' || i.path[0] === 'diedTo')?.message ?? null);
-  const key = parsed.success ? JSON.stringify(parsed.data) : '';
+  const years = [filters.bornFrom, filters.bornTo, filters.diedFrom, filters.diedTo];
+  const badYear = years.some((y) => y.trim() !== '' && !/^\d{1,4}$/.test(y.trim()));
+  const parsed = badYear ? null : searchQuerySchema.safeParse({ q, ...filters });
+  // Fixed messages only: never Zod's own coercion text.
+  const rangeError = badYear
+    ? 'Enter years as numbers, for example 1950'
+    : parsed && !parsed.success && parsed.error.issues.some((i) => i.path[0] === 'bornTo' || i.path[0] === 'diedTo')
+      ? 'From must not be after to'
+      : null;
+  const key = parsed?.success ? JSON.stringify(parsed.data) : '';
   const active = Object.values(filters).filter((v) => v !== '').length;
 
   useEffect(() => {
@@ -3759,9 +3941,11 @@ export function SearchBox({
       setResults(null);
       return;
     }
+    // A newer query (or unmount) aborts the request in flight, not just ignores it.
+    const controller = new AbortController();
     const timer = setTimeout(async () => {
-      const res = await api.search(treeId, JSON.parse(key) as SearchQuery);
-      if (id !== seq.current) return; // a newer search started
+      const res = await api.search(treeId, JSON.parse(key) as SearchQuery, controller.signal);
+      if (id !== seq.current || controller.signal.aborted) return; // a newer search started
       if (res.ok) {
         setResults(res.data);
         setError(null);
@@ -3770,7 +3954,10 @@ export function SearchBox({
         setError(res.error.message);
       }
     }, 250);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [api, treeId, key]);
 
   const set = (k: keyof Filters) => (e: { target: { value: string } }) =>
@@ -3880,14 +4067,14 @@ export function SearchBox({
 ```css
 .search-box { position: relative; }
 .search-results, .search-filters {
-  position: absolute; z-index: 15; background: #fff; border: 1px solid #ccd; border-radius: 8px;
-  padding: 0.5rem 0.75rem; min-width: 300px; max-height: 60vh; overflow: auto;
+  position: absolute; z-index: 15; background: Canvas; color: CanvasText; border: 1px solid var(--border);
+  border-radius: 8px; padding: 0.5rem 0.75rem; min-width: 300px; max-height: 60vh; overflow: auto;
 }
 .search-results ul { list-style: none; padding: 0; margin: 0; }
 .search-result { display: grid; grid-template-columns: 32px 1fr; column-gap: 0.5rem; width: 100%; text-align: left; background: none; color: inherit; border: 0; padding: 0.35rem; }
-.search-result:hover, .search-result:focus-visible { background: #eef2ff; }
-.result-photo { grid-row: span 3; width: 32px; height: 32px; border-radius: 50%; object-fit: cover; display: grid; place-items: center; background: #e5e7eb; font-size: 0.75rem; }
-.result-years, .result-relation { font-size: 0.85rem; color: #4b5563; }
+.search-result:hover, .search-result:focus-visible { background: color-mix(in srgb, var(--accent) 12%, Canvas); }
+.result-photo { grid-row: span 3; width: 32px; height: 32px; border-radius: 50%; object-fit: cover; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--border); font-size: 0.75rem; }
+.result-years, .result-relation { font-size: 0.85rem; color: var(--muted); }
 @media (max-width: 720px) { .search-results, .search-filters { left: 0; right: 0; min-width: 0; } }
 ```
 
@@ -4177,15 +4364,15 @@ function Result({
 - [ ] **Step 7: CSS:**
 
 ```css
-.react-flow__node.is-path .person-card { outline: 3px solid #f59e0b; outline-offset: 2px; }
-.react-flow__node.is-path .union-dot { background: #f59e0b; }
-.react-flow__edge.edge-path path { stroke: #f59e0b; stroke-width: 3; }
+.react-flow__node.is-path .person-card { outline: 3px solid var(--accent); outline-offset: 2px; background: color-mix(in srgb, var(--accent) 14%, Canvas); }
+.react-flow__node.is-path .union-dot { background: var(--accent); }
+.react-flow__edge.edge-path path { stroke: var(--accent); stroke-width: 3; }
 .kin-headline { font-size: 1.15rem; font-weight: 600; }
 .kin-path { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 0.25rem 0.5rem; align-items: center; }
-.kin-path li + li::before { content: '→ '; color: #6b7280; }
+.kin-path li + li::before { content: '→ '; color: var(--muted); }
 ```
 
-  Use the union dot's real class from `UnionNode.tsx` if it isn't `.union-dot`. Check that highlighted edges are visible in both normal and `edge-ended` styling.
+  Use the union dot's real class from `UnionNode.tsx` if it isn't `.union-dot`. Check that highlighted edges are visible in both normal and `edge-ended` styling, in **both light and dark mode** (the walk-through toggles the OS theme once). No hard-coded colours: only `Canvas`/`CanvasText`, `--surface`, `--border`, `--muted`, `--accent` and `color-mix(…, Canvas)`.
 
 - [ ] **Step 8: Run** the web tests, `pnpm lint` and `pnpm typecheck`. They pass.
 
