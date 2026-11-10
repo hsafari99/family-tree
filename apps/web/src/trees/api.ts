@@ -27,7 +27,14 @@ import {
   type PersonSummary,
   type PersonView,
   personViewSchema,
+  type Relationship,
+  relationshipSchema,
   type ResidenceInput,
+  type SearchQuery,
+  type SearchResult,
+  searchResponseSchema,
+  type UploadedPhoto,
+  uploadedPhotoSchema,
   personListSchema,
   type SimilarQuery,
   type ResetLinkCreated,
@@ -118,6 +125,11 @@ export interface TreesApi {
   listDisconnected(treeId: string): Promise<Result<PersonSummary[]>>;
   findSimilar(treeId: string, query: SimilarQuery): Promise<Result<PersonSummary[]>>;
   reorderChildren(treeId: string, unionId: string, childIds: string[]): Promise<Result<void>>;
+  uploadPhoto(treeId: string, personId: string, file: Blob): Promise<Result<UploadedPhoto>>;
+  setPrimaryPhoto(treeId: string, photoId: string): Promise<Result<void>>;
+  deletePhoto(treeId: string, photoId: string): Promise<Result<void>>;
+  search(treeId: string, query: SearchQuery, signal?: AbortSignal): Promise<Result<SearchResult[]>>;
+  relationship(treeId: string, from: string, to: string): Promise<Result<Relationship>>;
 }
 
 /** Every TreesApi method; the Record type makes the compiler flag a missing one. */
@@ -164,6 +176,11 @@ export const TREES_API_METHODS = Object.keys({
   listDisconnected: true,
   findSimilar: true,
   reorderChildren: true,
+  uploadPhoto: true,
+  setPrimaryPhoto: true,
+  deletePhoto: true,
+  search: true,
+  relationship: true,
 } satisfies Record<keyof TreesApi, true>) as (keyof TreesApi)[];
 
 /** The part of a Zod schema `request` uses (keeps zod out of this package's dependencies). */
@@ -194,6 +211,8 @@ export function createTreesApi({ baseUrl }: { baseUrl: string }): TreesApi {
     kind: CallKind = 'session',
     codes?: Partial<Record<string, string>>,
     signal?: AbortSignal,
+    /** VALIDATION `details.reason` → fixed message (photos, decision 15). */
+    reasons?: Partial<Record<string, string>>,
   ): Promise<Result<T>> {
     let res: Response;
     try {
@@ -203,7 +222,9 @@ export function createTreesApi({ baseUrl }: { baseUrl: string }): TreesApi {
         ...(signal ? { signal } : {}),
         ...(body === undefined
           ? {}
-          : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
+          : body instanceof Blob
+            ? { headers: { 'content-type': body.type || 'application/octet-stream' }, body }
+            : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
       });
     } catch {
       return { ok: false, error: { code: 'NETWORK', message: MESSAGES.network } };
@@ -215,7 +236,11 @@ export function createTreesApi({ baseUrl }: { baseUrl: string }): TreesApi {
         parsed.success ? parsed.data.error.code : undefined,
         kind,
       );
-      const override = codes?.[error.code];
+      const reason = parsed.success
+        ? (parsed.data.error.details as { reason?: unknown } | undefined)?.reason
+        : undefined;
+      const override =
+        (typeof reason === 'string' ? reasons?.[reason] : undefined) ?? codes?.[error.code];
       return { ok: false, error: override ? { ...error, message: override } : error };
     }
     if (!parser) return { ok: true, data: undefined as T };
@@ -343,5 +368,45 @@ export function createTreesApi({ baseUrl }: { baseUrl: string }): TreesApi {
       request('POST', `${t(id)}/unions/${enc(u)}/child-order`, { childIds }, undefined, 'session', {
         CONFLICT: MESSAGES.itemChanged,
       }),
+    uploadPhoto: (id, p, file) =>
+      request(
+        'POST',
+        `${t(id)}/persons/${enc(p)}/photos`,
+        file,
+        uploadedPhotoSchema,
+        'session',
+        { QUOTA_EXCEEDED: MESSAGES.photoQuota, NOT_FOUND: MESSAGES.personNotFound },
+        undefined,
+        {
+          type: MESSAGES.photoType,
+          tooLarge: MESSAGES.photoTooLarge,
+          dimensions: MESSAGES.photoDimensions,
+          unreadable: MESSAGES.photoUnreadable,
+          tooMany: MESSAGES.photoTooMany,
+        },
+      ),
+    setPrimaryPhoto: (id, photoId) =>
+      request('POST', `${t(id)}/photos/${enc(photoId)}/primary`, {}, undefined, 'session', {
+        NOT_FOUND: MESSAGES.itemGone,
+      }),
+    deletePhoto: (id, photoId) =>
+      request('DELETE', `${t(id)}/photos/${enc(photoId)}`, undefined, undefined, 'session', {
+        NOT_FOUND: MESSAGES.itemGone,
+      }),
+    search: (id, query, signal) =>
+      map(
+        request(
+          'GET',
+          `${t(id)}/search${qs(query as Record<string, string | number | undefined>)}`,
+          undefined,
+          searchResponseSchema,
+          'session',
+          undefined,
+          signal,
+        ),
+        (d) => d.results,
+      ),
+    relationship: (id, from, to) =>
+      request('GET', `${t(id)}/relationship${qs({ from, to })}`, undefined, relationshipSchema),
   };
 }
