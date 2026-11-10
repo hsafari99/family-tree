@@ -100,6 +100,16 @@ const routes = (t: string, ids: Ids): Route[] => [
   ['GET', `/api/v1/trees/${t}/trash/${ids.batch}`],
   ['POST', `/api/v1/trees/${t}/trash/${ids.batch}/restore`],
   ['DELETE', `/api/v1/trees/${t}/trash/${ids.batch}`],
+  ['GET', `/api/v1/trees/${t}/graph`],
+  ['GET', `/api/v1/trees/${t}/graph?mode=full`],
+  ['GET', `/api/v1/trees/${t}/graph?focus=${ids.person}&depth=2`],
+  ['GET', `/api/v1/trees/${t}/disconnected`],
+  ['GET', `/api/v1/trees/${t}/persons/similar?givenName=Intruder`],
+  [
+    'POST',
+    `/api/v1/trees/${t}/unions/${ids.union}/child-order`,
+    { childIds: [ids.person, ids.person2] },
+  ],
 ];
 
 async function setup() {
@@ -172,6 +182,7 @@ async function snapshot(treeId: string) {
         deletedAt: x.deletedAt,
         batch: x.deletionBatchId,
         surname: x.surname,
+        siblingOrder: x.siblingOrder,
       })),
     ),
     unions: by(
@@ -238,6 +249,12 @@ describe('cross-tree isolation', () => {
       const res = await run(x.jar, route);
       expect(res.statusCode, `${route[0]} ${route[1]}`).toBe(404);
     }
+    // Branch anchors are looked up in the tree of the URL too.
+    const branch = await run(x.jar, [
+      'GET',
+      `/api/v1/trees/${t}/graph?mode=full&branch=${ids.person}`,
+    ]);
+    expect(branch.statusCode).toBe(404);
     const bRoot = (await db.select().from(trees).where(eq(trees.id, t)))[0]!.rootPersonId!;
     const attach = await run(x.jar, [
       'POST',
