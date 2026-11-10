@@ -7,6 +7,9 @@ import {
   type CreateTreeInput,
   type DeleteMode,
   type DeletePreview,
+  findSimilar,
+  type GraphPerson,
+  type GraphQuery,
   type HistoryEntry,
   type Invite,
   type InvitePreview,
@@ -16,11 +19,14 @@ import {
   type PersonSummary,
   type PersonView,
   RESIDENCES_MAX,
+  SIMILAR_LIMIT,
+  type SimilarQuery,
   type ResetLinkCreated,
   type ResidenceInput,
   type StewardGrant,
   type TrashBatchDetail,
   type TreeDetail,
+  type TreeGraph,
   type TreeList,
   unionDatesError,
   type UpdatePersonInput,
@@ -48,6 +54,10 @@ export interface FakeTree {
   trashPeople: Map<string, PersonSummary[]>;
   /** Batch id -> views as they were before the batch, so restore can put relations back. */
   trashViews: Map<string, Map<string, PersonView>>;
+  /** What getGraph returns; without it, every person and no unions. */
+  graph?: TreeGraph;
+  /** What listDisconnected returns. */
+  disconnected: PersonSummary[];
 }
 
 export interface FakeDeletedTree {
@@ -77,6 +87,36 @@ export function fakePerson(partial: Partial<PersonSummary> = {}): PersonSummary 
     birthYear: 1815,
     deathYear: 1852,
     isLiving: false,
+    ...partial,
+  };
+}
+
+export function fakeGraphPerson(
+  summary: PersonSummary,
+  partial: Partial<GraphPerson> = {},
+): GraphPerson {
+  return {
+    ...summary,
+    sex: 'unknown',
+    siblingOrder: null,
+    hasParents: false,
+    hiddenRelatives: false,
+    canAddRelative: true,
+    ...partial,
+  };
+}
+
+export function fakeGraph(persons: GraphPerson[], partial: Partial<TreeGraph> = {}): TreeGraph {
+  return {
+    mode: 'focus',
+    focusId: persons[0]?.id ?? null,
+    branchId: null,
+    persons,
+    unions: [],
+    links: [],
+    total: persons.length,
+    truncated: false,
+    needsBranch: false,
     ...partial,
   };
 }
@@ -181,6 +221,7 @@ export class FakeTreesApi implements TreesApi {
       trash: [],
       trashPeople: new Map(),
       trashViews: new Map(),
+      disconnected: [],
     });
     return id;
   }
@@ -980,4 +1021,108 @@ export class FakeTreesApi implements TreesApi {
     t.trashViews.delete(batchId);
     return ok(undefined);
   }
+  async getGraph(treeId: string, query: GraphQuery) {
+    const forced = await this.enter('getGraph', { treeId, query });
+    if (forced) return { ok: false as const, error: forced };
+    const t = this.find(treeId);
+    if (!t) return notFound();
+    if (t.graph) return ok(structuredClone(t.graph));
+    const mode = query.mode ?? 'focus';
+    return ok(
+      fakeGraph(
+        t.persons.map((p) =>
+          fakeGraphPerson(p, { canAddRelative: t.detail.capabilities.editAnywhere }),
+        ),
+        {
+          mode,
+          focusId: mode === 'full' ? null : (query.focus ?? t.detail.tree.rootPersonId),
+        },
+      ),
+    );
+  }
+
+  async listDisconnected(treeId: string) {
+    const forced = await this.enter('listDisconnected', treeId);
+    if (forced) return { ok: false as const, error: forced };
+    const t = this.find(treeId);
+    return t ? ok([...t.disconnected]) : notFound();
+  }
+
+  async findSimilar(treeId: string, query: SimilarQuery) {
+    const forced = await this.enter('findSimilar', { treeId, query });
+    if (forced) return { ok: false as const, error: forced };
+    const t = this.find(treeId);
+    if (!t) return notFound();
+    const candidates = t.persons.map((p) => ({ ...p, maidenName: null, nickname: null }));
+    const surname = query.surname?.trim();
+    const birthYear = query.birthYear === undefined ? undefined : Number(query.birthYear);
+    const found = findSimilar(
+      candidates,
+      {
+        givenName: query.givenName,
+        ...(surname ? { surname } : {}),
+        ...(birthYear === undefined ? {} : { birthYear }),
+      },
+      SIMILAR_LIMIT,
+    );
+    return ok(
+      found.map(({ id, givenName, middleName, surname, birthYear, deathYear, isLiving }) => ({
+        id,
+        givenName,
+        middleName,
+        surname,
+        birthYear,
+        deathYear,
+        isLiving,
+      })),
+    );
+  }
+
+  async reorderChildren(treeId: string, unionId: string, childIds: string[]) {
+    const forced = await this.enter('reorderChildren', { treeId, unionId, childIds });
+    if (forced) return { ok: false as const, error: forced };
+    const t = this.find(treeId);
+    if (!t) return notFound();
+    // The union's live children: from the seeded graph, else from the people's views.
+    let current: string[] | undefined;
+    if (t.graph?.unions.some((u) => u.id === unionId)) {
+      current = t.graph.links.filter((l) => l.unionId === unionId).map((l) => l.childId);
+    } else {
+      const union = this.findUnion(t, unionId);
+      if (union) current = union.children.map((c) => c.person.id);
+    }
+    if (!current) return notFound();
+    // Same rule as the API: relation.edit, plus person.edit on every child.
+    if (!this.mayEdit(t)) return forbidden();
+    if (current.some((id) => !this.viewOf(t, id)?.capabilities.edit)) return forbidden();
+    const same = current.length === childIds.length && childIds.every((id) => current.includes(id));
+    if (!same) return fail('CONFLICT', MESSAGES.itemChanged);
+    if (t.graph) {
+      for (const [i, id] of childIds.entries()) {
+        const p = t.graph.persons.find((x) => x.id === id);
+        if (p) p.siblingOrder = i + 1;
+      }
+    }
+    for (const v of this.views(t)) {
+      for (const u of v.relations.unions) {
+        if (u.id === unionId) u.children = sortBy(u.children, (c) => c.person.id, childIds);
+      }
+      v.relations.siblings = sortBy(
+        v.relations.siblings,
+        (s) => (s.unionId === unionId ? s.person.id : null),
+        childIds,
+      );
+    }
+    return ok(undefined);
+  }
+}
+
+/** Items whose key is in `order` first, in that order; the rest keep their place after them. */
+function sortBy<T>(items: T[], key: (item: T) => string | null, order: string[]): T[] {
+  const rank = (item: T) => {
+    const k = key(item);
+    const i = k === null ? -1 : order.indexOf(k);
+    return i === -1 ? Number.POSITIVE_INFINITY : i;
+  };
+  return [...items].sort((a, b) => rank(a) - rank(b));
 }

@@ -14,6 +14,7 @@ import {
   type DeleteMode,
   type DeletePreview,
   deletePreviewSchema,
+  type GraphQuery,
   type HistoryEntry,
   historySchema,
   type Invite,
@@ -28,6 +29,7 @@ import {
   personViewSchema,
   type ResidenceInput,
   personListSchema,
+  type SimilarQuery,
   type ResetLinkCreated,
   resetLinkCreatedSchema,
   type StewardGrant,
@@ -38,6 +40,8 @@ import {
   trashListSchema,
   type TreeDetail,
   treeDetailSchema,
+  type TreeGraph,
+  treeGraphSchema,
   type TreeList,
   treeListSchema,
   type UpdatePersonInput,
@@ -110,6 +114,10 @@ export interface TreesApi {
   getTrashBatch(treeId: string, batchId: string): Promise<Result<TrashBatchDetail>>;
   restoreBatch(treeId: string, batchId: string): Promise<Result<void>>;
   eraseBatch(treeId: string, batchId: string): Promise<Result<void>>;
+  getGraph(treeId: string, query: GraphQuery): Promise<Result<TreeGraph>>;
+  listDisconnected(treeId: string): Promise<Result<PersonSummary[]>>;
+  findSimilar(treeId: string, query: SimilarQuery): Promise<Result<PersonSummary[]>>;
+  reorderChildren(treeId: string, unionId: string, childIds: string[]): Promise<Result<void>>;
 }
 
 /** Every TreesApi method; the Record type makes the compiler flag a missing one. */
@@ -152,6 +160,10 @@ export const TREES_API_METHODS = Object.keys({
   getTrashBatch: true,
   restoreBatch: true,
   eraseBatch: true,
+  getGraph: true,
+  listDisconnected: true,
+  findSimilar: true,
+  reorderChildren: true,
 } satisfies Record<keyof TreesApi, true>) as (keyof TreesApi)[];
 
 /** The part of a Zod schema `request` uses (keeps zod out of this package's dependencies). */
@@ -160,6 +172,14 @@ interface Parser<T> {
 }
 
 type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
+
+/** `?a=1&b=2`, leaving out undefined and blank values; '' when nothing is left. */
+function qs(q: Record<string, string | number | undefined>): string {
+  const s = new URLSearchParams();
+  for (const [k, v] of Object.entries(q)) if (v !== undefined && v !== '') s.set(k, String(v));
+  const out = s.toString();
+  return out ? `?${out}` : '';
+}
 
 export function createTreesApi({ baseUrl }: { baseUrl: string }): TreesApi {
   const origin = baseUrl.replace(/\/+$/, '');
@@ -299,6 +319,19 @@ export function createTreesApi({ baseUrl }: { baseUrl: string }): TreesApi {
     eraseBatch: (id, b) =>
       request('DELETE', `${t(id)}/trash/${enc(b)}`, undefined, undefined, 'session', {
         NOT_FOUND: MESSAGES.itemGone,
+      }),
+    getGraph: (id, query) =>
+      request('GET', `${t(id)}/graph${qs(query)}`, undefined, treeGraphSchema),
+    listDisconnected: (id) =>
+      map(request('GET', `${t(id)}/disconnected`, undefined, personListSchema), (d) => d.persons),
+    findSimilar: (id, query) =>
+      map(
+        request('GET', `${t(id)}/persons/similar${qs(query)}`, undefined, personListSchema),
+        (d) => d.persons,
+      ),
+    reorderChildren: (id, u, childIds) =>
+      request('POST', `${t(id)}/unions/${enc(u)}/child-order`, { childIds }, undefined, 'session', {
+        CONFLICT: MESSAGES.itemChanged,
       }),
   };
 }

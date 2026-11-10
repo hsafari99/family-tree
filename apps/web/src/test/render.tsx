@@ -2,10 +2,12 @@ import { render } from '@testing-library/react';
 import { MemoryRouter, useNavigate } from 'react-router';
 import type { NavigateFunction } from 'react-router';
 import { vi } from 'vitest';
+import { LayoutEngineProvider } from '../canvas/LayoutEngineContext';
 import { AuthProvider } from '../auth/AuthContext';
 import { AppRoutes } from '../routes';
 import { TreesApiProvider } from '../trees/TreesApiContext';
 import { FakeAuthApi } from './fake-auth';
+import { FakeLayoutEngine } from './fake-layout';
 import { FakeTreesApi } from './fake-trees';
 
 /** Renders the whole route table at `path` with fake auth and trees APIs. */
@@ -14,8 +16,14 @@ export function renderAt(
   {
     auth = new FakeAuthApi(),
     trees = new FakeTreesApi(),
+    layout = new FakeLayoutEngine(),
     entries,
-  }: { auth?: FakeAuthApi; trees?: FakeTreesApi; entries?: string[] } = {},
+  }: {
+    auth?: FakeAuthApi;
+    trees?: FakeTreesApi;
+    layout?: FakeLayoutEngine;
+    entries?: string[];
+  } = {},
 ) {
   const nav: { current: NavigateFunction | null } = { current: null };
   /** Gives tests the router's navigate, e.g. to go back in history. */
@@ -36,10 +44,12 @@ export function renderAt(
       <TreesApiProvider api={trees}>
         <MemoryRouter initialEntries={entries ?? [path]}>
           <NavProbe />
-          <AppRoutes />
+          <LayoutEngineProvider engine={layout}>
+            <AppRoutes />
+          </LayoutEngineProvider>
         </MemoryRouter>
       </TreesApiProvider>
     </AuthProvider>,
   );
-  return { ...utils, api: auth, trees, navigate: (to: number) => nav.current?.(to) };
+  return { ...utils, api: auth, trees, layout, navigate: (to: number) => nav.current?.(to) };
 }

@@ -254,3 +254,82 @@ describe('createTreesApi', () => {
     });
   });
 });
+
+describe('graph, disconnected, similar and child-order', () => {
+  const PID = '7f9619ff-8b86-4d11-b42d-00c04fc964aa';
+  const UID = '8f9619ff-8b86-4d11-b42d-00c04fc964bb';
+  const graph = {
+    mode: 'focus',
+    focusId: PID,
+    branchId: null,
+    persons: [],
+    unions: [],
+    links: [],
+    total: 0,
+    truncated: false,
+    needsBranch: false,
+  };
+  const summary = {
+    id: PID,
+    givenName: 'Ada',
+    middleName: null,
+    surname: null,
+    birthYear: null,
+    deathYear: null,
+    isLiving: true,
+  };
+
+  it('gets the graph with its query', async () => {
+    const mock = stubFetch(
+      { status: 200, body: graph },
+      { status: 200, body: { ...graph, mode: 'full' } },
+    );
+    expect(await api().getGraph('t', { mode: 'focus', focus: PID, depth: 2 })).toEqual({
+      ok: true,
+      data: graph,
+    });
+    expect(urlOf(mock.mock.calls[0]!)).toBe(
+      `${BASE}/api/v1/trees/t/graph?mode=focus&focus=${PID}&depth=2`,
+    );
+    await api().getGraph('t', { mode: 'full' });
+    expect(urlOf(mock.mock.calls[1]!)).toBe(`${BASE}/api/v1/trees/t/graph?mode=full`);
+  });
+
+  it('lists disconnected people', async () => {
+    const mock = stubFetch({ status: 200, body: { persons: [summary] } });
+    expect(await api().listDisconnected('t')).toEqual({ ok: true, data: [summary] });
+    expect(urlOf(mock.mock.calls[0]!)).toBe(`${BASE}/api/v1/trees/t/disconnected`);
+  });
+
+  it('finds similar people, leaving out undefined and blank values', async () => {
+    const mock = stubFetch(
+      { status: 200, body: { persons: [summary] } },
+      { status: 200, body: { persons: [] } },
+    );
+    expect(
+      await api().findSimilar('t', { givenName: 'Ada', surname: undefined, birthYear: 1815 }),
+    ).toEqual({ ok: true, data: [summary] });
+    expect(urlOf(mock.mock.calls[0]!)).toBe(
+      `${BASE}/api/v1/trees/t/persons/similar?givenName=Ada&birthYear=1815`,
+    );
+    await api().findSimilar('t', { givenName: 'Ada', surname: '' });
+    expect(urlOf(mock.mock.calls[1]!)).toBe(`${BASE}/api/v1/trees/t/persons/similar?givenName=Ada`);
+  });
+
+  it('reorders children, and maps a 409 to the changed message', async () => {
+    const mock = stubFetch({ status: 204 }, { status: 409, body: errorBody('CONFLICT') });
+    expect(await api().reorderChildren('t', UID, [PID, ID])).toEqual({ ok: true, data: undefined });
+    expect(urlOf(mock.mock.calls[0]!)).toBe(`${BASE}/api/v1/trees/t/unions/${UID}/child-order`);
+    expect(initOf(mock.mock.calls[0]!).method).toBe('POST');
+    expect(JSON.parse(initOf(mock.mock.calls[0]!).body as string)).toEqual({ childIds: [PID, ID] });
+    expect(await api().reorderChildren('t', UID, [ID, PID])).toMatchObject({
+      ok: false,
+      error: { code: 'CONFLICT', message: MESSAGES.itemChanged },
+    });
+  });
+
+  it('gives the generic error for a graph body that does not match', async () => {
+    stubFetch({ status: 200, body: { persons: 'nope' } });
+    expect(await api().getGraph('t', {})).toEqual({ ok: false, error: toAuthError(500) });
+  });
+});

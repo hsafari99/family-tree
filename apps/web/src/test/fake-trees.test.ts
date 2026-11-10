@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MESSAGES } from '../auth/api';
-import { FakeTreesApi, fakePerson } from './fake-trees';
+import { FakeTreesApi, fakeGraph, fakeGraphPerson, fakePerson } from './fake-trees';
 
 const viewerCaps = {
   editAnywhere: false,
@@ -199,5 +199,114 @@ describe('FakeTreesApi refuses what the real API refuses', () => {
       error: { code: 'CONFLICT', message: MESSAGES.restoreConflict },
     });
     expect(trees.trees.get(treeId)!.trash).toHaveLength(1);
+  });
+});
+
+describe('FakeTreesApi graph, similar and child-order', () => {
+  it('getGraph without a seeded graph returns every person, no unions', async () => {
+    const trees = new FakeTreesApi();
+    const a = fakePerson();
+    const b = fakePerson({ givenName: 'Byron' });
+    const treeId = trees.addTree({ persons: [a, b] });
+    const res = await trees.getGraph(treeId, {});
+    if (!res.ok) throw new Error('expected ok');
+    expect(res.data.persons.map((p) => p.id)).toEqual([a.id, b.id]);
+    expect(res.data.unions).toEqual([]);
+    expect(res.data.focusId).toBe(a.id);
+    expect(res.data.persons.every((p) => p.canAddRelative)).toBe(true);
+    const viewer = trees.addTree({ role: 'viewer', detail: { capabilities: viewerCaps } });
+    const v = await trees.getGraph(viewer, { mode: 'full' });
+    if (!v.ok) throw new Error('expected ok');
+    expect(v.data.focusId).toBeNull();
+    expect(v.data.persons.every((p) => !p.canAddRelative)).toBe(true);
+    expect(await trees.getGraph('nope', {})).toMatchObject({
+      ok: false,
+      error: { code: 'NOT_FOUND' },
+    });
+  });
+
+  it('findSimilar finds Ada Lovelace for a lower-case first name', async () => {
+    const trees = new FakeTreesApi();
+    const ada = fakePerson();
+    const treeId = trees.addTree({
+      persons: [ada, fakePerson({ givenName: 'Zed', surname: 'Q' })],
+    });
+    const res = await trees.findSimilar(treeId, { givenName: 'ada' });
+    expect(res).toEqual({ ok: true, data: [ada] });
+  });
+
+  it('listDisconnected returns the seeded list', async () => {
+    const trees = new FakeTreesApi();
+    const treeId = trees.addTree();
+    const p = fakePerson();
+    trees.trees.get(treeId)!.disconnected = [p];
+    expect(await trees.listDisconnected(treeId)).toEqual({ ok: true, data: [p] });
+  });
+
+  describe('reorderChildren', () => {
+    function seeded(role: 'owner' | 'viewer' = 'owner') {
+      const trees = new FakeTreesApi();
+      const [d, l, a, b] = [
+        fakePerson({ givenName: 'David' }),
+        fakePerson({ givenName: 'Laura' }),
+        fakePerson({ givenName: 'Leo' }),
+        fakePerson({ givenName: 'Mia' }),
+      ];
+      const treeId = trees.addTree({
+        persons: [d, l, a, b],
+        ...(role === 'viewer' ? { role, detail: { capabilities: viewerCaps } } : {}),
+      });
+      const t = trees.trees.get(treeId)!;
+      t.graph = fakeGraph(
+        [d, l, a, b].map((p) => fakeGraphPerson(p)),
+        {
+          unions: [
+            {
+              id: 'u1',
+              partnerAId: d.id,
+              partnerBId: l.id,
+              type: 'marriage',
+              status: 'married',
+              startDate: null,
+              endDate: null,
+              childCount: 2,
+              canEdit: true,
+            },
+          ],
+          links: [
+            { id: 'k1', unionId: 'u1', childId: a.id, kind: 'biological' },
+            { id: 'k2', unionId: 'u1', childId: b.id, kind: 'biological' },
+          ],
+        },
+      );
+      return { trees, treeId, t, a, b };
+    }
+
+    it('sets siblingOrder in the seeded graph', async () => {
+      const { trees, treeId, t, a, b } = seeded();
+      expect(await trees.reorderChildren(treeId, 'u1', [b.id, a.id])).toEqual({
+        ok: true,
+        data: undefined,
+      });
+      const order = (id: string) => t.graph!.persons.find((p) => p.id === id)!.siblingOrder;
+      expect([order(b.id), order(a.id)]).toEqual([1, 2]);
+    });
+
+    it('refuses a viewer, an unknown union and a different set of children', async () => {
+      const v = seeded('viewer');
+      expect(await v.trees.reorderChildren(v.treeId, 'u1', [v.b.id, v.a.id])).toMatchObject({
+        ok: false,
+        error: { code: 'FORBIDDEN' },
+      });
+      const { trees, treeId, a } = seeded();
+      expect(await trees.reorderChildren(treeId, 'nope', [a.id, a.id])).toMatchObject({
+        ok: false,
+        error: { code: 'NOT_FOUND' },
+      });
+      expect(await trees.reorderChildren(treeId, 'u1', [a.id, crypto.randomUUID()])).toMatchObject({
+        ok: false,
+        error: { code: 'CONFLICT', message: MESSAGES.itemChanged },
+      });
+    });
   });
 });
