@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { DrizzleQueryError } from 'drizzle-orm/errors';
-import { AppError, forbidden, idParam, parseBody, safeError } from './errors.js';
+import {
+  AppError,
+  conflict,
+  forbidden,
+  idParam,
+  invalid,
+  isUniqueViolation,
+  parseBody,
+  safeError,
+} from './errors.js';
 
 describe('parseBody', () => {
   const schema = z.object({ email: z.email() });
@@ -76,5 +85,23 @@ describe('idParam and forbidden', () => {
     const err = forbidden();
     expect(err.statusCode).toBe(403);
     expect(err.code).toBe('FORBIDDEN');
+  });
+});
+
+describe('invalid, conflict and isUniqueViolation', () => {
+  it('invalid is a VALIDATION error naming the field', () => {
+    const e = invalid('x', 'msg');
+    expect(e).toBeInstanceOf(AppError);
+    expect(e).toMatchObject({ code: 'VALIDATION', statusCode: 400, details: { x: ['msg'] } });
+  });
+  it('conflict is a 409', () => {
+    expect(conflict('m')).toMatchObject({ code: 'CONFLICT', statusCode: 409, message: 'm' });
+  });
+  it('finds a unique violation in the cause chain', () => {
+    const pg = Object.assign(new Error('dup'), { code: '23505' });
+    const wrapped = new Error('outer', { cause: new Error('mid', { cause: pg }) });
+    expect(isUniqueViolation(wrapped)).toBe(true);
+    expect(isUniqueViolation(Object.assign(new Error('fk'), { code: '23503' }))).toBe(false);
+    expect(isUniqueViolation(new Error('plain'))).toBe(false);
   });
 });

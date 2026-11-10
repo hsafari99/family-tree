@@ -1,4 +1,4 @@
-import type { FuzzyDate } from '@family-tree/shared';
+import type { AuditAction, DeletionSlot, FuzzyDate } from '@family-tree/shared';
 import { sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
@@ -98,6 +98,8 @@ export const persons = pgTable(
     updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
     version: integer('version').notNull().default(1),
     ...timestamps(),
+    /** The Trash batch that soft-deleted this row (spec §4); null while live. */
+    deletionBatchId: uuid('deletion_batch_id'),
   },
   (t) => [
     index('persons_tree_idx').on(t.treeId),
@@ -107,6 +109,14 @@ export const persons = pgTable(
     unique('persons_tree_id_uq').on(t.treeId, t.id),
     index('persons_tree_birth_year_idx').on(t.treeId, t.birthSortYear),
     index('persons_tree_death_year_idx').on(t.treeId, t.deathSortYear),
+    // NO ACTION and composite (decision 21): a row can only name a batch of its own tree. Erase
+    // deletes tagged rows before the batch; a tree delete removes both in one statement.
+    foreignKey({
+      name: 'persons_deletion_batch_fk',
+      columns: [t.treeId, t.deletionBatchId],
+      foreignColumns: [deletionBatches.treeId, deletionBatches.id],
+    }),
+    index('persons_deletion_batch_idx').on(t.deletionBatchId),
   ],
 );
 
@@ -124,6 +134,8 @@ export const unions = pgTable(
     startDate: fuzzyDate('start_date'),
     endDate: fuzzyDate('end_date'),
     ...timestamps(),
+    /** The Trash batch that soft-deleted this row (spec §4); null while live. */
+    deletionBatchId: uuid('deletion_batch_id'),
   },
   (t) => [
     check('unions_has_partner', sql`${t.partnerAId} is not null or ${t.partnerBId} is not null`),
@@ -146,6 +158,14 @@ export const unions = pgTable(
     unique('unions_tree_id_uq').on(t.treeId, t.id),
     index('unions_partner_a_idx').on(t.partnerAId),
     index('unions_partner_b_idx').on(t.partnerBId),
+    // NO ACTION and composite (decision 21): a row can only name a batch of its own tree. Erase
+    // deletes tagged rows before the batch; a tree delete removes both in one statement.
+    foreignKey({
+      name: 'unions_deletion_batch_fk',
+      columns: [t.treeId, t.deletionBatchId],
+      foreignColumns: [deletionBatches.treeId, deletionBatches.id],
+    }),
+    index('unions_deletion_batch_idx').on(t.deletionBatchId),
   ],
 );
 
@@ -160,6 +180,8 @@ export const parentChild = pgTable(
     childId: uuid('child_id').notNull(),
     kind: parentChildKindEnum('kind').notNull().default('biological'),
     ...timestamps(),
+    /** The Trash batch that soft-deleted this row (spec §4); null while live. */
+    deletionBatchId: uuid('deletion_batch_id'),
   },
   (t) => [
     foreignKey({
@@ -178,6 +200,14 @@ export const parentChild = pgTable(
       .where(sql`${t.deletedAt} is null`),
     index('parent_child_child_idx').on(t.childId),
     index('parent_child_tree_idx').on(t.treeId),
+    // NO ACTION and composite (decision 21): a row can only name a batch of its own tree. Erase
+    // deletes tagged rows before the batch; a tree delete removes both in one statement.
+    foreignKey({
+      name: 'parent_child_deletion_batch_fk',
+      columns: [t.treeId, t.deletionBatchId],
+      foreignColumns: [deletionBatches.treeId, deletionBatches.id],
+    }),
+    index('parent_child_deletion_batch_idx').on(t.deletionBatchId),
   ],
 );
 
@@ -426,5 +456,77 @@ export const invites = pgTable(
       foreignColumns: [persons.treeId, persons.id],
     }),
     index('invites_tree_idx').on(t.treeId),
+  ],
+);
+
+// ---------------------------------------------------------------------------------------------
+// Trash and audit (spec §3, §4, §8).
+
+export const deletionModeEnum = pgEnum('deletion_mode', ['person', 'descendants', 'relation']);
+
+/**
+ * One delete operation. Rows it soft-deleted carry its id in deletion_batch_id; partner slots it
+ * emptied are listed in `slots`. Restore and erase act on the whole batch. The root ids are plain
+ * uuids (no FK): they point into the batch itself and go when it is erased.
+ */
+export const deletionBatches = pgTable(
+  'deletion_batches',
+  {
+    id: id(),
+    treeId: uuid('tree_id')
+      .notNull()
+      .references(() => trees.id, { onDelete: 'cascade' }),
+    deletedByUserId: uuid('deleted_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    mode: deletionModeEnum('mode').notNull(),
+    rootPersonId: uuid('root_person_id'),
+    rootUnionId: uuid('root_union_id'),
+    rootParentChildId: uuid('root_parent_child_id'),
+    slots: jsonb('slots')
+      .$type<DeletionSlot[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    restoredAt: timestamp('restored_at', { withTimezone: true }),
+  },
+  (t) => [
+    // Target of the composite deletion_batch FKs; a UNIQUE constraint so it exists inside CREATE TABLE.
+    unique('deletion_batches_tree_id_uq').on(t.treeId, t.id),
+    index('deletion_batches_tree_idx').on(t.treeId, t.createdAt),
+    check(
+      'deletion_batches_root_chk',
+      sql`(${t.mode} in ('person', 'descendants') and ${t.rootPersonId} is not null
+        and ${t.rootUnionId} is null and ${t.rootParentChildId} is null)
+        or (${t.mode} = 'relation' and ${t.rootPersonId} is null
+        and (${t.rootUnionId} is null) <> (${t.rootParentChildId} is null))`,
+    ),
+  ],
+);
+
+/** Every change to tree data (spec §8). person_ids: the people it concerns (a person's History). */
+export const auditLog = pgTable(
+  'audit_log',
+  {
+    id: id(),
+    treeId: uuid('tree_id')
+      .notNull()
+      .references(() => trees.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+    action: text('action').$type<AuditAction>().notNull(),
+    entityType: text('entity_type').notNull(),
+    entityId: uuid('entity_id'),
+    personIds: uuid('person_ids')
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
+    before: jsonb('before'),
+    after: jsonb('after'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('audit_log_tree_created_idx').on(t.treeId, t.createdAt),
+    index('audit_log_person_ids_idx').using('gin', t.personIds),
+    index('audit_log_entity_idx').on(t.entityId),
   ],
 );

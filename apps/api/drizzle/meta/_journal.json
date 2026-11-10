@@ -22,6 +22,20 @@
       "when": 1794263352280,
       "tag": "0002_tree_access",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794270641525,
+      "tag": "0003_people",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794283348392,
+      "tag": "0004_batch_roots",
+      "breakpoints": true
     }
   ]
 }

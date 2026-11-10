@@ -16,6 +16,8 @@
     "test:int": "vitest run --config vitest.int.config.ts",
     "db:generate": "drizzle-kit generate",
     "db:seed": "NODE_OPTIONS=--conditions=development tsx src/db/seed-cli.ts",
+    "purge-trees": "NODE_OPTIONS=--conditions=development tsx src/trees/purge-cli.ts",
+    "purge-trees:prod": "node dist/trees/purge-cli.js",
     "reset-link": "NODE_OPTIONS=--conditions=development tsx src/auth/reset-link-cli.ts"
   },
   "dependencies": {

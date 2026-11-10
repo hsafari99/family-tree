@@ -38,6 +38,8 @@ export const configSchema = z
     TRUST_PROXY: z.coerce.number().int().min(0).max(5).default(0),
     // Spec §3: how many non-deleted trees one user may own.
     MAX_TREES_PER_USER: z.coerce.number().int().min(1).max(100).default(3),
+    // How often the API purges trees deleted more than TREE_RESTORE_DAYS ago (0 = never).
+    TREE_PURGE_INTERVAL_MINUTES: z.coerce.number().int().min(0).max(10_080).default(60),
     SESSION_SECRET: z.string().min(32),
     S3_ENDPOINT: z.url(),
     S3_REGION: z.string().min(1),

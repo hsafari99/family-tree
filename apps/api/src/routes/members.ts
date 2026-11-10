@@ -9,6 +9,8 @@ import { AppError, idParam, notFound, parseBody } from '../errors.js';
 import { can, TREE } from '../permissions/can.js';
 import { extraLimit } from '../security/limits.js';
 import { authorize, loadAccess } from '../trees/access.js';
+import { audit } from '../trees/audit.js';
+import { grantClosure } from '../trees/grants.js';
 import { lockUserTrees, ownedLiveTreeCount } from '../trees/quota.js';
 import type { TreeRouteOptions } from './trees.js';
 
@@ -69,10 +71,19 @@ export const membersRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
     const { role } = parseBody(changeRoleSchema, req.body);
     const target = await loadMember(db, access.treeId, idParam(req.params, 'userId'));
     authorize(access, 'member.changeRole', { kind: 'member', ...target });
-    await db
-      .update(treeMembers)
-      .set({ role })
-      .where(and(eq(treeMembers.treeId, access.treeId), eq(treeMembers.userId, target.userId)));
+    await db.transaction(async (tx) => {
+      await tx
+        .update(treeMembers)
+        .set({ role })
+        .where(and(eq(treeMembers.treeId, access.treeId), eq(treeMembers.userId, target.userId)));
+      await audit(tx, access, {
+        action: 'member.role',
+        entityType: 'member',
+        entityId: target.userId,
+        before: { role: target.role },
+        after: { role },
+      });
+    });
     return reply.code(204).send();
   });
 
@@ -94,9 +105,25 @@ export const membersRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
           ),
         );
       // Grants go with the member row (FK), and grants derived from them cascade.
+      const doomed = await grantClosure(tx, access.treeId, (g) => g.userId === target.userId);
       await tx
         .delete(treeMembers)
         .where(and(eq(treeMembers.treeId, access.treeId), eq(treeMembers.userId, target.userId)));
+      await audit(tx, access, {
+        action: 'member.remove',
+        entityType: 'member',
+        entityId: target.userId,
+        before: { role: target.role },
+      });
+      for (const g of doomed) {
+        await audit(tx, access, {
+          action: 'steward.revoke',
+          entityType: 'grant',
+          entityId: g.id,
+          before: { userId: g.userId },
+          after: { reason: 'member removed' },
+        });
+      }
     });
     return reply.code(204).send();
   });
@@ -173,9 +200,29 @@ export const membersRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
         .update(treeMembers)
         .set({ role: 'owner' })
         .where(and(eq(treeMembers.treeId, access.treeId), eq(treeMembers.userId, userId)));
+      // Derived grants were detached above, so this is the new owner's own grants only.
+      const ownDoomed = await grantClosure(tx, access.treeId, (g) => g.userId === userId, {
+        lock: true,
+      });
       await tx
         .delete(branchStewards)
         .where(and(eq(branchStewards.treeId, access.treeId), eq(branchStewards.userId, userId)));
+      await audit(tx, access, {
+        action: 'ownership.transfer',
+        entityType: 'member',
+        entityId: userId,
+        before: { ownerUserId: access.userId },
+        after: { ownerUserId: userId },
+      });
+      for (const g of ownDoomed) {
+        await audit(tx, access, {
+          action: 'steward.revoke',
+          entityType: 'grant',
+          entityId: g.id,
+          before: { userId },
+          after: { reason: 'became owner' },
+        });
+      }
     });
     return reply.code(204).send();
   });

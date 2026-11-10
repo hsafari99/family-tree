@@ -1,5 +1,5 @@
 import { type InviteRole } from '@family-tree/shared';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AuthError } from '../../auth/api';
 import { ConfirmButton } from '../../components/ConfirmButton';
 import { FormError } from '../../components/forms';
@@ -21,7 +21,12 @@ export function MembersSection({
   const api = useTreesApi();
   const [error, setError] = useState<string | null>(null);
   const [link, setLink] = useState<{ name: string; url: string } | null>(null);
+  // Another action clears the link box. The first run (mount) must not: under load it can fire
+  // after a click has already set the link, and would wipe it.
+  const seenActed = useRef(acted.n);
   useEffect(() => {
+    if (acted.n === seenActed.current) return;
+    seenActed.current = acted.n;
     if (acted.from !== 'reset') setLink(null);
   }, [acted]);
   const isOwner = detail.me.role === 'owner';

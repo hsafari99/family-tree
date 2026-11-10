@@ -1,6 +1,15 @@
 import type { FastifyInstance } from 'fastify';
 import type { Db } from '../src/db/client.js';
-import { branchStewards, parentChild, persons, treeMembers, unions } from '../src/db/schema.js';
+import { asc, eq, inArray } from 'drizzle-orm';
+import {
+  auditLog,
+  branchStewards,
+  deletionBatches,
+  parentChild,
+  persons,
+  treeMembers,
+  unions,
+} from '../src/db/schema.js';
 import { call, enableTwoFactor, signUp } from './auth-helpers.js';
 
 export async function userWith2fa(app: FastifyInstance, name = 'Test User') {
@@ -75,4 +84,26 @@ export async function addGrant(
     .values({ treeId, userId, anchorPersonId, grantedByUserId, parentGrantId })
     .returning();
   return g!;
+}
+
+/** Audit rows of a tree, oldest first. */
+export async function auditRows(db: Db, treeId: string) {
+  return db
+    .select()
+    .from(auditLog)
+    .where(eq(auditLog.treeId, treeId))
+    .orderBy(asc(auditLog.createdAt));
+}
+
+/** Soft-deletes people into a new person batch (for isolation snapshots). */
+export async function softDeleteBatch(db: Db, treeId: string, userId: string, personIds: string[]) {
+  const [b] = await db
+    .insert(deletionBatches)
+    .values({ treeId, deletedByUserId: userId, mode: 'person', rootPersonId: personIds[0]! })
+    .returning();
+  await db
+    .update(persons)
+    .set({ deletedAt: new Date(), deletionBatchId: b!.id })
+    .where(inArray(persons.id, personIds));
+  return b!;
 }

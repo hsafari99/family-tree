@@ -39,10 +39,13 @@ export function StewardsSection({
 
   async function grant(e: FormEvent) {
     e.preventDefault();
-    if (pending || userId === '' || personId === '') return;
+    // The selects show the first option until the effect below syncs state; submit what is shown.
+    const grantee = candidates.some((c) => c.userId === userId) ? userId : candidates[0]?.userId;
+    const anchor = persons.some((p) => p.id === personId) ? personId : persons[0]?.id;
+    if (pending || !grantee || !anchor) return;
     setError(null);
     setPending(true);
-    const res = await api.grantSteward(treeId, { userId, anchorPersonId: personId });
+    const res = await api.grantSteward(treeId, { userId: grantee, anchorPersonId: anchor });
     setPending(false);
     if (!res.ok) {
       setError(

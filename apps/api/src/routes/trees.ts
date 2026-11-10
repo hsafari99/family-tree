@@ -17,6 +17,9 @@ import { persons, treeMembers, trees } from '../db/schema.js';
 import { AppError, idParam, notFound, parseBody } from '../errors.js';
 import { can, TREE } from '../permissions/can.js';
 import { authorize, loadAccess } from '../trees/access.js';
+import { audit } from '../trees/audit.js';
+import { lockTreeGraph } from '../trees/graph.js';
+import { personFieldsOf } from '../trees/people.js';
 import { lockUserTrees, ownedLiveTreeCount } from '../trees/quota.js';
 
 export interface TreeRouteOptions {
@@ -94,7 +97,21 @@ export const treesRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
           createdBy: user.id,
           updatedBy: user.id,
         })
-        .returning({ id: persons.id });
+        .returning();
+      const actor = { treeId: tree!.id, userId: user.id };
+      await audit(tx, actor, {
+        action: 'tree.create',
+        entityType: 'tree',
+        entityId: tree!.id,
+        after: { name },
+      });
+      await audit(tx, actor, {
+        action: 'person.create',
+        entityType: 'person',
+        entityId: root!.id,
+        personIds: [root!.id],
+        after: personFieldsOf(root!),
+      });
       await tx.update(trees).set({ rootPersonId: root!.id }).where(eq(trees.id, tree!.id));
       await tx
         .insert(treeMembers)
@@ -134,6 +151,8 @@ export const treesRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
     if (input.name !== undefined) authorize(access, 'tree.rename', TREE);
     if (input.rootPersonId !== undefined) authorize(access, 'tree.changeRoot', TREE);
     await db.transaction(async (tx) => {
+      // Lock order: the graph lock first (the person delete takes it before the trees row).
+      await lockTreeGraph(tx, access.treeId);
       if (input.rootPersonId !== undefined) {
         // FOR SHARE keeps the person from being soft-deleted until the root is updated.
         const [p] = await tx
@@ -160,6 +179,25 @@ export const treesRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
           ...(input.rootPersonId === undefined ? {} : { rootPersonId: input.rootPersonId }),
         })
         .where(eq(trees.id, access.treeId));
+      if (input.name !== undefined && input.name !== access.treeName) {
+        await audit(tx, access, {
+          action: 'tree.rename',
+          entityType: 'tree',
+          entityId: access.treeId,
+          before: { name: access.treeName },
+          after: { name: input.name },
+        });
+      }
+      if (input.rootPersonId !== undefined && input.rootPersonId !== access.rootPersonId) {
+        await audit(tx, access, {
+          action: 'tree.changeRoot',
+          entityType: 'tree',
+          entityId: access.treeId,
+          personIds: [access.rootPersonId, input.rootPersonId].filter((x): x is string => !!x),
+          before: { rootPersonId: access.rootPersonId },
+          after: { rootPersonId: input.rootPersonId },
+        });
+      }
     });
     return reply.code(204).send();
   });
@@ -167,10 +205,17 @@ export const treesRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
   app.delete('/api/v1/trees/:treeId', async (req, reply) => {
     const access = await loadAccess(db, idParam(req.params, 'treeId'), req.user!.id);
     authorize(access, 'tree.delete', TREE);
-    await db
-      .update(trees)
-      .set({ deletedAt: sql`now()` })
-      .where(eq(trees.id, access.treeId));
+    await db.transaction(async (tx) => {
+      await tx
+        .update(trees)
+        .set({ deletedAt: sql`now()` })
+        .where(eq(trees.id, access.treeId));
+      await audit(tx, access, {
+        action: 'tree.delete',
+        entityType: 'tree',
+        entityId: access.treeId,
+      });
+    });
     return reply.code(204).send();
   });
 
@@ -186,7 +231,18 @@ export const treesRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
     await db.transaction(async (tx) => {
       await lockUserTrees(tx, userId);
       if ((await ownedLiveTreeCount(tx, userId)) >= config.MAX_TREES_PER_USER) throw quotaError();
-      await tx.update(trees).set({ deletedAt: null }).where(eq(trees.id, access.treeId));
+      const restored = await tx
+        .update(trees)
+        .set({ deletedAt: null })
+        .where(eq(trees.id, access.treeId))
+        .returning({ id: trees.id });
+      // Purged between the check above and now: the tree is gone.
+      if (restored.length === 0) throw notFound();
+      await audit(tx, access, {
+        action: 'tree.restore',
+        entityType: 'tree',
+        entityId: access.treeId,
+      });
     });
     return reply.code(204).send();
   });

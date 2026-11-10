@@ -10,6 +10,7 @@ import { NotFoundPage } from './pages/NotFoundPage';
 import { ResetLinkPage } from './pages/ResetLinkPage';
 import { SignInPage } from './pages/SignInPage';
 import { SignUpPage } from './pages/SignUpPage';
+import { TrashPage } from './pages/TrashPage';
 import { TreePage } from './pages/TreePage';
 import { VerifyTwoFactorPage } from './pages/VerifyTwoFactorPage';
 
@@ -44,6 +45,30 @@ export function AppRoutes() {
         element={
           <RequireAuth>
             <MembersPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/trees/:treeId/trash"
+        element={
+          <RequireAuth>
+            <TrashPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/trees/:treeId/people/new"
+        element={
+          <RequireAuth>
+            <TreePage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/trees/:treeId/people/:personId"
+        element={
+          <RequireAuth>
+            <TreePage />
           </RequireAuth>
         }
       />
