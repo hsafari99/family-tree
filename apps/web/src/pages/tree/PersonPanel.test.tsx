@@ -268,7 +268,9 @@ describe('PersonPanel', () => {
       );
       expect(screen.getByText('Unknown parent', { exact: false })).toBeInTheDocument();
       expect(screen.getByRole('link', { name: 'Pat Moss' })).toBeInTheDocument();
-      expect(screen.getByText(/Marriage, Married/).closest('p')).toHaveTextContent('from 1970');
+      expect(screen.getByText(/Marriage/).closest('p')).toHaveTextContent(
+        'Marriage from 1970 (married)',
+      );
       expect(screen.getByRole('link', { name: 'Mia King' })).toBeInTheDocument();
       expect(screen.getByRole('link', { name: 'Sib King' })).toBeInTheDocument();
     });

@@ -151,10 +151,9 @@ export function RelationsTab({
         <div key={u.id} className="relation-block">
           <p>
             <strong>
-              {u.partner ? person(u.partner) : 'Unknown partner'}: {UNION_TYPE_LABEL[u.type]},{' '}
-              {UNION_STATUS_LABEL[u.status]}
+              {u.partner ? person(u.partner) : 'Unknown partner'}: {UNION_TYPE_LABEL[u.type]}
             </strong>
-            {unionDates(u)}
+            {unionDates(u)} ({UNION_STATUS_LABEL[u.status].toLowerCase()})
           </p>
           {editingUnion === u.id ? (
             <UnionForm
