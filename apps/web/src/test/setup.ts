@@ -30,21 +30,23 @@ class DOMMatrixReadOnlyMock {
     this.m22 = scale === undefined ? 1 : Number(scale);
   }
 }
-globalThis.ResizeObserver ??= ResizeObserverMock as unknown as typeof ResizeObserver;
-globalThis.DOMMatrixReadOnly ??= DOMMatrixReadOnlyMock as unknown as typeof DOMMatrixReadOnly;
-Object.defineProperties(HTMLElement.prototype, {
-  offsetHeight: {
-    configurable: true,
-    get(this: HTMLElement) {
-      return parseFloat(this.style.height) || 1;
+if (typeof HTMLElement !== 'undefined') {
+  globalThis.ResizeObserver ??= ResizeObserverMock as unknown as typeof ResizeObserver;
+  globalThis.DOMMatrixReadOnly ??= DOMMatrixReadOnlyMock as unknown as typeof DOMMatrixReadOnly;
+  Object.defineProperties(HTMLElement.prototype, {
+    offsetHeight: {
+      configurable: true,
+      get(this: HTMLElement) {
+        return parseFloat(this.style.height) || 1;
+      },
     },
-  },
-  offsetWidth: {
-    configurable: true,
-    get(this: HTMLElement) {
-      return parseFloat(this.style.width) || 1;
+    offsetWidth: {
+      configurable: true,
+      get(this: HTMLElement) {
+        return parseFloat(this.style.width) || 1;
+      },
     },
-  },
-});
-(SVGElement.prototype as unknown as { getBBox(): DOMRect }).getBBox = () =>
-  ({ x: 0, y: 0, width: 0, height: 0 }) as DOMRect;
+  });
+  (SVGElement.prototype as unknown as { getBBox(): DOMRect }).getBBox = () =>
+    ({ x: 0, y: 0, width: 0, height: 0 }) as DOMRect;
+}

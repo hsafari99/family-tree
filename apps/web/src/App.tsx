@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { BrowserRouter } from 'react-router';
 import { API_BASE } from './api/client';
 import { type AuthApi, createAuthApi } from './auth/api';
+import { browserLayoutEngine } from './canvas/layout-engine';
+import { LayoutEngineProvider } from './canvas/LayoutEngineContext';
 import { AuthProvider } from './auth/AuthContext';
 import { AppRoutes } from './routes';
 import { createTreesApi, type TreesApi } from './trees/api';
@@ -22,7 +24,9 @@ export function App({
     <AuthProvider api={api}>
       <TreesApiProvider api={trees}>
         <BrowserRouter>
-          <AppRoutes />
+          <LayoutEngineProvider engine={browserLayoutEngine}>
+            <AppRoutes />
+          </LayoutEngineProvider>
         </BrowserRouter>
       </TreesApiProvider>
     </AuthProvider>
