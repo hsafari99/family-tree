@@ -153,7 +153,9 @@ describe('restore', () => {
     expect(batch!.restoredAt).not.toBeNull();
     expect((await call(app, 'GET', trash(treeId), { jar: owner.jar })).json().batches).toEqual([]);
     expect((await auditRows(db, treeId)).some((r) => r.action === 'trash.restore')).toBe(true);
-    expect((await call(app, 'POST', `${trash(treeId, b)}/restore`, { jar: owner.jar })).statusCode).toBe(404);
+    expect(
+      (await call(app, 'POST', `${trash(treeId, b)}/restore`, { jar: owner.jar })).statusCode,
+    ).toBe(404);
   });
 
   it('refuses when the emptied slot was filled meanwhile', async () => {
@@ -177,7 +179,9 @@ describe('restore', () => {
   it('refuses a duplicate link', async () => {
     const { owner, treeId, danAnn, p } = await setup();
     const [link] = await db.select().from(parentChild).where(eq(parentChild.childId, p.leo.id));
-    const r = await call(app, 'POST', `${base(treeId)}/parent-child/${link!.id}/delete`, { jar: owner.jar });
+    const r = await call(app, 'POST', `${base(treeId)}/parent-child/${link!.id}/delete`, {
+      jar: owner.jar,
+    });
     const b = r.json().batchId as string;
     const re = await call(app, 'POST', `${base(treeId)}/persons/${p.dan.id}/relatives`, {
       jar: owner.jar,
@@ -193,7 +197,9 @@ describe('restore', () => {
   it('refuses a restore that would make a cycle', async () => {
     const { owner, treeId, p } = await setup();
     const [link] = await db.select().from(parentChild).where(eq(parentChild.childId, p.leo.id));
-    const r = await call(app, 'POST', `${base(treeId)}/parent-child/${link!.id}/delete`, { jar: owner.jar });
+    const r = await call(app, 'POST', `${base(treeId)}/parent-child/${link!.id}/delete`, {
+      jar: owner.jar,
+    });
     const b = r.json().batchId as string;
     const add = await call(app, 'POST', `${base(treeId)}/persons/${p.leo.id}/relatives`, {
       jar: owner.jar,
@@ -215,11 +221,15 @@ describe('restore', () => {
     const bDan = await delPerson(owner.jar, treeId, p.dan.id);
     const [u1] = await db.select().from(unions).where(eq(unions.id, danAnn.id));
     expect(u1!.deletionBatchId).toBe(bDan);
-    expect((await call(app, 'POST', `${trash(treeId, bAnn)}/restore`, { jar: owner.jar })).statusCode).toBe(204);
+    expect(
+      (await call(app, 'POST', `${trash(treeId, bAnn)}/restore`, { jar: owner.jar })).statusCode,
+    ).toBe(204);
     const [u2] = await db.select().from(unions).where(eq(unions.id, danAnn.id));
     expect(u2!.deletedAt).not.toBeNull();
     expect(u2!.partnerBId).toBe(p.ann.id);
-    expect((await call(app, 'POST', `${trash(treeId, bDan)}/restore`, { jar: owner.jar })).statusCode).toBe(204);
+    expect(
+      (await call(app, 'POST', `${trash(treeId, bDan)}/restore`, { jar: owner.jar })).statusCode,
+    ).toBe(204);
     const [u3] = await db.select().from(unions).where(eq(unions.id, danAnn.id));
     expect(u3).toMatchObject({ deletedAt: null, partnerAId: p.dan.id, partnerBId: p.ann.id });
   });
@@ -235,7 +245,10 @@ describe('erase', () => {
     expect(edit.statusCode).toBe(200);
     const card = await signUp(app, { name: 'Cara' });
     await addMember(db, treeId, card.userId, 'viewer', owner.userId);
-    await db.update(treeMembers).set({ personId: p.dan.id }).where(eq(treeMembers.userId, card.userId));
+    await db
+      .update(treeMembers)
+      .set({ personId: p.dan.id })
+      .where(eq(treeMembers.userId, card.userId));
     const mk = (extra: Partial<typeof invites.$inferInsert>) =>
       db.insert(invites).values({
         treeId,
@@ -251,7 +264,9 @@ describe('erase', () => {
     const u2 = await userWith2fa(app, 'Una');
     await addMember(db, treeId, u2.userId, 'viewer', owner.userId);
     await addGrant(db, treeId, u2.userId, p.kim.id, S.userId, parent.id);
-    const grantsBefore = (await db.select().from(branchStewards).where(eq(branchStewards.treeId, treeId))).length;
+    const grantsBefore = (
+      await db.select().from(branchStewards).where(eq(branchStewards.treeId, treeId))
+    ).length;
 
     const b = await delPerson(owner.jar, treeId, p.dan.id);
     const res = await call(app, 'DELETE', trash(treeId, b), { jar: owner.jar });
@@ -263,7 +278,9 @@ describe('erase', () => {
     const grants = await db.select().from(branchStewards).where(eq(branchStewards.treeId, treeId));
     expect(grants.length).toBe(grantsBefore - 2 - 0); // Dan-anchored grant and its derived one; Robert's stays
     expect(await db.select().from(persons).where(eq(persons.id, p.dan.id))).toHaveLength(0);
-    expect(await db.select().from(deletionBatches).where(eq(deletionBatches.id, b))).toHaveLength(0);
+    expect(await db.select().from(deletionBatches).where(eq(deletionBatches.id, b))).toHaveLength(
+      0,
+    );
     const rows = await db.select().from(auditLog).where(eq(auditLog.treeId, treeId));
     expect(rows.some((r) => r.entityId === p.dan.id)).toBe(false);
     expect(rows.some((r) => r.personIds.includes(p.dan.id))).toBe(false);
@@ -277,7 +294,9 @@ describe('erase', () => {
     const { owner, treeId, leoZoe, p } = await setup();
     const b1 = await delUnion(owner.jar, treeId, leoZoe.id);
     const b2 = await delPerson(owner.jar, treeId, p.zoe.id);
-    expect((await call(app, 'POST', `${trash(treeId, b1)}/restore`, { jar: owner.jar })).statusCode).toBe(204);
+    expect(
+      (await call(app, 'POST', `${trash(treeId, b1)}/restore`, { jar: owner.jar })).statusCode,
+    ).toBe(204);
     const [mid] = await db.select().from(unions).where(eq(unions.id, leoZoe.id));
     expect(mid).toMatchObject({ deletedAt: null, partnerBId: p.zoe.id });
     expect((await call(app, 'DELETE', trash(treeId, b2), { jar: owner.jar })).statusCode).toBe(204);
@@ -293,7 +312,9 @@ describe('permissions', () => {
     for (const jar of [S.jar, E.jar]) {
       expect((await call(app, 'GET', trash(treeId), { jar })).statusCode).toBe(403);
       expect((await call(app, 'GET', trash(treeId, b), { jar })).statusCode).toBe(403);
-      expect((await call(app, 'POST', `${trash(treeId, b)}/restore`, { jar })).statusCode).toBe(403);
+      expect((await call(app, 'POST', `${trash(treeId, b)}/restore`, { jar })).statusCode).toBe(
+        403,
+      );
       expect((await call(app, 'DELETE', trash(treeId, b), { jar })).statusCode).toBe(403);
     }
     const outsider = await signUp(app, { name: 'Out' });
@@ -302,7 +323,11 @@ describe('permissions', () => {
     const op = await addPerson(db, other.treeId, 'Zed');
     const ob = await softDeleteBatch(db, other.treeId, other.owner.userId, [op.id]);
     expect((await call(app, 'GET', trash(treeId, ob.id), { jar: owner.jar })).statusCode).toBe(404);
-    expect((await call(app, 'POST', `${trash(treeId, ob.id)}/restore`, { jar: owner.jar })).statusCode).toBe(404);
-    expect((await call(app, 'DELETE', trash(treeId, ob.id), { jar: owner.jar })).statusCode).toBe(404);
+    expect(
+      (await call(app, 'POST', `${trash(treeId, ob.id)}/restore`, { jar: owner.jar })).statusCode,
+    ).toBe(404);
+    expect((await call(app, 'DELETE', trash(treeId, ob.id), { jar: owner.jar })).statusCode).toBe(
+      404,
+    );
   });
 });

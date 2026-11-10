@@ -6,6 +6,8 @@ import { requireSession } from '../auth/session-guard.js';
 import { branchStewards, persons, treeMembers, users } from '../db/schema.js';
 import { AppError, forbidden, idParam, notFound, parseBody } from '../errors.js';
 import { authorize, grantCovering, loadAccess } from '../trees/access.js';
+import { audit } from '../trees/audit.js';
+import { grantClosure } from '../trees/grants.js';
 import type { TreeRouteOptions } from './trees.js';
 
 const invalid = (field: string, message: string) =>
@@ -85,6 +87,14 @@ export const stewardsRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, 
         })
         .onConflictDoNothing()
         .returning({ id: branchStewards.id });
+      if (r) {
+        await audit(tx, access, {
+          action: 'steward.grant',
+          entityType: 'grant',
+          entityId: r.id,
+          after: { userId, anchorPersonId, parentGrantId: parentId },
+        });
+      }
       return r;
     });
     if (!row) throw new AppError('CONFLICT', 409, 'They already look after this branch');
@@ -94,7 +104,10 @@ export const stewardsRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, 
   app.delete('/api/v1/trees/:treeId/stewards/:grantId', async (req, reply) => {
     const access = await loadAccess(db, idParam(req.params, 'treeId'), req.user!.id);
     const [grant] = await db
-      .select({ id: branchStewards.id, grantedByUserId: branchStewards.grantedByUserId })
+      .select({
+        id: branchStewards.id,
+        grantedByUserId: branchStewards.grantedByUserId,
+      })
       .from(branchStewards)
       .where(
         and(
@@ -105,7 +118,19 @@ export const stewardsRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, 
     if (!grant) throw notFound();
     authorize(access, 'steward.revoke', { kind: 'grant', grantedByUserId: grant.grantedByUserId });
     // Derived grants cascade through parent_grant_id (spec §4).
-    await db.delete(branchStewards).where(eq(branchStewards.id, grant.id));
+    await db.transaction(async (tx) => {
+      const doomed = await grantClosure(tx, access.treeId, (g) => g.id === grant.id);
+      await tx.delete(branchStewards).where(eq(branchStewards.id, grant.id));
+      for (const g of doomed) {
+        await audit(tx, access, {
+          action: 'steward.revoke',
+          entityType: 'grant',
+          entityId: g.id,
+          before: { userId: g.userId, anchorPersonId: g.anchorPersonId },
+          after: { reason: 'revoked' },
+        });
+      }
+    });
     return reply.code(204).send();
   });
 };

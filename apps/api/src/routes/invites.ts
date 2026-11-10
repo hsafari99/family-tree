@@ -16,6 +16,7 @@ import { can, TREE } from '../permissions/can.js';
 import { extraLimit } from '../security/limits.js';
 import { hashToken, newToken } from '../security/tokens.js';
 import { authorize, grantCovering, loadAccess } from '../trees/access.js';
+import { audit } from '../trees/audit.js';
 import type { TreeRouteOptions } from './trees.js';
 
 const invalidInvite = () =>
@@ -104,18 +105,31 @@ export const invitesRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, {
       }
       const token = newToken();
       const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 86_400_000);
-      const [row] = await db
-        .insert(invites)
-        .values({
-          tokenHash: hashToken(token),
-          treeId: access.treeId,
-          role: input.role,
-          stewardAnchorPersonId: input.stewardAnchorPersonId,
-          targetPersonId: input.targetPersonId,
-          createdByUserId: access.userId,
-          expiresAt,
-        })
-        .returning({ id: invites.id });
+      const row = await db.transaction(async (tx) => {
+        const [r] = await tx
+          .insert(invites)
+          .values({
+            tokenHash: hashToken(token),
+            treeId: access.treeId,
+            role: input.role,
+            stewardAnchorPersonId: input.stewardAnchorPersonId,
+            targetPersonId: input.targetPersonId,
+            createdByUserId: access.userId,
+            expiresAt,
+          })
+          .returning({ id: invites.id });
+        await audit(tx, access, {
+          action: 'invite.create',
+          entityType: 'invite',
+          entityId: r!.id,
+          after: {
+            role: input.role,
+            stewardAnchorPersonId: input.stewardAnchorPersonId,
+            targetPersonId: input.targetPersonId,
+          },
+        });
+        return r;
+      });
       return reply.code(201).send({ id: row!.id, token, expiresAt: expiresAt.toISOString() });
     },
   );
@@ -136,10 +150,20 @@ export const invitesRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, {
         kind: 'ownInvite',
         createdByUserId: inv.createdByUserId,
       });
-      await db
-        .update(invites)
-        .set({ revokedAt: sql`now()` })
-        .where(and(eq(invites.id, inv.id), isNull(invites.revokedAt), isNull(invites.usedAt)));
+      await db.transaction(async (tx) => {
+        const revoked = await tx
+          .update(invites)
+          .set({ revokedAt: sql`now()` })
+          .where(and(eq(invites.id, inv.id), isNull(invites.revokedAt), isNull(invites.usedAt)))
+          .returning({ id: invites.id });
+        if (revoked.length > 0) {
+          await audit(tx, access, {
+            action: 'invite.revoke',
+            entityType: 'invite',
+            entityId: inv.id,
+          });
+        }
+      });
       return reply.code(204).send();
     },
   );
@@ -233,6 +257,13 @@ export const invitesRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, {
           (await claimable(tx, inv.treeId, inv.targetPersonId))
             ? inv.targetPersonId
             : null;
+        const actor = { treeId: inv.treeId, userId };
+        await audit(tx, actor, {
+          action: 'member.join',
+          entityType: 'member',
+          entityId: userId,
+          after: { role: inv.role, inviteId: inv.id, personId },
+        });
         if (!existing) {
           await tx.insert(treeMembers).values({
             treeId: inv.treeId,
@@ -262,7 +293,7 @@ export const invitesRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, {
               .for('share');
             if (!parent) throw invalidInvite();
           }
-          await tx
+          const [grant] = await tx
             .insert(branchStewards)
             .values({
               treeId: inv.treeId,
@@ -271,7 +302,20 @@ export const invitesRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, {
               grantedByUserId: creator.userId,
               parentGrantId,
             })
-            .onConflictDoNothing();
+            .onConflictDoNothing()
+            .returning({ id: branchStewards.id });
+          if (grant) {
+            await audit(tx, actor, {
+              action: 'steward.grant',
+              entityType: 'grant',
+              entityId: grant.id,
+              after: {
+                userId,
+                anchorPersonId: inv.stewardAnchorPersonId,
+                parentGrantId,
+              },
+            });
+          }
         }
         return inv.treeId;
       });
