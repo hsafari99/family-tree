@@ -625,3 +625,65 @@ img.card-photo {
 .crop-box:focus-visible {
   outline: 3px solid var(--accent);
 }
+
+.search-box {
+  position: relative;
+}
+.search-results,
+.search-filters {
+  position: absolute;
+  z-index: 15;
+  background: Canvas;
+  color: CanvasText;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  min-width: 300px;
+  max-height: 60vh;
+  overflow: auto;
+}
+.search-results ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.search-result {
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  column-gap: 0.5rem;
+  width: 100%;
+  text-align: left;
+  background: none;
+  color: inherit;
+  border: 0;
+  padding: 0.35rem;
+}
+.search-result:hover,
+.search-result:focus-visible {
+  background: color-mix(in srgb, var(--accent) 12%, Canvas);
+}
+.result-photo {
+  grid-row: span 3;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: grid;
+  place-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 0.75rem;
+}
+.result-years,
+.result-relation {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+@media (max-width: 720px) {
+  .search-results,
+  .search-filters {
+    left: 0;
+    right: 0;
+    min-width: 0;
+  }
+}
