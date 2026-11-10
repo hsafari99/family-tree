@@ -110,4 +110,14 @@ describe('graphToFlow', () => {
     const leo = graphToFlow(g, ctx).nodes.find((n) => n.id === 'p:leo');
     expect(leo!.type === 'person' && leo!.data.reorderUnionId).toBe('u-dl');
   });
+
+  it('gives edges meaningful labels, not the defaults', () => {
+    const { edges } = graphToFlow(haleGraph(), ctx);
+    const e = (id: string) => edges.find((x) => x.id === id)!;
+    expect(e('partner:u-rm:robert').ariaLabel).toBe(
+      'Robert Hale, partner in the relationship of Robert Hale and Margaret Hale',
+    );
+    expect(e('child:l-leo').ariaLabel).toBe('Leo Hale, child of David Hale and Laura Chen');
+    expect(edges.every((x) => !/p:|u:/.test(x.ariaLabel ?? ''))).toBe(true);
+  });
 });

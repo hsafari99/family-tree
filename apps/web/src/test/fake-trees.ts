@@ -1021,8 +1021,8 @@ export class FakeTreesApi implements TreesApi {
     t.trashViews.delete(batchId);
     return ok(undefined);
   }
-  async getGraph(treeId: string, query: GraphQuery) {
-    const forced = await this.enter('getGraph', { treeId, query });
+  async getGraph(treeId: string, query: GraphQuery, signal?: AbortSignal) {
+    const forced = await this.enter('getGraph', { treeId, query, signal });
     if (forced) return { ok: false as const, error: forced };
     const t = this.find(treeId);
     if (!t) return notFound();

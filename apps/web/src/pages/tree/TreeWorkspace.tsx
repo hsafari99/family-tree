@@ -1,5 +1,5 @@
 import type { GraphQuery, PersonSummary, RelativeRole, TreeDetail } from '@family-tree/shared';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useMatch, useNavigate, useParams, useSearchParams } from 'react-router';
 import { FormError } from '../../components/forms';
 import { CanvasToolbar } from '../../canvas/CanvasToolbar';
@@ -66,22 +66,27 @@ export function TreeWorkspace({
     setRefreshKey((k) => k + 1);
     onPersonsChanged();
   }, [onPersonsChanged]);
-  const go = useCallback(
-    (path: string, change: CanvasChange) => void navigate(`${path}${canvasSearch(params, change)}`),
-    [navigate, params],
-  );
-  const base = `/trees/${treeId}`;
+  // `go` reads the current URL through a ref, so `actions` never changes with the URL and a
+  // navigation doesn't re-render every card.
+  const latest = useRef({ navigate, params, keepFocus: null as string | null });
   const keepFocus = view.mode === 'focus' ? focusId : null;
+  useEffect(() => {
+    latest.current = { navigate, params, keepFocus };
+  });
+  const base = `/trees/${treeId}`;
+  const go = useCallback((path: string, change: CanvasChange) => {
+    const { navigate: nav, params: current } = latest.current;
+    void nav(`${path}${canvasSearch(current, change)}`);
+  }, []);
   const actions = useMemo(
     () => ({
       openPerson: (id: string) => go(`${base}/people/${id}`, { focus: null, tab: null, add: null }),
       addRelative: (id: string, as: RelativeRole) =>
         go(`${base}/people/${id}`, { focus: null, tab: 'relations', add: as }),
       openUnion: (id: string) =>
-        go(`${base}/unions/${id}`, { focus: keepFocus, tab: null, add: null }),
-      selectedId: personId ?? null,
+        go(`${base}/unions/${id}`, { focus: latest.current.keepFocus, tab: null, add: null }),
     }),
-    [go, base, keepFocus, personId],
+    [go, base],
   );
   const [notice, setNotice] = useState<string | null>(null);
   const onReorder = useCallback(
@@ -92,10 +97,62 @@ export function TreeWorkspace({
     },
     [api, treeId, changed],
   );
-  const close = () => go(base, { focus: keepFocus, tab: null, add: null });
+  const returnFocusTo = useRef<{ id: string | null } | null>(null);
+  const close = useCallback(() => {
+    returnFocusTo.current = { id: personId ?? null };
+    go(base, { focus: latest.current.keepFocus, tab: null, add: null });
+  }, [go, base, personId]);
   const canAdd = detail.capabilities.editAnywhere || detail.me.steward.active;
   const selected = (newPerson && canAdd) || personId !== undefined || unionId !== undefined;
   const ready = graph.status === 'ready' ? graph : null;
+  const panel = useRef<HTMLElement>(null);
+  const canvasArea = useRef<HTMLElement>(null);
+  const panelKey = `${newPerson}/${personId}/${unionId}`;
+
+  // Opening the panel moves focus to its heading, once the panel has rendered one.
+  useEffect(() => {
+    const el = panel.current;
+    if (!selected || !el) return;
+    const focusHeading = () => {
+      const h = el.querySelector('h2');
+      if (!h) return false;
+      h.tabIndex = -1;
+      h.focus();
+      return true;
+    };
+    if (focusHeading()) return;
+    const observer = new MutationObserver(() => {
+      if (focusHeading()) observer.disconnect();
+    });
+    observer.observe(el, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [selected, panelKey]);
+
+  // Closing returns focus to the card that was open, or to the canvas if it isn't rendered.
+  useEffect(() => {
+    const pending = returnFocusTo.current;
+    if (selected || !pending) return;
+    returnFocusTo.current = null;
+    const card = pending.id
+      ? canvasArea.current?.querySelector<HTMLElement>(
+          `[data-person-id="${CSS.escape(pending.id)}"]`,
+        )
+      : null;
+    (card ?? canvasArea.current)?.focus();
+  }, [selected]);
+
+  // Escape closes the panel (but not while it is cancelling a field inside a form control).
+  useEffect(() => {
+    if (!selected) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      const t = e.target;
+      if (t instanceof HTMLElement && t.closest('input, select, textarea')) return;
+      close();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [selected, close]);
 
   return (
     <>
@@ -114,7 +171,12 @@ export function TreeWorkspace({
         </p>
       )}
       <div className={selected ? 'tree-workspace has-panel' : 'tree-workspace'}>
-        <section className="canvas-area" aria-label="Family tree view">
+        <section
+          className="canvas-area"
+          aria-label="Family tree view"
+          tabIndex={-1}
+          ref={canvasArea}
+        >
           {graph.status === 'loading' && <p role="status">Drawing the tree…</p>}
           {graph.status === 'error' && (
             <>
@@ -125,7 +187,7 @@ export function TreeWorkspace({
             </>
           )}
           {ready?.graph.needsBranch && (
-            <p>
+            <p role="status">
               This tree has {ready.graph.total.toLocaleString('en')} people, too many to draw at
               once. Choose a branch to show.
             </p>
@@ -145,12 +207,13 @@ export function TreeWorkspace({
               families={ready.families}
               focusId={view.mode === 'focus' ? focusId : null}
               actions={actions}
+              selectedId={personId ?? null}
               onReorder={(u, ids) => void onReorder(u, ids)}
             />
           )}
         </section>
         {selected ? (
-          <aside className="tree-panel" aria-label="Details">
+          <aside className="tree-panel" aria-label="Details" ref={panel}>
             <p className="panel-close">
               <button type="button" className="secondary" onClick={close}>
                 Close
@@ -188,6 +251,7 @@ export function TreeWorkspace({
       </div>
       {/* Opened when the layout timed out, so people stay reachable (decision 4). */}
       <details
+        id="people-fallback"
         className="people-fallback"
         open={graph.status === 'error' && graph.timedOut ? true : undefined}
       >

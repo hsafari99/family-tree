@@ -197,10 +197,13 @@ describe('TreeWorkspace', () => {
       'href',
       `/trees/${s.id}/people/robert?view=full`,
     );
-    expect(screen.getByRole('link', { name: 'List of all people' })).toHaveAttribute(
-      'href',
-      '#people-fallback',
-    );
+    const skip = screen.getByRole('link', { name: 'List of all people' });
+    expect(skip).toHaveAttribute('href', '#people-fallback');
+    const details = summary.closest('details')!;
+    expect(details).toHaveAttribute('id', 'people-fallback');
+    expect(details).not.toHaveAttribute('open');
+    fireEvent.click(skip);
+    expect(details).toHaveAttribute('open');
   });
 
   it('shows toolbar links by role', async () => {
@@ -266,5 +269,47 @@ describe('TreeWorkspace add from a card', () => {
     );
     renderAt(`/trees/${s.id}/people/laura?tab=relations&add=child`, s);
     expect(await screen.findByLabelText('Other parent')).toHaveDisplayValue('with David Hale');
+  });
+});
+
+describe('TreeWorkspace panel focus and keys', () => {
+  it('moves focus to the panel heading, and Escape closes and returns focus to the card', async () => {
+    const s = setup();
+    renderAt(`/trees/${s.id}`, s);
+    const card = await screen.findByRole('button', { name: 'David Hale, b. 1956', hidden: true });
+    fireEvent.click(card);
+    const heading = await screen.findByRole('heading', { level: 2, name: /David Hale/ });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    fireEvent.keyDown(heading, { key: 'Escape' });
+    await waitFor(() =>
+      expect(screen.queryByRole('complementary', { name: 'Details' })).toBeNull(),
+    );
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole('button', { name: 'David Hale, b. 1956', hidden: true }),
+      ),
+    );
+  });
+
+  it('focuses the canvas when the selected card is not rendered', async () => {
+    const s = setup();
+    renderAt(`/trees/${s.id}/people/lone`, s);
+    await screen.findByRole('complementary', { name: 'Details' });
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('region', { name: 'Family tree view' })),
+    );
+  });
+
+  it('announces the branch prompt as a status and allows the deepest depth', async () => {
+    const s = setup({
+      graph: { needsBranch: true, total: 2500, persons: [], unions: [], links: [], mode: 'full' },
+    });
+    renderAt(`/trees/${s.id}?view=full`, s);
+    const msg = await screen.findByText(/too many to draw at once/);
+    expect(msg).toHaveAttribute('role', 'status');
+    const s2 = setup();
+    renderAt(`/trees/${s2.id}`, s2);
+    expect(await screen.findByLabelText('Generations')).toHaveAttribute('max', '3');
   });
 });

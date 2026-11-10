@@ -98,6 +98,7 @@ export function graphToFlow(
         className: ended ? 'edge-partner edge-ended' : 'edge-partner',
         selectable: false,
         focusable: false,
+        ariaLabel: `${personName(byId.get(p)!)}, partner in the relationship of ${names.join(' and ')}`,
       });
     }
     for (const l of children) {
@@ -109,6 +110,7 @@ export function graphToFlow(
         className: `edge-child edge-${l.kind}`,
         selectable: false,
         focusable: false,
+        ariaLabel: `${personName(byId.get(l.childId)!)}, child of ${names.join(' and ')}`,
       });
     }
     families.push({ id: u.id, partnerIds, childIds: children.map((l) => l.childId) });

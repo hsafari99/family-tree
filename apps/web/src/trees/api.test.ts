@@ -295,6 +295,13 @@ describe('graph, disconnected, similar and child-order', () => {
     expect(urlOf(mock.mock.calls[1]!)).toBe(`${BASE}/api/v1/trees/t/graph?mode=full`);
   });
 
+  it('passes an abort signal to fetch for the graph', async () => {
+    const mock = stubFetch({ status: 200, body: graph });
+    const ctl = new AbortController();
+    await api().getGraph('t', {}, ctl.signal);
+    expect(initOf(mock.mock.calls[0]!).signal).toBe(ctl.signal);
+  });
+
   it('lists disconnected people', async () => {
     const mock = stubFetch({ status: 200, body: { persons: [summary] } });
     expect(await api().listDisconnected('t')).toEqual({ ok: true, data: [summary] });

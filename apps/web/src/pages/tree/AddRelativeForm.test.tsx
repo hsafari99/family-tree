@@ -120,6 +120,16 @@ describe('AddRelativeForm duplicate check', () => {
     deathYear: 1852,
   });
 
+  // The panel can reload once while the page settles (which resets an open form), so retry.
+  async function openForm(s: ReturnType<typeof setup>) {
+    renderAt(`/trees/${s.id}/people/${subject.id}?tab=relations`, s);
+    await waitFor(() => {
+      const button = screen.getByRole('button', { name: 'Add child' });
+      if (!screen.queryByLabelText('First name')) fireEvent.click(button);
+      expect(screen.getByLabelText('First name')).toBeInTheDocument();
+    });
+  }
+
   function dupSetup() {
     const s = setup();
     s.trees.trees.get(s.id)!.persons.push({ ...ada });
@@ -134,7 +144,7 @@ describe('AddRelativeForm duplicate check', () => {
 
   it('prompts on a match without creating anything', async () => {
     const s = dupSetup();
-    await open(s, 'Add child');
+    await openForm(s);
     fillChild('Ada');
     expect(
       await screen.findByRole('button', { name: 'Yes, use Ada Lovelace' }),
@@ -145,7 +155,7 @@ describe('AddRelativeForm duplicate check', () => {
 
   it('Yes links the existing person', async () => {
     const s = dupSetup();
-    await open(s, 'Add child');
+    await openForm(s);
     fillChild('Ada');
     fireEvent.click(await screen.findByRole('button', { name: 'Yes, use Ada Lovelace' }));
     await waitFor(() => expect(s.trees.callsTo('addRelative')).toHaveLength(1));
@@ -159,7 +169,7 @@ describe('AddRelativeForm duplicate check', () => {
 
   it('No creates exactly once, and the same name is not asked again', async () => {
     const s = dupSetup();
-    await open(s, 'Add child');
+    await openForm(s);
     fillChild('Ada');
     fireEvent.click(await screen.findByRole('button', { name: 'No, add a new person' }));
     await waitFor(() => expect(s.trees.callsTo('createPerson')).toHaveLength(1));
@@ -172,7 +182,7 @@ describe('AddRelativeForm duplicate check', () => {
 
   it('creates directly when nothing matches', async () => {
     const s = dupSetup();
-    await open(s, 'Add child');
+    await openForm(s);
     fillChild('Zed', 'Quux', '2001');
     await waitFor(() => expect(s.trees.callsTo('createPerson')).toHaveLength(1));
     expect(s.trees.callsTo('findSimilar')).toHaveLength(1);
@@ -181,14 +191,14 @@ describe('AddRelativeForm duplicate check', () => {
   it('still creates when the check fails', async () => {
     const s = dupSetup();
     s.trees.failNext('findSimilar', { code: 'NETWORK', message: 'x' });
-    await open(s, 'Add child');
+    await openForm(s);
     fillChild('Ada');
     await waitFor(() => expect(s.trees.callsTo('createPerson')).toHaveLength(1));
   });
 
   it('never offers the subject as a match', async () => {
     const s = dupSetup();
-    await open(s, 'Add child');
+    await openForm(s);
     fillChild('Ann', 'Hale', '');
     await waitFor(() => expect(s.trees.callsTo('createPerson')).toHaveLength(1));
     expect(screen.queryByRole('button', { name: /^Yes, use/ })).toBeNull();
@@ -197,7 +207,7 @@ describe('AddRelativeForm duplicate check', () => {
   it('checks again when the name changes after No', async () => {
     const s = dupSetup();
     s.trees.failNext('createPerson', { code: 'VALIDATION', message: 'nope' });
-    await open(s, 'Add child');
+    await openForm(s);
     fillChild('Ada');
     fireEvent.click(await screen.findByRole('button', { name: 'No, add a new person' }));
     await screen.findByText('nope');

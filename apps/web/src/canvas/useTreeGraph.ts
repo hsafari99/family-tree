@@ -12,7 +12,14 @@ import { LayoutTimeoutError } from './layout-engine';
 export type TreeGraphState =
   | { status: 'loading' }
   | { status: 'error'; message: string; timedOut?: boolean }
-  | { status: 'ready'; graph: TreeGraph; nodes: CanvasNode[]; edges: Edge[]; families: Family[] };
+  | {
+      status: 'ready';
+      treeId: string;
+      graph: TreeGraph;
+      nodes: CanvasNode[];
+      edges: Edge[];
+      families: Family[];
+    };
 
 /** Fetches the graph, maps it, lays it out. Stale responses are dropped. */
 export function useTreeGraph(
@@ -29,18 +36,22 @@ export function useTreeGraph(
 
   useEffect(() => {
     let active = true;
-    // Keep showing the old drawing while a refresh loads; only the first load shows "loading".
-    setState((s) => (s.status === 'ready' ? s : { status: 'loading' }));
+    const controller = new AbortController();
+    // Keep showing the old drawing while a refresh of the same tree loads; a different tree (or
+    // the first load) shows "loading".
+    setState((s) => (s.status === 'ready' && s.treeId === treeId ? s : { status: 'loading' }));
     void (async () => {
-      const res = await api.getGraph(treeId, { mode, focus, depth, branch });
+      const res = await api.getGraph(treeId, { mode, focus, depth, branch }, controller.signal);
       if (!active) return;
       if (!res.ok) return setState({ status: 'error', message: res.error.message });
       const flow = graphToFlow(res.data, { focusId, meId });
+      if (!active) return;
       try {
         const laid = await engine.layout(toElkGraph(flow, assignGenerations(flow)));
         if (!active) return;
         setState({
           status: 'ready',
+          treeId,
           graph: res.data,
           nodes: applyElkLayout(flow.nodes, laid),
           edges: flow.edges,
@@ -57,8 +68,10 @@ export function useTreeGraph(
     })();
     return () => {
       active = false;
+      controller.abort();
     };
   }, [api, engine, treeId, mode, focus, depth, branch, focusId, meId, refreshKey]);
 
-  return state;
+  // The first render after a tree change must not show the previous tree's drawing.
+  return state.status === 'ready' && state.treeId !== treeId ? { status: 'loading' } : state;
 }

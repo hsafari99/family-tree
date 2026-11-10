@@ -2,7 +2,8 @@ import type { GraphPerson, RelativeRole } from '@family-tree/shared';
 import { Handle, type NodeProps, Position, type ReactFlowState, useStore } from '@xyflow/react';
 import { initials, personName, personYears } from '../trees/format';
 import { type CardDetail, cardDetail } from './canvas-settings';
-import { useCanvasActions } from './CanvasActions';
+import { useCanvasActions, useSelectionStore } from './CanvasActions';
+import { useIsSelected } from './selection';
 import type { PersonFlowNode } from './graph-to-flow';
 
 const ADD: { as: RelativeRole; where: 'top' | 'left' | 'right' | 'bottom'; word: string }[] = [
@@ -59,7 +60,13 @@ export function PersonCardView({
           {initials(person)}
         </span>
       )}
-      <button type="button" className="card-open nodrag" aria-label={label} onClick={onOpen}>
+      <button
+        type="button"
+        className="card-open nodrag"
+        data-person-id={person.id}
+        aria-label={label}
+        onClick={onOpen}
+      >
         {detail !== 'dot' && (
           <>
             <span className="card-name">{name}</span>
@@ -107,6 +114,7 @@ export function PersonNode({ data }: NodeProps<PersonFlowNode>) {
   const detail = useStore(detailOf);
   const actions = useCanvasActions();
   const id = data.person.id;
+  const selected = useIsSelected(useSelectionStore(), id);
   return (
     <>
       <Handle type="target" position={Position.Top} isConnectable={false} className="card-handle" />
@@ -115,7 +123,7 @@ export function PersonNode({ data }: NodeProps<PersonFlowNode>) {
         detail={detail}
         isFocus={data.isFocus}
         isMe={data.isMe}
-        isSelected={actions.selectedId === id}
+        isSelected={selected}
         onOpen={() => actions.openPerson(id)}
         onAdd={(as) => actions.addRelative(id, as)}
         onFocus={() => actions.reveal(id)}

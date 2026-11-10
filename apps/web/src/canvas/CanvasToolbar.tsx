@@ -1,4 +1,9 @@
-import { normalizeName, type PersonSummary, type TreeDetail } from '@family-tree/shared';
+import {
+  GRAPH_DEPTH_MAX,
+  normalizeName,
+  type PersonSummary,
+  type TreeDetail,
+} from '@family-tree/shared';
 import { useId, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { personName, personYears } from '../trees/format';
@@ -118,7 +123,7 @@ export function CanvasToolbar({
             <input
               type="range"
               min="1"
-              max="3"
+              max={GRAPH_DEPTH_MAX}
               step="1"
               value={params.depth}
               aria-valuetext={`${params.depth} ${params.depth === 1 ? 'step' : 'steps'}`}

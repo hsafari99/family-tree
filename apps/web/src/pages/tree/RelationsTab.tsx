@@ -54,7 +54,12 @@ export function RelationsTab({
   const startAdding = requested === 'sibling' && noParents ? null : requested;
   const [adding, setAdding] = useState<RelativeRole | null>(startAdding);
   // A card's "+" button arrives as ?add=<role>.
-  useEffect(() => setAdding(startAdding), [startAdding]);
+  // (Derived during render, not in an effect: a mount effect could run after a click and undo it.)
+  const [seenRequest, setSeenRequest] = useState(startAdding);
+  if (seenRequest !== startAdding) {
+    setSeenRequest(startAdding);
+    setAdding(startAdding);
+  }
   const stopAdding = () => {
     setAdding(null);
     if (params.has('add')) {

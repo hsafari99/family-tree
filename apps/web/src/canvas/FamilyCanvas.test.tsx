@@ -30,7 +30,6 @@ const actions = () => ({
   openPerson: vi.fn(),
   addRelative: vi.fn(),
   openUnion: vi.fn(),
-  selectedId: null,
 });
 const DAVID = { name: 'David Hale, b. 1956', hidden: true };
 const DOT = 'Relationship of David Hale and Laura Chen (Married)';
@@ -39,7 +38,7 @@ describe('FamilyCanvas', () => {
   it('draws cards and union dots, and reports clicks', async () => {
     const flow = await laidOut();
     const a = actions();
-    render(<FamilyCanvas {...flow} focusId="leo" actions={a} />);
+    render(<FamilyCanvas {...flow} focusId="leo" actions={a} selectedId={null} />);
     const card = await screen.findByRole('button', DAVID);
     expect(
       screen.getByRole('button', {
@@ -64,7 +63,7 @@ describe('FamilyCanvas', () => {
 
   it('labels the container, has zoom controls, and cards are real buttons', async () => {
     const flow = await laidOut();
-    render(<FamilyCanvas {...flow} focusId={null} actions={actions()} />);
+    render(<FamilyCanvas {...flow} focusId={null} actions={actions()} selectedId={null} />);
     const card = await screen.findByRole('button', DAVID);
     expect(card.tagName).toBe('BUTTON');
     expect(card).toHaveAttribute('type', 'button');
@@ -79,10 +78,12 @@ describe('FamilyCanvas', () => {
   it('updates when given a new layout', async () => {
     const flow = await laidOut();
     const a = actions();
-    const { rerender } = render(<FamilyCanvas {...flow} focusId={null} actions={a} />);
+    const { rerender } = render(
+      <FamilyCanvas {...flow} focusId={null} actions={a} selectedId={null} />,
+    );
     await screen.findByRole('button', DAVID);
     const next = await laidOut('david');
-    rerender(<FamilyCanvas {...next} focusId={null} actions={a} />);
+    rerender(<FamilyCanvas {...next} focusId={null} actions={a} selectedId={null} />);
     await vi.waitFor(() => expect(screen.queryByRole('button', DAVID)).toBeNull());
   });
 });

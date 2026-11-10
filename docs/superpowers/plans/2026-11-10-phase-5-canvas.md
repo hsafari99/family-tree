@@ -159,7 +159,8 @@
     - **Keyboard:** Tab walks the cards in reading order, top row first and left to right. After layout, the nodes are re-sorted by (y, x) for rendering, because React Flow's DOM order is the `nodes` array order. ELK still gets the model (sibling) order as input.
     - **Focus panning:** focusing a card that is off-screen pans it into view.
     - React Flow's own node focus is off, so there are no double tab stops.
-    - **Large views:** from 300 nodes, `onlyRenderVisibleElements` removes off-screen cards from the DOM, so Tab can't reach them. Keyboard and screen-reader users have the "All people" list under the canvas, which has every person. The toolbar has a "List of all people" skip link to it.
+    - **Focus and panel:** opening the panel moves focus to its heading; Escape or **Close** closes it and returns focus to the selected card (or to the canvas region when that card isn't rendered). Edges carry real labels ("Leo Hale, child of David Hale and Laura Chen"), never React Flow's default "Edge from p:… to u:…".
+    - **Large views:** from 300 nodes, `onlyRenderVisibleElements` removes off-screen cards from the DOM, so Tab can't reach them and screen readers don't announce them (this is a known limit, not a bug). Keyboard and screen-reader users have the "All people" list under the canvas, which has every person. The toolbar has a "List of all people" skip link to it.
 16. **Sibling order:**
     - **Endpoint:** `POST /trees/:id/unions/:uid/child-order { childIds }` takes the **complete** list of the union's live children in the new order. A different set is `409 CONFLICT` (the family changed).
     - **Permission:**
@@ -188,6 +189,11 @@
       - `overrides` in `pnpm-workspace.yaml` pinning the nine d3 packages to their last pre-2026-11-03 versions;
       - a script that checks every **new** lockfile entry is 14+ days old and has no install script.
     - The setting itself is a carry-forward item (after 2026-11-23).
+21. **Layout engine lifecycle:**
+    - **One shared worker.** The engine is a singleton for the whole app; it is created lazily and terminated on `pagehide` (`dispose()`), and the next layout starts a fresh one.
+    - **Serialised.** Layouts run one at a time. A request that arrives while another is queued replaces it (the older one rejects with `LayoutSupersededError`, which callers ignore because they are stale). A timeout or worker restart therefore never affects a call waiting on the same worker.
+    - **Worker errors** reject the running layout and switch to the main thread; a timeout never does.
+22. **Graph fetches are abortable:** `useTreeGraph` passes an `AbortSignal` to `getGraph`, aborts it when the query changes or the page unmounts, never lays out stale data, and shows "loading" again when the tree itself changes.
 
 ## File map
 

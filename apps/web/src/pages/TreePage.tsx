@@ -146,7 +146,12 @@ function Settings({
   const [pending, setPending] = useState(false);
 
   // Keep the field in step if the loaded name changes (e.g. after a save).
-  useEffect(() => setName(detail.tree.name), [detail.tree.name]);
+  // (Derived during render: a mount effect could run after the user's first keystroke and undo it.)
+  const [seenName, setSeenName] = useState(detail.tree.name);
+  if (seenName !== detail.tree.name) {
+    setSeenName(detail.tree.name);
+    setName(detail.tree.name);
+  }
 
   async function save(e: FormEvent, input: { name: string } | { rootPersonId: string }) {
     e.preventDefault();

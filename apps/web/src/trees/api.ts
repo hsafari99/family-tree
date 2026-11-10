@@ -114,7 +114,7 @@ export interface TreesApi {
   getTrashBatch(treeId: string, batchId: string): Promise<Result<TrashBatchDetail>>;
   restoreBatch(treeId: string, batchId: string): Promise<Result<void>>;
   eraseBatch(treeId: string, batchId: string): Promise<Result<void>>;
-  getGraph(treeId: string, query: GraphQuery): Promise<Result<TreeGraph>>;
+  getGraph(treeId: string, query: GraphQuery, signal?: AbortSignal): Promise<Result<TreeGraph>>;
   listDisconnected(treeId: string): Promise<Result<PersonSummary[]>>;
   findSimilar(treeId: string, query: SimilarQuery): Promise<Result<PersonSummary[]>>;
   reorderChildren(treeId: string, unionId: string, childIds: string[]): Promise<Result<void>>;
@@ -193,12 +193,14 @@ export function createTreesApi({ baseUrl }: { baseUrl: string }): TreesApi {
     parser?: Parser<T>,
     kind: CallKind = 'session',
     codes?: Partial<Record<string, string>>,
+    signal?: AbortSignal,
   ): Promise<Result<T>> {
     let res: Response;
     try {
       res = await fetch(`${origin}/api/v1${path}`, {
         method,
         credentials: 'include',
+        ...(signal ? { signal } : {}),
         ...(body === undefined
           ? {}
           : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
@@ -320,8 +322,16 @@ export function createTreesApi({ baseUrl }: { baseUrl: string }): TreesApi {
       request('DELETE', `${t(id)}/trash/${enc(b)}`, undefined, undefined, 'session', {
         NOT_FOUND: MESSAGES.itemGone,
       }),
-    getGraph: (id, query) =>
-      request('GET', `${t(id)}/graph${qs(query)}`, undefined, treeGraphSchema),
+    getGraph: (id, query, signal) =>
+      request(
+        'GET',
+        `${t(id)}/graph${qs(query)}`,
+        undefined,
+        treeGraphSchema,
+        'session',
+        undefined,
+        signal,
+      ),
     listDisconnected: (id) =>
       map(request('GET', `${t(id)}/disconnected`, undefined, personListSchema), (d) => d.persons),
     findSimilar: (id, query) =>
