@@ -198,12 +198,43 @@ export function RelationsTab({
             </p>
           )}
           <ul>
-            {u.children.map((c) => (
-              <li key={c.linkId}>
-                {person(c.person)} {kindSelect(c.linkId, c.kind, personName(c.person))}{' '}
-                {removeLink(c.linkId)}
-              </li>
-            ))}
+            {u.children.map((c, i) => {
+              const ids = u.children.map((x) => x.person.id);
+              const move = (by: -1 | 1) =>
+                void run(
+                  () => api.reorderChildren(treeId, u.id, moved(ids, i, by)),
+                  'Order saved.',
+                );
+              const showMove = caps.edit && u.children.length >= 2;
+              return (
+                <li key={c.linkId}>
+                  {person(c.person)} {kindSelect(c.linkId, c.kind, personName(c.person))}{' '}
+                  {showMove && i > 0 && (
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={busy}
+                      aria-label={`Move ${personName(c.person)} earlier`}
+                      onClick={() => move(-1)}
+                    >
+                      Move earlier
+                    </button>
+                  )}{' '}
+                  {showMove && i < u.children.length - 1 && (
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={busy}
+                      aria-label={`Move ${personName(c.person)} later`}
+                      onClick={() => move(1)}
+                    >
+                      Move later
+                    </button>
+                  )}{' '}
+                  {removeLink(c.linkId)}
+                </li>
+              );
+            })}
           </ul>
         </div>
       ))}
@@ -262,6 +293,13 @@ export function RelationsTab({
       )}
     </div>
   );
+}
+
+/** `ids` with the item at `index` swapped with its neighbour. */
+function moved(ids: string[], index: number, by: -1 | 1): string[] {
+  const next = [...ids];
+  [next[index], next[index + by]] = [next[index + by]!, next[index]!];
+  return next;
 }
 
 const names = (people: PersonSummary[], fallback: string) =>

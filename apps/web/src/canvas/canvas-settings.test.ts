@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { canvasSettings, cardDetail, isNodeVisible, orderAfterDrag } from './canvas-settings';
+import {
+  canvasSettings,
+  cardDetail,
+  isNodeVisible,
+  orderAfterDrag,
+  reorderAfterDrop,
+} from './canvas-settings';
 
 describe('canvas settings', () => {
   it('simplifies cards as you zoom out', () => {
@@ -35,5 +41,17 @@ describe('canvas settings', () => {
         ]),
       ),
     ).toEqual(['b', 'c', 'a']);
+  });
+
+  it('computes the order after a drop, or null when unchanged', () => {
+    const families = [{ id: 'u-dl', partnerIds: ['david', 'laura'], childIds: ['leo', 'mia'] }];
+    const x = (leo: number, mia: number) =>
+      new Map([
+        ['leo', leo],
+        ['mia', mia],
+      ]);
+    expect(reorderAfterDrop(families, 'u-dl', x(400, 100))).toEqual(['mia', 'leo']);
+    expect(reorderAfterDrop(families, 'u-dl', x(100, 400))).toBeNull();
+    expect(reorderAfterDrop(families, 'nope', x(400, 100))).toBeNull();
   });
 });

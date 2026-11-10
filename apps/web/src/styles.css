@@ -525,3 +525,7 @@ textarea {
     padding: 0.5rem 1rem 1rem;
   }
 }
+
+.react-flow__node.is-reorderable .person-card {
+  cursor: grab;
+}

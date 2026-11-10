@@ -113,5 +113,18 @@ export function graphToFlow(
     }
     families.push({ id: u.id, partnerIds, childIds: children.map((l) => l.childId) });
   }
+  const reorderable = new Map<string, string>(); // child id -> the union they can be dragged in
+  for (const u of graph.unions) {
+    const fam = families.find((f) => f.id === u.id);
+    if (!fam || !u.canEdit || u.childCount < 2 || fam.childIds.length !== u.childCount) continue;
+    for (const c of fam.childIds) if (!reorderable.has(c)) reorderable.set(c, u.id);
+  }
+  for (const n of nodes) {
+    if (n.type !== 'person') continue;
+    const unionId = reorderable.get(n.data.person.id) ?? null;
+    n.data.reorderUnionId = unionId;
+    n.draggable = unionId !== null;
+    if (unionId) n.className = 'is-reorderable';
+  }
   return { nodes, edges, families, personIds: persons.map((p) => p.id) };
 }

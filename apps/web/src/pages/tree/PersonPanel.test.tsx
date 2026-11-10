@@ -353,3 +353,57 @@ describe('PersonPanel add parameter', () => {
     expect(screen.queryByRole('form', { name: 'Add sibling' })).toBeNull();
   });
 });
+
+describe('PersonPanel reorder children', () => {
+  const leo = fakePerson({ givenName: 'Leo', surname: 'King', birthYear: 1994, deathYear: null });
+  const mia = fakePerson({ givenName: 'Mia', surname: 'King', birthYear: 1996, deathYear: null });
+  function family(role: 'owner' | 'viewer' = 'owner') {
+    const s = setup({}, role);
+    s.trees.trees.get(s.id)!.persons.push({ ...leo }, { ...mia });
+    s.view.relations.unions.push({
+      id: 'u-dl',
+      type: 'marriage',
+      status: 'married',
+      startDate: null,
+      endDate: null,
+      partner: null,
+      children: [
+        { linkId: crypto.randomUUID(), kind: 'biological', person: leo },
+        { linkId: crypto.randomUUID(), kind: 'biological', person: mia },
+      ],
+    });
+    return s;
+  }
+
+  it('Move later swaps the two and reloads', async () => {
+    const s = family();
+    renderAt(at(s, '?tab=relations'), s);
+    const before = s.trees.callsTo('getPerson').length;
+    fireEvent.click(await screen.findByRole('button', { name: 'Move Leo King later' }));
+    await waitFor(() => expect(s.trees.callsTo('reorderChildren')).toHaveLength(1));
+    expect(s.trees.callsTo('reorderChildren')[0]).toEqual({
+      treeId: s.id,
+      unionId: 'u-dl',
+      childIds: [mia.id, leo.id],
+    });
+    await waitFor(() => expect(s.trees.callsTo('getPerson').length).toBeGreaterThan(before));
+    expect(await screen.findByText('Order saved.')).toBeInTheDocument();
+  });
+
+  it('has no Move earlier on the first or Move later on the last', async () => {
+    const s = family();
+    renderAt(at(s, '?tab=relations'), s);
+    await screen.findByRole('button', { name: 'Move Leo King later' });
+    expect(screen.queryByRole('button', { name: 'Move Leo King earlier' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Move Mia King later' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Move Mia King earlier' })).toBeInTheDocument();
+  });
+
+  it('shows viewers neither button', async () => {
+    const s = family('viewer');
+    s.view.capabilities = { edit: false, addRelative: false, delete: false };
+    renderAt(at(s, '?tab=relations'), s);
+    await screen.findByRole('heading', { name: /Ada King/ });
+    expect(screen.queryByRole('button', { name: /^Move / })).toBeNull();
+  });
+});

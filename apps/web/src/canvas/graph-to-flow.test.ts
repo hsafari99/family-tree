@@ -84,4 +84,30 @@ describe('graphToFlow', () => {
       isMe: true,
     });
   });
+
+  it('makes children draggable only when their union is editable and fully shown', () => {
+    const drag = (g: ReturnType<typeof haleGraph>) =>
+      Object.fromEntries(
+        graphToFlow(g, ctx)
+          .nodes.filter((n) => n.type === 'person')
+          .map((n) => [n.id.slice(2), n.draggable === true]),
+      );
+    const d = drag(haleGraph());
+    for (const id of ['leo', 'mia', 'david', 'susan']) expect(d[id]).toBe(true);
+    for (const id of ['emma', 'noah', 'robert', 'margaret', 'anna', 'laura'])
+      expect(d[id]).toBe(false);
+    const g = haleGraph();
+    const noEdit = {
+      ...g,
+      unions: g.unions.map((u) => (u.id === 'u-dl' ? { ...u, canEdit: false } : u)),
+    };
+    expect([drag(noEdit).leo, drag(noEdit).mia]).toEqual([false, false]);
+    const more = {
+      ...g,
+      unions: g.unions.map((u) => (u.id === 'u-dl' ? { ...u, childCount: 3 } : u)),
+    };
+    expect([drag(more).leo, drag(more).mia]).toEqual([false, false]);
+    const leo = graphToFlow(g, ctx).nodes.find((n) => n.id === 'p:leo');
+    expect(leo!.type === 'person' && leo!.data.reorderUnionId).toBe('u-dl');
+  });
 });

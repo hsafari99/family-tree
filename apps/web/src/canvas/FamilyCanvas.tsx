@@ -13,11 +13,12 @@ import {
 import '@xyflow/react/dist/style.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type CanvasActions, CanvasActionsProvider } from './CanvasActions';
-import { canvasSettings, isNodeVisible } from './canvas-settings';
+import { canvasSettings, isNodeVisible, reorderAfterDrop } from './canvas-settings';
 import {
   CARD_HEIGHT,
   CARD_WIDTH,
   type CanvasNode,
+  type PersonFlowNode,
   type Family,
   personNodeId,
 } from './graph-to-flow';
@@ -45,7 +46,7 @@ export function FamilyCanvas(props: FamilyCanvasProps) {
   );
 }
 
-function CanvasInner({ nodes, edges, focusId, actions }: FamilyCanvasProps) {
+function CanvasInner({ nodes, edges, families, focusId, actions, onReorder }: FamilyCanvasProps) {
   const flow = useReactFlow<CanvasNode>();
   const pane = useRef<HTMLDivElement>(null);
   const [shown, setShown] = useState(nodes);
@@ -73,6 +74,23 @@ function CanvasInner({ nodes, edges, focusId, actions }: FamilyCanvasProps) {
       }
     })();
   }, [flow, nodes, focusId]);
+
+  const onNodeDragStop = useCallback(
+    (_: unknown, node: CanvasNode) => {
+      // Read the dragged positions first; setShown applies on the next render.
+      const x = new Map(
+        flow
+          .getNodes()
+          .filter((n): n is PersonFlowNode => n.type === 'person')
+          .map((n) => [n.data.person.id, n.position.x]),
+      );
+      setShown(nodes); // snap back; the next layout puts the card in its new place
+      if (node.type !== 'person' || !node.data.reorderUnionId || !onReorder) return;
+      const next = reorderAfterDrop(families, node.data.reorderUnionId, x);
+      if (next) onReorder(node.data.reorderUnionId, next);
+    },
+    [flow, families, nodes, onReorder],
+  );
 
   const reveal = useCallback(
     (personId: string) => {
@@ -103,6 +121,7 @@ function CanvasInner({ nodes, edges, focusId, actions }: FamilyCanvasProps) {
           edges={edges}
           nodeTypes={NODE_TYPES}
           onNodesChange={onNodesChange}
+          onNodeDragStop={onNodeDragStop}
           nodesDraggable={false}
           nodesConnectable={false}
           elementsSelectable={false}

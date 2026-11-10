@@ -83,6 +83,15 @@ export function TreeWorkspace({
     }),
     [go, base, keepFocus, personId],
   );
+  const [notice, setNotice] = useState<string | null>(null);
+  const onReorder = useCallback(
+    async (unionId: string, childIds: string[]) => {
+      const res = await api.reorderChildren(treeId, unionId, childIds);
+      setNotice(res.ok ? null : res.error.message);
+      changed();
+    },
+    [api, treeId, changed],
+  );
   const close = () => go(base, { focus: keepFocus, tab: null, add: null });
   const canAdd = detail.capabilities.editAnywhere || detail.me.steward.active;
   const selected = (newPerson && canAdd) || personId !== undefined || unionId !== undefined;
@@ -99,6 +108,11 @@ export function TreeWorkspace({
         hrefOf={hrefOf}
         onChange={(change) => go(pathname, change)}
       />
+      {notice && (
+        <p role="status" className="notice">
+          {notice}
+        </p>
+      )}
       <div className={selected ? 'tree-workspace has-panel' : 'tree-workspace'}>
         <section className="canvas-area" aria-label="Family tree view">
           {graph.status === 'loading' && <p role="status">Drawing the tree…</p>}
@@ -131,6 +145,7 @@ export function TreeWorkspace({
               families={ready.families}
               focusId={view.mode === 'focus' ? focusId : null}
               actions={actions}
+              onReorder={(u, ids) => void onReorder(u, ids)}
             />
           )}
         </section>
