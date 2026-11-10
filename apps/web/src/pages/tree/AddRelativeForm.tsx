@@ -8,7 +8,7 @@ import {
   UNION_STATUSES,
   UNION_TYPES,
 } from '@family-tree/shared';
-import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
+import { type FormEvent, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { FormError, validateDeep, type FieldErrors } from '../../components/forms';
 import {
   CHILD_KIND_LABEL,
@@ -17,6 +17,8 @@ import {
   UNION_TYPE_LABEL,
 } from '../../trees/format';
 import { useTreesApi } from '../../trees/TreesApiContext';
+import { DuplicatePrompt } from './DuplicatePrompt';
+import { similarQueryOf, useDuplicateCheck } from './useDuplicateCheck';
 import { emptyQuick, QuickPersonFields, quickPerson } from './QuickPersonFields';
 
 const names = (people: PersonSummary[], fallback: string) =>
@@ -79,6 +81,10 @@ export function AddRelativeForm({
   const [errors, setErrors] = useState<FieldErrors>({});
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const dup = useDuplicateCheck(
+    treeId,
+    useMemo(() => [subject.person.id], [subject.person.id]),
+  );
 
   const unionId =
     as === 'child'
@@ -97,33 +103,56 @@ export function AddRelativeForm({
   const taken = new Set([subject.person.id, ...alreadyIn(subject, as)]);
   const candidates = persons.filter((p) => !taken.has(p.id));
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setPending(true);
-    let res;
-    if (mode === 'new') {
-      const input = { person: quickPerson(quick), attach: { to: subject.person.id, ...link } };
-      const v = validateDeep(createPersonSchema, input);
-      if (!v.ok) {
-        setPending(false);
-        return setErrors(v.errors);
-      }
-      res = await api.createPerson(treeId, input as CreatePersonInput);
-    } else {
-      if (!existingId) {
-        setPending(false);
-        return setErrors({ existing: 'Choose a person' });
-      }
-      res = await api.addRelative(treeId, subject.person.id, {
-        personId: existingId,
-        ...link,
-      } as Parameters<typeof api.addRelative>[2]);
+  /** The create request for the typed person, or null (errors are shown) when it's invalid. */
+  function newInput(): CreatePersonInput | null {
+    const input = { person: quickPerson(quick), attach: { to: subject.person.id, ...link } };
+    const v = validateDeep(createPersonSchema, input);
+    if (!v.ok) {
+      setErrors(v.errors);
+      return null;
     }
+    setErrors({});
+    return input as CreatePersonInput;
+  }
+
+  async function finish(res: { ok: true } | { ok: false; error: { message: string } }) {
     if (!alive.current) return;
     setPending(false);
     if (!res.ok) return setError(res.error.message);
     onDone();
+  }
+
+  async function createNew(input: CreatePersonInput) {
+    setError(null);
+    setPending(true);
+    await finish(await api.createPerson(treeId, input));
+  }
+
+  async function linkExisting(personId: string) {
+    setError(null);
+    setPending(true);
+    await finish(
+      await api.addRelative(treeId, subject.person.id, {
+        personId,
+        ...link,
+      } as Parameters<typeof api.addRelative>[2]),
+    );
+  }
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (mode === 'existing') {
+      if (!existingId) return setErrors({ existing: 'Choose a person' });
+      return linkExisting(existingId);
+    }
+    const input = newInput();
+    if (!input) return;
+    setPending(true);
+    const fine = await dup.check(similarQueryOf(quick));
+    if (!alive.current) return;
+    if (!fine) return setPending(false); // the prompt is showing
+    await createNew(input);
   }
 
   const select = (
@@ -172,7 +201,14 @@ export function AddRelativeForm({
         </label>
       </fieldset>
       {mode === 'new' ? (
-        <QuickPersonFields values={quick} onChange={setQuick} errors={errors} />
+        <QuickPersonFields
+          values={quick}
+          onChange={(v) => {
+            dup.dismiss();
+            setQuick(v);
+          }}
+          errors={errors}
+        />
       ) : (
         <div className="field">
           <label htmlFor={`${uid}-existing`}>Person</label>
@@ -245,6 +281,19 @@ export function AddRelativeForm({
             UNION_STATUSES.map((k) => ({ value: k, label: UNION_STATUS_LABEL[k] })),
           )}
         </>
+      )}
+      {mode === 'new' && dup.matches && (
+        <DuplicatePrompt
+          matches={dup.matches}
+          pending={pending}
+          onUse={(p) => void linkExisting(p.id)}
+          onCreateNew={() => {
+            const input = newInput();
+            if (!input) return;
+            dup.confirmNew(similarQueryOf(quick));
+            void createNew(input);
+          }}
+        />
       )}
       <p className="actions">
         <button type="submit" disabled={pending}>

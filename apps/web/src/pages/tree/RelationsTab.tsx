@@ -3,10 +3,11 @@ import {
   type ChildKind,
   type PersonSummary,
   type PersonView,
+  RELATIVE_ROLES,
   type RelativeRole,
 } from '@family-tree/shared';
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { ConfirmButton } from '../../components/ConfirmButton';
 import { FormError, Success } from '../../components/forms';
 import {
@@ -47,7 +48,26 @@ export function RelationsTab({
       alive.current = false;
     };
   }, []);
-  const [adding, setAdding] = useState<RelativeRole | null>(null);
+  const [params, setParams] = useSearchParams();
+  const requested = RELATIVE_ROLES.find((r) => r === params.get('add')) ?? null;
+  const noParents = view.relations.parents.length === 0;
+  const startAdding = requested === 'sibling' && noParents ? null : requested;
+  const [adding, setAdding] = useState<RelativeRole | null>(startAdding);
+  // A card's "+" button arrives as ?add=<role>.
+  useEffect(() => setAdding(startAdding), [startAdding]);
+  const stopAdding = () => {
+    setAdding(null);
+    if (params.has('add')) {
+      setParams(
+        (p) => {
+          const next = new URLSearchParams(p);
+          next.delete('add');
+          return next;
+        },
+        { replace: true },
+      );
+    }
+  };
   const [editingUnion, setEditingUnion] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -230,9 +250,9 @@ export function RelationsTab({
               subject={view}
               as={adding}
               persons={persons}
-              onCancel={() => setAdding(null)}
+              onCancel={stopAdding}
               onDone={() => {
-                setAdding(null);
+                stopAdding();
                 void reload();
                 onChanged();
               }}

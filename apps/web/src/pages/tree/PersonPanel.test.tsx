@@ -326,3 +326,30 @@ describe('PersonPanel', () => {
     });
   });
 });
+
+describe('PersonPanel add parameter', () => {
+  it('opens the Relations tab with the add form for ?tab=relations&add=child', async () => {
+    const s = setup();
+    renderAt(at(s, '?tab=relations&add=child'), s);
+    expect(await screen.findByRole('form', { name: 'Add child' })).toBeInTheDocument();
+  });
+
+  it('closes the form on Cancel', async () => {
+    const s = setup();
+    renderAt(at(s, '?tab=relations&add=child'), s);
+    await screen.findByRole('form', { name: 'Add child' });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('form', { name: 'Add child' })).toBeNull());
+    // The parameter is gone too: opening another role starts clean.
+    fireEvent.click(screen.getByRole('button', { name: 'Add partner' }));
+    expect(await screen.findByRole('form', { name: 'Add partner' })).toBeInTheDocument();
+    expect(screen.queryByRole('form', { name: 'Add child' })).toBeNull();
+  });
+
+  it('opens nothing for add=sibling when there are no parents', async () => {
+    const s = setup();
+    renderAt(at(s, '?tab=relations&add=sibling'), s);
+    expect(await screen.findByText('Add a parent first')).toBeInTheDocument();
+    expect(screen.queryByRole('form', { name: 'Add sibling' })).toBeNull();
+  });
+});

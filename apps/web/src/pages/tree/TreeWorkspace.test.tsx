@@ -4,7 +4,7 @@ import { MESSAGES, toAuthError } from '../../auth/api';
 import { LayoutTimeoutError } from '../../canvas/layout-engine';
 import { haleGraph } from '../../canvas/test-fixtures';
 import { FakeAuthApi } from '../../test/fake-auth';
-import { FakeTreesApi, fakePerson } from '../../test/fake-trees';
+import { FakeTreesApi, fakePerson, fakePersonView } from '../../test/fake-trees';
 import { renderAt } from '../../test/render';
 
 const hale = haleGraph();
@@ -25,7 +25,7 @@ function setup(opts: { role?: 'owner' | 'viewer'; graph?: Partial<typeof hale> }
   const trees = new FakeTreesApi();
   const id = trees.addTree({
     name: 'Hale family',
-    persons: [...summaries, lone],
+    persons: [...summaries, lone].map((p) => ({ ...p })),
     ...(opts.role === 'viewer' ? { role: 'viewer', detail: { capabilities: viewerCaps } } : {}),
   });
   const t = trees.trees.get(id)!;
@@ -236,5 +236,35 @@ describe('TreeWorkspace', () => {
     await waitFor(() =>
       expect(s.trees.callsTo('listDisconnected').length).toBeGreaterThan(disBefore),
     );
+  });
+});
+
+describe('TreeWorkspace add from a card', () => {
+  it('opens the child form with the partner preselected (what a card "+" does)', async () => {
+    const s = setup();
+    const laura = summaries.find((p) => p.id === 'laura')!;
+    const david = summaries.find((p) => p.id === 'david')!;
+    s.t.people.set(
+      'laura',
+      fakePersonView(laura, {
+        relations: {
+          parents: [],
+          siblings: [],
+          unions: [
+            {
+              id: 'u-dl',
+              type: 'marriage',
+              status: 'married',
+              startDate: null,
+              endDate: null,
+              partner: david,
+              children: [],
+            },
+          ],
+        },
+      }),
+    );
+    renderAt(`/trees/${s.id}/people/laura?tab=relations&add=child`, s);
+    expect(await screen.findByLabelText('Other parent')).toHaveDisplayValue('with David Hale');
   });
 });
