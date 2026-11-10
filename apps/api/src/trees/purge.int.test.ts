@@ -230,3 +230,18 @@ describe('photo objects of purged trees', () => {
     for (const k of t.keys) expect(await objectExists(deps, k)).toBe(true);
   });
 });
+
+describe('the orphan sweep in the purge job', () => {
+  it('never sweeps on the first tick after startup, then sweeps once per period', async () => {
+    const list = vi.fn(async function* () {});
+    const store = { ...deps.storage, list };
+    const log = { info: vi.fn(), error: vi.fn(), warn: vi.fn() };
+    const stop = startPurgeJob(db, log, 20, store, { sweepEveryMs: 300 });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(list).not.toHaveBeenCalled(); // several ticks, none of them a sweep yet
+    await new Promise((r) => setTimeout(r, 300));
+    await stop();
+    expect(list).toHaveBeenCalledTimes(1);
+    expect(log.error).not.toHaveBeenCalled();
+  });
+});
