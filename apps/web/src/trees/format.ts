@@ -125,6 +125,7 @@ export const ACTION_LABEL: Record<AuditAction, string> = {
   'link.create': 'Parent and child linked',
   'link.update': 'Parent and child link changed',
   'link.delete': 'Parent and child link removed',
+  'link.reorder': 'Children reordered',
   'residence.create': 'Place of residence added',
   'residence.update': 'Place of residence changed',
   'residence.delete': 'Place of residence removed',
