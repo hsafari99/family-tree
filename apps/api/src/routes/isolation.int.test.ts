@@ -5,13 +5,27 @@ import {
   addGrant,
   addMember,
   addPerson,
+  family,
   ownerWithTree,
+  softDeleteBatch,
   userWith2fa,
 } from '../../test/tree-helpers.js';
 import { buildApp } from '../app.js';
 import { createAuth } from '../auth/auth.js';
 import { loadConfig } from '../config.js';
-import { branchStewards, invites, resetLinks, treeMembers, trees } from '../db/schema.js';
+import {
+  auditLog,
+  branchStewards,
+  deletionBatches,
+  invites,
+  parentChild,
+  persons,
+  resetLinks,
+  residences,
+  treeMembers,
+  trees,
+  unions,
+} from '../db/schema.js';
 import { createDeps } from '../deps.js';
 
 const config = loadConfig();
@@ -30,7 +44,17 @@ afterAll(async () => {
   await deps.close();
 });
 
-type Ids = { member: string; grant: string; invite: string; person: string };
+type Ids = {
+  member: string;
+  grant: string;
+  invite: string;
+  person: string;
+  person2: string;
+  union: string;
+  link: string;
+  residence: string;
+  batch: string;
+};
 type Route = readonly [
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
   url: string,
@@ -54,6 +78,28 @@ const routes = (t: string, ids: Ids): Route[] => [
   ['GET', `/api/v1/trees/${t}/invites`],
   ['POST', `/api/v1/trees/${t}/invites`, { role: 'viewer' }],
   ['DELETE', `/api/v1/trees/${t}/invites/${ids.invite}`],
+  ['GET', `/api/v1/trees/${t}/persons/${ids.person}`],
+  ['POST', `/api/v1/trees/${t}/persons`, { person: { givenName: 'Intruder' } }],
+  ['PATCH', `/api/v1/trees/${t}/persons/${ids.person}`, { version: 1, surname: 'X' }],
+  ['GET', `/api/v1/trees/${t}/persons/${ids.person}/history`],
+  [
+    'POST',
+    `/api/v1/trees/${t}/persons/${ids.person}/relatives`,
+    { personId: ids.person2, as: 'partner' },
+  ],
+  ['POST', `/api/v1/trees/${t}/persons/${ids.person}/residences`, { place: 'X' }],
+  ['PATCH', `/api/v1/trees/${t}/residences/${ids.residence}`, { place: 'X' }],
+  ['DELETE', `/api/v1/trees/${t}/residences/${ids.residence}`],
+  ['PATCH', `/api/v1/trees/${t}/unions/${ids.union}`, { status: 'divorced' }],
+  ['POST', `/api/v1/trees/${t}/unions/${ids.union}/delete`],
+  ['PATCH', `/api/v1/trees/${t}/parent-child/${ids.link}`, { kind: 'step' }],
+  ['POST', `/api/v1/trees/${t}/parent-child/${ids.link}/delete`],
+  ['POST', `/api/v1/trees/${t}/persons/${ids.person}/delete-preview`, { mode: 'person' }],
+  ['POST', `/api/v1/trees/${t}/persons/${ids.person}/delete`, { mode: 'person' }],
+  ['GET', `/api/v1/trees/${t}/trash`],
+  ['GET', `/api/v1/trees/${t}/trash/${ids.batch}`],
+  ['POST', `/api/v1/trees/${t}/trash/${ids.batch}/restore`],
+  ['DELETE', `/api/v1/trees/${t}/trash/${ids.batch}`],
 ];
 
 async function setup() {
@@ -62,6 +108,16 @@ async function setup() {
   await addMember(db, treeId, member.userId, 'viewer', owner.userId);
   const person = await addPerson(db, treeId, 'Anchor');
   const grant = await addGrant(db, treeId, member.userId, person.id, owner.userId);
+  const p2 = await addPerson(db, treeId, 'Two');
+  const p3 = await addPerson(db, treeId, 'Three');
+  const p4 = await addPerson(db, treeId, 'Four');
+  const u = await family(db, treeId, person, p2, [p3]);
+  const [link] = await db.select().from(parentChild).where(eq(parentChild.unionId, u.id));
+  const [res] = await db
+    .insert(residences)
+    .values({ treeId, personId: person.id, place: 'Leeds' })
+    .returning();
+  const batch = await softDeleteBatch(db, treeId, owner.userId, [p4.id]);
   const [invite] = await db
     .insert(invites)
     .values({
@@ -83,6 +139,11 @@ async function setup() {
     grant: grant.id,
     invite: invite!.id,
     person: person.id,
+    person2: p2.id,
+    union: u.id,
+    link: link!.id,
+    residence: res!.id,
+    batch: batch.id,
   };
   return { owner, member, treeId, treeB, x, ids };
 }
@@ -93,7 +154,39 @@ async function snapshot(treeId: string) {
   const grants = await db.select().from(branchStewards).where(eq(branchStewards.treeId, treeId));
   const inv = await db.select().from(invites).where(eq(invites.treeId, treeId));
   const links = await db.select().from(resetLinks).where(eq(resetLinks.treeId, treeId));
+  const by = <T extends { id: string }>(a: T[]) => a.sort((x, y) => x.id.localeCompare(y.id));
+  const ps = await db.select().from(persons).where(eq(persons.treeId, treeId));
+  const us = await db.select().from(unions).where(eq(unions.treeId, treeId));
+  const pcs = await db.select().from(parentChild).where(eq(parentChild.treeId, treeId));
+  const rs = await db.select().from(residences).where(eq(residences.treeId, treeId));
+  const bs = await db.select().from(deletionBatches).where(eq(deletionBatches.treeId, treeId));
+  const audits = await db
+    .select({ id: auditLog.id })
+    .from(auditLog)
+    .where(eq(auditLog.treeId, treeId));
   return {
+    persons: by(
+      ps.map((x) => ({
+        id: x.id,
+        version: x.version,
+        deletedAt: x.deletedAt,
+        batch: x.deletionBatchId,
+        surname: x.surname,
+      })),
+    ),
+    unions: by(
+      us.map((x) => ({
+        id: x.id,
+        a: x.partnerAId,
+        b: x.partnerBId,
+        status: x.status,
+        deletedAt: x.deletedAt,
+      })),
+    ),
+    parentChild: by(pcs.map((x) => ({ id: x.id, kind: x.kind, deletedAt: x.deletedAt }))),
+    residences: by(rs.map((x) => ({ id: x.id, place: x.place }))),
+    batches: by(bs.map((x) => ({ id: x.id, restoredAt: x.restoredAt }))),
+    auditCount: audits.length,
     name: tree!.name,
     deletedAt: tree!.deletedAt,
     members: members
@@ -138,6 +231,27 @@ describe('cross-tree isolation', () => {
       const res = await run(x.jar, route);
       expect(res.statusCode, `${route[0]} ${route[1]}`).toBe(404);
     }
+    const aIds = [ids.person, ids.union, ids.link, ids.residence, ids.batch];
+    const aRoutes = routes(t, ids).filter((rt) => aIds.some((id) => rt[1].includes(id)));
+    expect(aRoutes.length).toBeGreaterThan(10);
+    for (const route of aRoutes) {
+      const res = await run(x.jar, route);
+      expect(res.statusCode, `${route[0]} ${route[1]}`).toBe(404);
+    }
+    const bRoot = (await db.select().from(trees).where(eq(trees.id, t)))[0]!.rootPersonId!;
+    const attach = await run(x.jar, [
+      'POST',
+      `/api/v1/trees/${t}/persons`,
+      { person: { givenName: 'Sneak' }, attach: { to: ids.person, as: 'child' } },
+    ]);
+    expect(attach.statusCode).toBe(400);
+    expect(attach.json().error.code).toBe('VALIDATION');
+    const rel = await run(x.jar, [
+      'POST',
+      `/api/v1/trees/${t}/persons/${bRoot}/relatives`,
+      { personId: ids.person, as: 'partner' },
+    ]);
+    expect(rel.statusCode).toBe(400);
     // Tree A's member with a tree-B person: not a member of B. (With tree A's person the route
     // answers 400 first, because the person is checked before the member.)
     const bPerson = await addPerson(db, t, 'Bob');
