@@ -39,8 +39,8 @@ type RoleName = (typeof ROLES)[number];
 async function setup() {
   const { owner, treeId } = await ownerWithTree(app);
   const [robert, mary, dan, ann, leo, george, greta, kim, scratch, dee, gil] = await Promise.all(
-    ['Robert', 'Mary', 'Dan', 'Ann', 'Leo', 'George', 'Greta', 'Kim', 'Scratch', 'Dee', 'Gil'].map((n) =>
-      addPerson(db, treeId, n),
+    ['Robert', 'Mary', 'Dan', 'Ann', 'Leo', 'George', 'Greta', 'Kim', 'Scratch', 'Dee', 'Gil'].map(
+      (n) => addPerson(db, treeId, n),
     ),
   );
   const rm = await family(db, treeId, robert!, mary!, [dan!, dee!]);
@@ -225,12 +225,20 @@ const ROWS: Row[] = [
   },
   {
     name: 'child-order Robert+Mary',
-    req: (c) => ['POST', `${T(c)}/unions/${c.rm.id}/child-order`, { childIds: [...c.rmKids].reverse() }],
+    req: (c) => [
+      'POST',
+      `${T(c)}/unions/${c.rm.id}/child-order`,
+      { childIds: [...c.rmKids].reverse() },
+    ],
     want: [204, 204, 403, 204, 403, 204],
   },
   {
     name: 'child-order George+Greta',
-    req: (c) => ['POST', `${T(c)}/unions/${c.gg.id}/child-order`, { childIds: [...c.ggKids].reverse() }],
+    req: (c) => [
+      'POST',
+      `${T(c)}/unions/${c.gg.id}/child-order`,
+      { childIds: [...c.ggKids].reverse() },
+    ],
     want: [204, 204, 403, 403, 403, 204],
   },
   {

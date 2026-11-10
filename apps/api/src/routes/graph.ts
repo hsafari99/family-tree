@@ -61,7 +61,12 @@ export const graphRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, { a
     authorize(access, 'tree.view', TREE);
     const rows = await loadGraphRows(db, access.treeId);
     const reached = connectedTo(kinIndex(rows), access.rootPersonId);
-    return { persons: rows.persons.filter((p) => !reached.has(p.id)).map(toSummary).sort(byName) };
+    return {
+      persons: rows.persons
+        .filter((p) => !reached.has(p.id))
+        .map(toSummary)
+        .sort(byName),
+    };
   });
 
   /** The duplicate check (decision 8). */

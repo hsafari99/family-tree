@@ -178,7 +178,20 @@ export async function seedSampleFamily(
 }
 
 export const LARGE_SEED_TREE_NAME = 'Large family (seed)';
-const GIVEN = ['Ada', 'Ben', 'Cara', 'Dev', 'Eli', 'Fay', 'Gus', 'Hana', 'Ivo', 'Jun', 'Kai', 'Lea'];
+const GIVEN = [
+  'Ada',
+  'Ben',
+  'Cara',
+  'Dev',
+  'Eli',
+  'Fay',
+  'Gus',
+  'Hana',
+  'Ivo',
+  'Jun',
+  'Kai',
+  'Lea',
+];
 const SURNAMES = ['Hale', 'Moss', 'Reyes', 'Okafor', 'Novak', 'Sato', 'Lund', 'Price'];
 
 /**
@@ -231,12 +244,16 @@ export async function seedLargeFamily(
       }
     }
     // Chunks keep each INSERT well under Postgres's 65,535-parameter limit.
-    for (let i = 0; i < ps.length; i += 1000) await tx.insert(persons).values(ps.slice(i, i + 1000));
+    for (let i = 0; i < ps.length; i += 1000)
+      await tx.insert(persons).values(ps.slice(i, i + 1000));
     for (let i = 0; i < us.length; i += 1000) await tx.insert(unions).values(us.slice(i, i + 1000));
-    for (let i = 0; i < pcs.length; i += 1000) await tx.insert(parentChild).values(pcs.slice(i, i + 1000));
+    for (let i = 0; i < pcs.length; i += 1000)
+      await tx.insert(parentChild).values(pcs.slice(i, i + 1000));
     await tx.update(trees).set({ rootPersonId: first.id }).where(eq(trees.id, treeId));
     if (ownerUserId) {
-      await tx.insert(treeMembers).values({ treeId, userId: ownerUserId, role: 'owner', personId: first.id });
+      await tx
+        .insert(treeMembers)
+        .values({ treeId, userId: ownerUserId, role: 'owner', personId: first.id });
     }
     return { treeId, rootPersonId: first.id };
   });

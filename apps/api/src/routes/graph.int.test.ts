@@ -155,9 +155,7 @@ describe('GET graph', () => {
     const steward = await userWith2fa(app, 'Sam Steward');
     await addMember(db, treeId, steward.userId, 'viewer', owner.userId);
     await addGrant(db, treeId, steward.userId, p.sam!.id, owner.userId);
-    const sb = parse(
-      (await call(app, 'GET', g(treeId, 'mode=full'), { jar: steward.jar })).json(),
-    );
+    const sb = parse((await call(app, 'GET', g(treeId, 'mode=full'), { jar: steward.jar })).json());
     const add = (n: string) => sb.persons.find((x) => x.givenName === n)!.canAddRelative;
     expect(['Sam', 'Kid', 'Kp', 'Gk'].map(add)).toEqual([true, true, true, true]);
     expect(['Olive', 'Pa'].map(add)).toEqual([false, false]);
@@ -257,9 +255,9 @@ describe('GET persons/similar', () => {
       jar: owner.jar,
     });
     expect(res.statusCode).toBe(200);
-    const got = (res.json().persons as { givenName: string; surname: string; birthYear: number }[]).map(
-      (x) => `${x.givenName} ${x.surname} ${x.birthYear}`,
-    );
+    const got = (
+      res.json().persons as { givenName: string; surname: string; birthYear: number }[]
+    ).map((x) => `${x.givenName} ${x.surname} ${x.birthYear}`);
     expect(got).toEqual(['Ada King 1815', 'Ada Lovelace 1815', 'Adah Lovelace 1816']);
   });
   it('ignores accents and case', async () => {
@@ -279,9 +277,9 @@ describe('GET persons/similar', () => {
     const { owner, treeId, p } = await people();
     const viewer = await signUp(app, { name: 'Vera' });
     await addMember(db, treeId, viewer.userId, 'viewer', owner.userId);
-    expect((await call(app, 'GET', s(treeId, 'givenName=Ada'), { jar: viewer.jar })).statusCode).toBe(
-      200,
-    );
+    expect(
+      (await call(app, 'GET', s(treeId, 'givenName=Ada'), { jar: viewer.jar })).statusCode,
+    ).toBe(200);
     const stranger = await signUp(app, { name: 'Stranger' });
     expect(
       (await call(app, 'GET', s(treeId, 'givenName=Ada'), { jar: stranger.jar })).statusCode,
@@ -311,7 +309,9 @@ describe('POST child-order', () => {
     expect(await order([p.sis!.id, p.olive!.id])).toEqual([1, 2]);
     const after = await db.select().from(persons).where(eq(persons.id, p.olive!.id));
     expect(after[0]!.version).toBe(before[0]!.version);
-    const rows = (await db.select().from(auditLog).where(eq(auditLog.treeId, treeId))).filter((r) => r.action === 'link.reorder');
+    const rows = (await db.select().from(auditLog).where(eq(auditLog.treeId, treeId))).filter(
+      (r) => r.action === 'link.reorder',
+    );
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       entityType: 'union',
@@ -341,7 +341,7 @@ describe('POST child-order', () => {
     expect(await order([p.sis!.id, p.olive!.id])).toEqual([null, null]);
   });
 
-  it('404s for another tree\'s union and a deleted union', async () => {
+  it("404s for another tree's union and a deleted union", async () => {
     const { owner, treeId, p, uPa } = await setup();
     const other = await setup();
     const body = { childIds: [p.sis!.id, p.olive!.id] };
@@ -354,7 +354,7 @@ describe('POST child-order', () => {
     );
   });
 
-  it('enforces roles, including every child being in a steward\'s scope', async () => {
+  it("enforces roles, including every child being in a steward's scope", async () => {
     const { owner, treeId, p, uPa, uOlive } = await setup();
     const ann = await addPerson(db, treeId, 'Ann');
     await db.insert(parentChild).values({ treeId, unionId: uOlive.id, childId: ann.id });

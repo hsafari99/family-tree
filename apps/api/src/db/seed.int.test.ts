@@ -106,7 +106,7 @@ describe('seedLargeFamily', () => {
         .returning()
     )[0]!;
 
-  it('creates a connected tree of the requested size and replaces only the owner\'s own', async () => {
+  it("creates a connected tree of the requested size and replaces only the owner's own", async () => {
     const [a, b] = [await mkUser(), await mkUser()];
     const created: string[] = [];
     try {
