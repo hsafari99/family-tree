@@ -45,6 +45,19 @@ pnpm test:int         # integration tests (needs `pnpm dev` or `docker compose u
 
   In a later phase, tree owners will create these links in the app.
 
+## Trees, invites and stewards (dev)
+
+- **Start a tree** from _Your trees_. Owners must have two-step verification, so the page asks
+  you to turn it on first. Each account can own up to `MAX_TREES_PER_USER` trees (default 3).
+- **Invite links** are created on a tree's _Members and invites_ page. A link is shown once; you
+  send it yourself through any channel. It is single-use, expires after 7 days, and can make the
+  person a viewer or editor, optionally a branch steward, and optionally say which person they are.
+- **Try stewards on a real branch:** `pnpm seed you@example.com` makes that account the owner of
+  "Sample family (seed)" (10 people), so you can anchor a steward on e.g. Robert Hale.
+- **Owner-issued reset links** come from the _Members_ page, for members without 2FA who belong to
+  no tree you don't own.
+- Deleted trees stay restorable by the owner for 30 days under _Deleted trees_.
+
 ## Known limitations
 
 - **Sign-up reveals registered emails.** Sign-up is open, and signing up with an email that
@@ -57,6 +70,9 @@ pnpm test:int         # integration tests (needs `pnpm dev` or `docker compose u
 - **Rate limits live in memory.** Both Fastify's and Better Auth's rate-limit counters are kept in
   the API process, so they reset on restart and are not shared between instances. The API is
   meant to run as a single instance; a second one would need a shared store first.
+- **Moving 2FA to a new device** isn't possible yet (planned for phase 7). An owner who loses
+  their phone signs in with a recovery code.
+- **People can't be edited yet** (phase 4), and there is **no tree canvas yet** (phase 5).
 
 ## License
 
