@@ -1,6 +1,6 @@
 import type { LiveGraph } from '@family-tree/shared';
 import { and, eq, isNull, sql } from 'drizzle-orm';
-import type { Queryable } from '../db/client.js';
+import type { Queryable, Tx } from '../db/client.js';
 import { parentChild, persons, unions } from '../db/schema.js';
 
 /**
@@ -39,5 +39,5 @@ export async function loadLiveGraph(db: Queryable, treeId: string): Promise<Live
 }
 
 /** Serialises structural changes to one tree (decision 10). Call first inside the transaction. */
-export const lockTreeGraph = (db: Queryable, treeId: string) =>
+export const lockTreeGraph = (db: Tx, treeId: string) =>
   db.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`graph:${treeId}`}, 0))`);

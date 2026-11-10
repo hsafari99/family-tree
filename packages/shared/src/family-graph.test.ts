@@ -119,6 +119,48 @@ describe('planPersonDeletion, with descendants', () => {
   });
 });
 
+describe('planPersonDeletion, descendants mode partners', () => {
+  it('keeps the root’s own partner but removes a descendant’s lone partner', () => {
+    const p = planPersonDeletion(g, 'kid1', 'descendants');
+    expect(sorted(p.personIds)).toEqual(['grandkid', 'kid1']);
+    expect(p.personIds).not.toContain('spouse');
+    expect(p.slots).toEqual([{ unionId: 'u3', slot: 'a', personId: 'kid1' }]);
+  });
+  const small = (extraUnions: LiveGraph['unions']): LiveGraph => ({
+    persons: ['r', 'c', 'x', 'y'].map((id) => ({ id })),
+    unions: [
+      { id: 'ur', partnerAId: 'r', partnerBId: null },
+      { id: 'uc', partnerAId: 'c', partnerBId: 'x' },
+      ...extraUnions,
+    ],
+    parentChild: [{ id: 'l', unionId: 'ur', childId: 'c' }],
+  });
+  it('keeps a descendant’s partner who also has a single-parent union', () => {
+    const p = planPersonDeletion(
+      small([{ id: 'ux', partnerAId: 'x', partnerBId: null }]),
+      'r',
+      'descendants',
+    );
+    expect(sorted(p.personIds)).toEqual(['c', 'r']);
+  });
+  it('removes a partner whose unions are all with deleted people', () => {
+    const graph: LiveGraph = {
+      persons: ['r', 'c', 'c2', 'x'].map((id) => ({ id })),
+      unions: [
+        { id: 'ur', partnerAId: 'r', partnerBId: null },
+        { id: 'uc', partnerAId: 'c', partnerBId: 'x' },
+        { id: 'ux', partnerAId: 'x', partnerBId: 'c2' },
+      ],
+      parentChild: [
+        { id: 'l1', unionId: 'ur', childId: 'c' },
+        { id: 'l2', unionId: 'ur', childId: 'c2' },
+      ],
+    };
+    const p = planPersonDeletion(graph, 'r', 'descendants');
+    expect(sorted(p.personIds)).toEqual(['c', 'c2', 'r', 'x']);
+  });
+});
+
 describe('relation plans', () => {
   it('a union takes its child links with it', () => {
     const p = planUnionDeletion(g, 'u2');

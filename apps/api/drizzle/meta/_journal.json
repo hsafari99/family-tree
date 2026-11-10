@@ -29,6 +29,13 @@
       "when": 1794270641525,
       "tag": "0003_people",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794283348392,
+      "tag": "0004_batch_roots",
+      "breakpoints": true
     }
   ]
 }

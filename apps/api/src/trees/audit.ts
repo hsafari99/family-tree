@@ -19,6 +19,10 @@ export interface AuditEntry {
 
 /** Records one change (spec §8). Always call it inside the transaction that makes the change. */
 export async function audit(db: Queryable, actor: AuditActor, e: AuditEntry): Promise<void> {
+  // member/steward/invite rows must never reach a person's History (decision 13).
+  if (/^(member|steward|invite)\./.test(e.action) && (e.personIds?.length ?? 0) > 0) {
+    throw new Error(`audit: ${e.action} must not set personIds`);
+  }
   await db.insert(auditLog).values({
     treeId: actor.treeId,
     userId: actor.userId,

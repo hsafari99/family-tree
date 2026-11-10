@@ -71,12 +71,34 @@ async function setup() {
 const newBatch = async (treeId: string, deletedByUserId?: string) => {
   const [batch] = await db
     .insert(deletionBatches)
-    .values({ treeId, mode: 'person', deletedByUserId: deletedByUserId ?? null })
+    .values({
+      treeId,
+      mode: 'person',
+      rootPersonId: crypto.randomUUID(),
+      deletedByUserId: deletedByUserId ?? null,
+    })
     .returning();
   return batch!;
 };
 
 describe('people schema', () => {
+  it('requires the right root on a deletion batch', async () => {
+    const tree = await newTree();
+    const insert = (v: Partial<typeof deletionBatches.$inferInsert>) =>
+      db.insert(deletionBatches).values({ treeId: tree.id, mode: 'person', ...v });
+    const id = () => crypto.randomUUID();
+    const bad = { cause: { constraint_name: 'deletion_batches_root_chk' } };
+    await expect(insert({})).rejects.toMatchObject(bad);
+    await expect(insert({ mode: 'descendants' })).rejects.toMatchObject(bad);
+    await expect(insert({ mode: 'relation' })).rejects.toMatchObject(bad);
+    await expect(
+      insert({ mode: 'relation', rootUnionId: id(), rootParentChildId: id() }),
+    ).rejects.toMatchObject(bad);
+    await insert({ mode: 'descendants', rootPersonId: id() });
+    await insert({ mode: 'relation', rootUnionId: id() });
+    await insert({ mode: 'relation', rootParentChildId: id() });
+  });
+
   it('guards deletion batches with a composite NO ACTION foreign key', async () => {
     const { tree, a } = await setup();
     const batch = await newBatch(tree.id);

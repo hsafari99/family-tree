@@ -1,5 +1,5 @@
 import type { CreatedInvite, Invite } from '@family-tree/shared';
-import { type FormEvent, useEffect, useState } from 'react';
+import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { ConfirmButton } from '../../components/ConfirmButton';
 import { FormError } from '../../components/forms';
 import { personName } from '../../trees/format';
@@ -25,7 +25,11 @@ export function InvitesSection({
   const [targetId, setTargetId] = useState('');
   const [created, setCreated] = useState<CreatedInvite | null>(null);
   const [pending, setPending] = useState(false);
+  // Skip the mount run: under load it can fire after a click has already set `created`.
+  const seenActed = useRef(acted.n);
   useEffect(() => {
+    if (acted.n === seenActed.current) return;
+    seenActed.current = acted.n;
     if (acted.from !== 'invite') setCreated(null);
   }, [acted]);
   const isOwner = detail.me.role === 'owner';

@@ -91,7 +91,7 @@
    - The children of those unions.
    - The parents on every child link that ends.
    Including the children of an emptied union is stricter than the spec's minimum: those children lose a parent.
-6. **"Partners with no other connection"** (descendants mode) means a partner of a deleted descendant who:
+6. **"Partners with no other connection"** (descendants mode) means a partner of a deleted descendant (never the root person's own partners, which stay; their slot is emptied as in person mode) who:
    - has no parents recorded, and
    - has no union whose other partner survives (or is empty).
    The rule is applied once (no chaining).
@@ -719,7 +719,7 @@ export type TrashBatchDetail = z.infer<typeof trashBatchDetailSchema>;
 - Create: `packages/shared/src/family-graph.ts`, `packages/shared/src/family-graph.test.ts`
 - Modify: `packages/shared/src/index.ts`
 
-- [ ] **Step 1: Write the failing test** `packages/shared/src/family-graph.test.ts`. The recursive `visit` in `hasCycle` is fine at family scale. Generations, not people, set the recursion depth.
+- [ ] **Step 1: Write the failing test** `packages/shared/src/family-graph.test.ts`. `hasCycle` is iterative (explicit stack), so deep trees can't overflow the call stack.
 
 ```ts
 import { describe, expect, it } from 'vitest';

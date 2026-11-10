@@ -80,17 +80,27 @@ export function wouldCycle(graph: LiveGraph, parentIds: string[], childIds: stri
 export function hasCycle(graph: LiveGraph): boolean {
   const { children } = indexGraph(graph);
   const state = new Map<string, 1 | 2>(); // 1 = on the current path, 2 = done
-  const visit = (id: string): boolean => {
-    state.set(id, 1);
-    for (const c of children.get(id) ?? []) {
+  for (const p of graph.persons) {
+    if (state.has(p.id)) continue;
+    state.set(p.id, 1);
+    const stack = [{ id: p.id, next: 0 }];
+    for (let top = stack.at(-1); top; top = stack.at(-1)) {
+      const kids = children.get(top.id) ?? [];
+      const c = kids[top.next++];
+      if (c === undefined) {
+        state.set(top.id, 2);
+        stack.pop();
+        continue;
+      }
       const s = state.get(c);
       if (s === 1) return true;
-      if (s === undefined && visit(c)) return true;
+      if (s === undefined) {
+        state.set(c, 1);
+        stack.push({ id: c, next: 0 });
+      }
     }
-    state.set(id, 2);
-    return false;
-  };
-  return graph.persons.some((p) => state.get(p.id) === undefined && visit(p.id));
+  }
+  return false;
 }
 
 export interface DeletionSlot {
@@ -123,11 +133,14 @@ export function planPersonDeletion(
     for (const d of reach(personId, ix.children)) doomed.add(d);
     const otherOf = (u: GraphUnion, self: string) =>
       u.partnerAId === self ? u.partnerBId : u.partnerAId;
+    // Only partners of the descendants qualify; the root's own partners stay (spec §4).
+    const rootPartners = new Set((ix.unionsOf.get(personId) ?? []).flatMap((u) => partnersOf(u)));
     const loners: string[] = [];
     for (const d of doomed) {
+      if (d === personId) continue;
       for (const u of ix.unionsOf.get(d) ?? []) {
         const x = otherOf(u, d);
-        if (x === null || doomed.has(x) || ix.linksByChild.has(x)) continue;
+        if (x === null || doomed.has(x) || rootPartners.has(x) || ix.linksByChild.has(x)) continue;
         const allInside = (ix.unionsOf.get(x) ?? []).every((v) => {
           const o = otherOf(v, x);
           return o !== null && doomed.has(o);

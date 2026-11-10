@@ -494,6 +494,13 @@ export const deletionBatches = pgTable(
     // Target of the composite deletion_batch FKs; a UNIQUE constraint so it exists inside CREATE TABLE.
     unique('deletion_batches_tree_id_uq').on(t.treeId, t.id),
     index('deletion_batches_tree_idx').on(t.treeId, t.createdAt),
+    check(
+      'deletion_batches_root_chk',
+      sql`(${t.mode} in ('person', 'descendants') and ${t.rootPersonId} is not null
+        and ${t.rootUnionId} is null and ${t.rootParentChildId} is null)
+        or (${t.mode} = 'relation' and ${t.rootPersonId} is null
+        and (${t.rootUnionId} is null) <> (${t.rootParentChildId} is null))`,
+    ),
   ],
 );
 
