@@ -1,4 +1,4 @@
-import type { PersonView } from '@family-tree/shared';
+import type { PersonSummary, PersonView } from '@family-tree/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { FormError } from '../../components/forms';
@@ -8,6 +8,7 @@ import { useTreesApi } from '../../trees/TreesApiContext';
 import { HistoryTab } from './HistoryTab';
 import { InfoTab } from './InfoTab';
 import { PlacesTab } from './PlacesTab';
+import { RelationsTab } from './RelationsTab';
 
 const TABS = [
   { id: 'info', label: 'Info' },
@@ -22,10 +23,12 @@ const yearOf = (d: { date1: string } | null) => (d ? Number(d.date1.slice(0, 4))
 export function PersonPanel({
   treeId,
   personId,
+  persons,
   onChanged,
 }: {
   treeId: string;
   personId: string;
+  persons: PersonSummary[];
   onChanged: () => void;
 }) {
   const api = useTreesApi();
@@ -88,7 +91,7 @@ export function PersonPanel({
         {tab === 'info' && <InfoTab {...tabProps} />}
         {tab === 'places' && <PlacesTab {...tabProps} />}
         {tab === 'photos' && <p>Photos arrive in a later version.</p>}
-        {tab === 'relations' && <p>Relations arrive next.</p>}
+        {tab === 'relations' && <RelationsTab {...tabProps} persons={persons} />}
         {tab === 'history' && <HistoryTab treeId={treeId} personId={personId} />}
       </div>
     </div>

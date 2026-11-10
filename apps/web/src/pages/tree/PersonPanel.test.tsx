@@ -173,4 +173,112 @@ describe('PersonPanel', () => {
       }),
     ).toBeInTheDocument();
   });
+
+  describe('Relations', () => {
+    const mom = fakePerson({ givenName: 'Mom', surname: 'King' });
+    const pat = fakePerson({ givenName: 'Pat', surname: 'Moss' });
+    const mia = fakePerson({ givenName: 'Mia', surname: 'King' });
+    const sib = fakePerson({ givenName: 'Sib', surname: 'King' });
+    const parentUnion = crypto.randomUUID();
+    const union = crypto.randomUUID();
+    const parentLink = crypto.randomUUID();
+    const childLink = crypto.randomUUID();
+
+    function withRelations(role: 'owner' | 'viewer' = 'owner') {
+      const s = setup(
+        role === 'viewer'
+          ? { capabilities: { edit: false, addRelative: false, delete: false } }
+          : {},
+        role,
+      );
+      Object.assign(s.view.relations, {
+        parents: [
+          {
+            linkId: parentLink,
+            kind: 'biological',
+            union: { id: parentUnion, type: 'marriage', status: 'married' },
+            parents: [mom],
+          },
+        ],
+        unions: [
+          {
+            id: union,
+            type: 'marriage',
+            status: 'married',
+            startDate: { qualifier: 'exact', date1: '1970' },
+            endDate: null,
+            partner: pat,
+            children: [{ linkId: childLink, kind: 'adoptive', person: mia }],
+          },
+        ],
+        siblings: [{ unionId: parentUnion, kind: 'biological', person: sib }],
+      });
+      return s;
+    }
+    const open = (s: ReturnType<typeof setup>) => renderAt(at(s, '?tab=relations'), s);
+
+    it('shows parents, partners with children, and siblings as links', async () => {
+      const s = withRelations();
+      open(s);
+      expect(await screen.findByRole('link', { name: 'Mom King' })).toHaveAttribute(
+        'href',
+        `/trees/${s.id}/people/${mom.id}`,
+      );
+      expect(screen.getByText('Unknown parent', { exact: false })).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Pat Moss' })).toBeInTheDocument();
+      expect(screen.getByText(/Marriage, Married/).closest('p')).toHaveTextContent('from 1970');
+      expect(screen.getByRole('link', { name: 'Mia King' })).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Sib King' })).toBeInTheDocument();
+    });
+
+    it('edits a union status', async () => {
+      const s = withRelations();
+      open(s);
+      fireEvent.click(await screen.findByRole('button', { name: 'Edit relationship' }));
+      fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'divorced' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save relationship' }));
+      await waitFor(() => expect(s.trees.callsTo('updateUnion')).toHaveLength(1));
+      expect(s.trees.callsTo('updateUnion')[0]).toEqual({
+        treeId: s.id,
+        unionId: union,
+        input: { status: 'divorced' },
+      });
+    });
+
+    it('changes a child link kind', async () => {
+      const s = withRelations();
+      open(s);
+      fireEvent.change(await screen.findByLabelText('Link kind for Mia King'), {
+        target: { value: 'step' },
+      });
+      await waitFor(() => expect(s.trees.callsTo('updateParentChild')).toHaveLength(1));
+      expect(s.trees.callsTo('updateParentChild')[0]).toEqual({
+        treeId: s.id,
+        linkId: childLink,
+        input: { kind: 'step' },
+      });
+    });
+
+    it('removes a relationship only after two clicks', async () => {
+      const s = withRelations();
+      open(s);
+      fireEvent.click(await screen.findByRole('button', { name: 'Remove relationship' }));
+      expect(s.trees.callsTo('deleteUnion')).toEqual([]);
+      fireEvent.click(screen.getByRole('button', { name: 'Yes, move to Trash' }));
+      expect(await screen.findByText('Moved to Trash.')).toBeInTheDocument();
+      expect(s.trees.callsTo('deleteUnion')).toHaveLength(1);
+      expect(screen.queryByRole('link', { name: 'Pat Moss' })).not.toBeInTheDocument();
+    });
+
+    it('shows a viewer no edit, remove or add controls', async () => {
+      const s = withRelations('viewer');
+      open(s);
+      await screen.findByRole('link', { name: 'Pat Moss' });
+      expect(screen.queryByRole('button', { name: /Edit|Remove|Add/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Mia King' }).closest('li')).toHaveTextContent(
+        'Adopted',
+      );
+    });
+  });
 });

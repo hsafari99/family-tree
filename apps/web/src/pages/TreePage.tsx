@@ -4,6 +4,7 @@ import { Link, useMatch, useNavigate, useParams } from 'react-router';
 import { ConfirmButton } from '../components/ConfirmButton';
 import { FormError } from '../components/forms';
 import { Page } from '../components/Page';
+import { AddPersonForm } from './tree/AddPersonForm';
 import { PeopleList } from './tree/PeopleList';
 import { PersonPanel } from './tree/PersonPanel';
 import { personName } from '../trees/format';
@@ -89,12 +90,18 @@ export function TreePage() {
         <PeopleList treeId={treeId} persons={persons} detail={detail} selectedId={personId} />
         <div className="tree-panel">
           {newPerson ? (
-            <p>Adding people arrives next.</p>
+            <AddPersonForm
+              treeId={treeId}
+              persons={persons}
+              detail={detail}
+              onCreated={() => void refreshPersons()}
+            />
           ) : personId ? (
             <PersonPanel
               key={personId}
               treeId={treeId}
               personId={personId}
+              persons={persons}
               onChanged={() => void refreshPersons()}
             />
           ) : (
