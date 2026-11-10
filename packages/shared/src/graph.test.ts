@@ -42,6 +42,14 @@ describe('similarQuerySchema', () => {
     });
     expect(similarQuerySchema.safeParse({ givenName: '' }).success).toBe(false);
   });
+  it('treats an empty birth year as not given, but still rejects junk', () => {
+    expect(similarQuerySchema.parse({ givenName: 'Ada', birthYear: '' })).toEqual({
+      givenName: 'Ada',
+    });
+    expect(similarQuerySchema.safeParse({ givenName: 'Ada', birthYear: 'abc' }).success).toBe(
+      false,
+    );
+  });
 });
 
 describe('childOrderSchema', () => {

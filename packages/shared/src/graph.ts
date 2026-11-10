@@ -13,7 +13,10 @@ export const SIMILAR_LIMIT = 5;
 export const GRAPH_MODES = ['focus', 'full'] as const;
 export type GraphMode = (typeof GRAPH_MODES)[number];
 
-/** GET /trees/:id/graph query (decision 1). */
+/**
+ * GET /trees/:id/graph query (decision 1). `branch` only applies to mode=full, and `focus` and
+ * `depth` only to mode=focus; the others are ignored, not rejected.
+ */
 export const graphQuerySchema = z.object({
   mode: z.enum(GRAPH_MODES).default('focus'),
   focus: z.uuid().optional(),
@@ -83,7 +86,13 @@ export const similarQuerySchema = z.object({
     .max(NAME_MAX)
     .optional()
     .transform((v) => (v === '' ? undefined : v)),
-  birthYear: z.coerce.number<number | string>().int().min(1).max(9999).optional(),
+  // An empty field in a query string means "not given", like surname above.
+  birthYear: z
+    .union([
+      z.literal('').transform(() => undefined),
+      z.coerce.number<number | string>().int().min(1).max(9999),
+    ])
+    .optional(),
 });
 export type SimilarQuery = z.input<typeof similarQuerySchema>;
 

@@ -10,11 +10,12 @@ import {
   SIMILAR_LIMIT,
   similarQuerySchema,
 } from '@family-tree/shared';
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 import { requireSession } from '../auth/session-guard.js';
 import { persons } from '../db/schema.js';
 import { conflict, idParam, notFound, parseBody } from '../errors.js';
+import { extraLimit } from '../security/limits.js';
 import { TREE } from '../permissions/can.js';
 import { authorize, loadAccess } from '../trees/access.js';
 import { audit } from '../trees/audit.js';
@@ -70,16 +71,22 @@ export const graphRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, { a
   });
 
   /** The duplicate check (decision 8). */
-  app.get('/api/v1/trees/:treeId/persons/similar', async (req) => {
-    const access = await loadAccess(db, idParam(req.params, 'treeId'), req.user!.id);
-    authorize(access, 'tree.view', TREE);
-    const q = parseBody(similarQuerySchema, req.query);
-    const candidates = await db
-      .select({ ...summaryColumns, maidenName: persons.maidenName, nickname: persons.nickname })
-      .from(persons)
-      .where(and(eq(persons.treeId, access.treeId), isNull(persons.deletedAt)));
-    return { persons: findSimilar(candidates, q, SIMILAR_LIMIT).map(toSummary) };
-  });
+  app.get(
+    '/api/v1/trees/:treeId/persons/similar',
+    {
+      preHandler: extraLimit(app, { name: 'similar', max: 60, timeWindow: '1 minute', by: 'user' }),
+    },
+    async (req) => {
+      const access = await loadAccess(db, idParam(req.params, 'treeId'), req.user!.id);
+      authorize(access, 'tree.view', TREE);
+      const q = parseBody(similarQuerySchema, req.query);
+      const candidates = await db
+        .select({ ...summaryColumns, maidenName: persons.maidenName, nickname: persons.nickname })
+        .from(persons)
+        .where(and(eq(persons.treeId, access.treeId), isNull(persons.deletedAt)));
+      return { persons: findSimilar(candidates, q, SIMILAR_LIMIT).map(toSummary) };
+    },
+  );
 
   /** Sets sibling_order for every live child of a union (decision 16). */
   app.post('/api/v1/trees/:treeId/unions/:unionId/child-order', async (req, reply) => {
@@ -118,12 +125,13 @@ export const graphRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, { a
         .sort(compareSiblings)
         .map((p) => p.id);
       // Not a person-field edit: no version bump, so nobody's open edit form goes stale.
-      for (const [i, id] of childIds.entries()) {
-        await tx
-          .update(persons)
-          .set({ siblingOrder: i + 1 })
-          .where(and(eq(persons.treeId, treeId), eq(persons.id, id)));
-      }
+      await tx.execute(sql`
+        update persons set sibling_order = o.ord
+        from unnest(array[${sql.join(
+          childIds.map((id) => sql`${id}::uuid`),
+          sql`, `,
+        )}]) with ordinality as o(id, ord)
+        where persons.id = o.id and persons.tree_id = ${treeId}`);
       await audit(tx, access, {
         action: 'link.reorder',
         entityType: 'union',
