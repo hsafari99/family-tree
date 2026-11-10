@@ -10,7 +10,7 @@ import {
   SIMILAR_LIMIT,
   similarQuerySchema,
 } from '@family-tree/shared';
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 import { requireSession } from '../auth/session-guard.js';
 import { persons } from '../db/schema.js';
@@ -22,7 +22,7 @@ import { audit } from '../trees/audit.js';
 import { loadLiveGraph, lockTreeGraph } from '../trees/graph.js';
 import { loadGraphRows } from '../trees/graph-rows.js';
 import { buildTreeGraph, withPhotoUrls } from '../trees/graph-view.js';
-import { summaryColumns } from '../trees/people.js';
+import { similarCandidates } from '../trees/search.js';
 import type { TreeRouteOptions } from './trees.js';
 
 const toSummary = ({
@@ -84,10 +84,7 @@ export const graphRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
       const access = await loadAccess(db, idParam(req.params, 'treeId'), req.user!.id);
       authorize(access, 'tree.view', TREE);
       const q = parseBody(similarQuerySchema, req.query);
-      const candidates = await db
-        .select({ ...summaryColumns, maidenName: persons.maidenName, nickname: persons.nickname })
-        .from(persons)
-        .where(and(eq(persons.treeId, access.treeId), isNull(persons.deletedAt)));
+      const candidates = await similarCandidates(db, access.treeId, q);
       return { persons: findSimilar(candidates, q, SIMILAR_LIMIT).map(toSummary) };
     },
   );

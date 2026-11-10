@@ -73,8 +73,8 @@ export function buildTreeGraph(rows: GraphRows, access: Access, q: ParsedGraphQu
     needsBranch,
     persons: rows.persons
       .filter((p) => ids.has(p.id))
-      .map(({ photoThumbKey: _key, ...p }) => ({
-        ...p,
+      .map(({ photoThumbKey, ...p }) => ({
+        ...(void photoThumbKey, p),
         hasParents: hasParents.has(p.id),
         hiddenRelatives: hidden.has(p.id),
         canAddRelative: can(access, 'person.add', { kind: 'relation', ends: [p.id] }),

@@ -19,6 +19,7 @@ import { photosRoutes } from './routes/photos.js';
 import { trashRoutes } from './routes/trash.js';
 import type { limiter } from './photos/limiter.js';
 import { graphRoutes } from './routes/graph.js';
+import { searchRoutes } from './routes/search.js';
 import { deletionRoutes } from './routes/deletion.js';
 import { passwordResetRoutes } from './routes/password-reset.js';
 import { treesRoutes } from './routes/trees.js';
@@ -120,6 +121,7 @@ export function buildApp({
     app.register(deletionRoutes, { auth, db, config, storage: store! });
     app.register(trashRoutes, { auth, db, config, storage: store! });
     app.register(graphRoutes, { auth, db, config, storage: store! });
+    app.register(searchRoutes, { auth, db, config, storage: store! });
   }
 
   app.setNotFoundHandler((_req, reply) => {
