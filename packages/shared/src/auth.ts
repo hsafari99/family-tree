@@ -53,6 +53,8 @@ export const meResponseSchema = z.object({
     name: z.string(),
     email: z.string(),
     twoFactorEnabled: z.boolean(),
+    /** True when the user owns a tree or holds a steward grant. */
+    requiresTwoFactor: z.boolean(),
   }),
 });
 export type MeResponse = z.infer<typeof meResponseSchema>;

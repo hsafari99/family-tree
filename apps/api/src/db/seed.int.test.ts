@@ -1,8 +1,9 @@
+import { randomUUID } from 'node:crypto';
 import { and, eq, inArray, isNull, or } from 'drizzle-orm';
 import { afterAll, describe, expect, it } from 'vitest';
 import { loadConfig } from '../config.js';
 import { createDeps } from '../deps.js';
-import { parentChild, persons, trees, unions } from './schema.js';
+import { parentChild, persons, treeMembers, trees, unions, users } from './schema.js';
 import { SEED_TREE_NAME, seedSampleFamily } from './seed.js';
 
 const deps = createDeps(loadConfig());
@@ -68,5 +69,28 @@ describe('seedSampleFamily', () => {
       .from(unions)
       .where(and(eq(unions.treeId, treeId), isNull(unions.partnerBId)));
     expect(single).toHaveLength(1);
+  });
+
+  it('can assign an owner, idempotently', async () => {
+    const [user] = await db
+      .insert(users)
+      .values({ name: 'Seed Owner', email: `seed-${randomUUID()}@example.com` })
+      .returning();
+    try {
+      await seedSampleFamily(db, { ownerUserId: user!.id });
+      const { treeId, rootPersonId } = await seedSampleFamily(db, { ownerUserId: user!.id });
+      const members = await db.select().from(treeMembers).where(eq(treeMembers.treeId, treeId));
+      expect(members).toHaveLength(1);
+      expect(members[0]).toMatchObject({
+        userId: user!.id,
+        role: 'owner',
+        personId: rootPersonId,
+      });
+      const made = await db.select().from(persons).where(eq(persons.treeId, treeId));
+      expect(made.every((p) => p.createdBy === user!.id)).toBe(true);
+    } finally {
+      await db.delete(trees).where(eq(trees.name, SEED_TREE_NAME));
+      await db.delete(users).where(eq(users.id, user!.id));
+    }
   });
 });

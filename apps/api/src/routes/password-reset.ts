@@ -1,6 +1,5 @@
 import { resetWithCodeSchema, resetWithLinkSchema } from '@family-tree/shared';
 import { and, eq, isNull, sql } from 'drizzle-orm';
-import { normalizeIP } from '@fastify/rate-limit';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import type { Auth } from '../auth/auth.js';
 import { consumeResetLink } from '../auth/reset-links.js';
@@ -8,6 +7,7 @@ import { verifyAndConsumeSecondFactor } from '../auth/totp-reset.js';
 import type { Db } from '../db/client.js';
 import { resetLinks, users } from '../db/schema.js';
 import { AppError, parseBody } from '../errors.js';
+import { clientKey, extraLimit } from '../security/limits.js';
 
 const invalidReset = () => new AppError('INVALID_RESET', 400, 'Email or code is incorrect');
 
@@ -18,15 +18,6 @@ function normalisedEmailOrIp(req: FastifyRequest): string {
     ? `email:${email.trim().toLowerCase()}`
     : `ip:${clientKey(req)}`;
 }
-
-/**
- * The rate-limit key for a client: IPv6 addresses collapse to their /64 (and IPv4-mapped
- * addresses to plain IPv4), as @fastify/rate-limit's default key does. A raw req.ip would give
- * one IPv6 client 2^64 separate buckets.
- */
-const clientKey = (req: FastifyRequest) => normalizeIP(req.ip);
-
-const RATE_LIMITED = () => new AppError('RATE_LIMITED', 429, 'Too many requests, try again later');
 
 export const passwordResetRoutes: FastifyPluginAsync<{ auth: Auth; db: Db }> = async (
   app,
@@ -46,23 +37,6 @@ export const passwordResetRoutes: FastifyPluginAsync<{ auth: Auth; db: Db }> = a
       .where(and(eq(resetLinks.userId, userId), isNull(resetLinks.usedAt)));
   }
 
-  /**
-   * An extra per-IP cap. Built with createRateLimit, not app.rateLimit: handlers from
-   * app.rateLimit share a "limit already ran" flag with the route-level limit, so whichever runs
-   * first would silently disable the other.
-   */
-  function perIpLimit(max: number) {
-    const check = app.createRateLimit({
-      max,
-      timeWindow: '15 minutes',
-      keyGenerator: (req) => `reset-ip:${req.routeOptions.url}:${clientKey(req)}`,
-    });
-    return async (req: FastifyRequest) => {
-      const result = await check(req);
-      if (!result.isAllowed && result.isExceeded) throw RATE_LIMITED();
-    };
-  }
-
   app.post(
     '/api/v1/password-reset/totp',
     {
@@ -76,7 +50,11 @@ export const passwordResetRoutes: FastifyPluginAsync<{ auth: Auth; db: Db }> = a
           keyGenerator: (req) => `reset-code:${normalisedEmailOrIp(req)}`,
         },
       },
-      preHandler: perIpLimit(20),
+      preHandler: extraLimit(app, {
+        name: 'reset-ip:/api/v1/password-reset/totp',
+        max: 20,
+        timeWindow: '15 minutes',
+      }),
     },
     async (req, reply) => {
       const { email, code, newPassword } = parseBody(resetWithCodeSchema, req.body);
@@ -95,14 +73,24 @@ export const passwordResetRoutes: FastifyPluginAsync<{ auth: Auth; db: Db }> = a
     },
   );
 
-  app.post('/api/v1/password-reset/link', { preHandler: perIpLimit(10) }, async (req, reply) => {
-    const { token, newPassword } = parseBody(resetWithLinkSchema, req.body);
-    const ctx = await auth.$context;
-    // Hash first so a valid and an invalid token take the same time.
-    const newHash = await ctx.password.hash(newPassword);
-    const userId = await consumeResetLink(db, token);
-    if (!userId) throw invalidReset();
-    await applyNewPassword(userId, newHash);
-    return reply.code(204).send();
-  });
+  app.post(
+    '/api/v1/password-reset/link',
+    {
+      preHandler: extraLimit(app, {
+        name: 'reset-ip:/api/v1/password-reset/link',
+        max: 10,
+        timeWindow: '15 minutes',
+      }),
+    },
+    async (req, reply) => {
+      const { token, newPassword } = parseBody(resetWithLinkSchema, req.body);
+      const ctx = await auth.$context;
+      // Hash first so a valid and an invalid token take the same time.
+      const newHash = await ctx.password.hash(newPassword);
+      const userId = await consumeResetLink(db, token);
+      if (!userId) throw invalidReset();
+      await applyNewPassword(userId, newHash);
+      return reply.code(204).send();
+    },
+  );
 };

@@ -13,8 +13,11 @@ interface FakeUser {
   email: string;
   password: string;
   twoFactorEnabled: boolean;
+  requiresTwoFactor: boolean;
   twoFactorPending: boolean;
   recoveryCodes: string[];
+  /** Set to make deleteAccount fail with OWNS_TREES. */
+  ownsTrees?: boolean;
 }
 
 type Method = keyof AuthApi;
@@ -52,6 +55,7 @@ export class FakeAuthApi implements AuthApi {
       name: 'Ada Lovelace',
       password: 'correct-horse',
       twoFactorEnabled: false,
+      requiresTwoFactor: false,
       twoFactorPending: false,
       recoveryCodes: [],
       ...input,
@@ -99,7 +103,13 @@ export class FakeAuthApi implements AuthApi {
   }
 
   private toSession(u: FakeUser): SessionUser {
-    return { id: u.id, name: u.name, email: u.email, twoFactorEnabled: u.twoFactorEnabled };
+    return {
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      twoFactorEnabled: u.twoFactorEnabled,
+      requiresTwoFactor: u.requiresTwoFactor,
+    };
   }
 
   async getMe() {
@@ -239,6 +249,17 @@ export class FakeAuthApi implements AuthApi {
     if (!u) return fail('INVALID_RESET', 'Email or code is incorrect');
     this.resetTokens.delete(input.token);
     u.password = input.newPassword;
+    return ok(undefined);
+  }
+
+  async deleteAccount(input: { password: string }) {
+    const forced = await this.enter('deleteAccount', input);
+    if (forced) return { ok: false as const, error: forced };
+    const checked = this.checkPassword(input.password);
+    if (!checked.ok) return checked;
+    if (checked.data.ownsTrees) return fail('OWNS_TREES', MESSAGES.ownsTrees);
+    this.users.delete(checked.data.email);
+    this.current = null;
     return ok(undefined);
   }
 }

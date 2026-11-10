@@ -45,6 +45,7 @@ const METHODS = Object.keys({
   changePassword: true,
   resetWithCode: true,
   resetWithLink: true,
+  deleteAccount: true,
 } satisfies Record<keyof AuthApi, true>) as (keyof AuthApi)[];
 
 /**

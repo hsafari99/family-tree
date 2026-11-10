@@ -1,5 +1,5 @@
-// Dev-only: prints a one-time password-reset link for an email. The owner UI that issues
-// these links arrives in phase 3. Usage: pnpm reset-link you@example.com
+// Dev-only: prints a one-time password-reset link for an email. Owners issue these from the
+// Members page; this CLI is for local development. Usage: pnpm reset-link you@example.com
 import { emailSchema } from '@family-tree/shared';
 import { eq } from 'drizzle-orm';
 import { ConfigError, type Config, loadConfig } from '../config.js';

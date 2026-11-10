@@ -26,6 +26,20 @@ export function validate<T>(
   return { ok: false, errors };
 }
 
+/** Like `validate`, but keys errors by the whole path ("person.givenName"), for nested forms. */
+export function validateDeep<T>(
+  schema: Schema<T>,
+  values: unknown,
+): { ok: true; data: T } | { ok: false; errors: FieldErrors } {
+  const parsed = schema.safeParse(values);
+  if (parsed.success) return { ok: true, data: parsed.data };
+  const errors: FieldErrors = {};
+  for (const issue of parsed.error.issues) {
+    errors[issue.path.map(String).join('.')] ??= issue.message;
+  }
+  return { ok: false, errors };
+}
+
 type FieldProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'id' | 'onChange'> & {
   label: string;
   name: string;

@@ -74,7 +74,10 @@ export function SignUpPage() {
         </button>
       </form>
       <p>
-        Already have an account? <Link to="/sign-in">Sign in</Link>
+        Already have an account?{' '}
+        <Link to={`/sign-in${next === '/' ? '' : `?next=${encodeURIComponent(next)}`}`}>
+          Sign in
+        </Link>
       </p>
     </Page>
   );

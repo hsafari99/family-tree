@@ -32,6 +32,7 @@ export interface AuthApi {
   changePassword(input: { currentPassword: string; newPassword: string }): Promise<Result<void>>;
   resetWithCode(input: { email: string; code: string; newPassword: string }): Promise<Result<void>>;
   resetWithLink(input: { token: string; newPassword: string }): Promise<Result<void>>;
+  deleteAccount(input: { password: string }): Promise<Result<void>>;
 }
 
 export const MESSAGES = {
@@ -49,6 +50,18 @@ export const MESSAGES = {
   checkDetails: 'Check the details and try again',
   network: 'Cannot reach the server, check your connection and try again',
   unknown: 'Something went wrong, try again',
+  quota: 'You’ve reached the limit of trees you can own',
+  twoFactorRequired: 'Two-step verification needs to be on for this',
+  twoFactorForRole: 'Tree owners and branch stewards must keep two-step verification on',
+  ownsTrees: 'Transfer or delete the trees you own before deleting your account',
+  passwordRequired: 'Enter your password',
+  invalidInvite: 'This invite link is invalid, expired or already used',
+  resetNotAllowed:
+    'You can only issue a reset link to a member without two-step verification who belongs only to trees you own',
+  forbidden: 'You don’t have permission to do that',
+  notFound: 'This tree doesn’t exist or you don’t have access to it',
+  conflict: 'That already exists',
+  itemGone: 'That item no longer exists. Refresh and try again.',
 } as const;
 
 /** The error code AuthProvider reacts to by re-reading the session. */
@@ -66,6 +79,16 @@ const BY_CODE: Record<string, string> = {
   USER_ALREADY_EXISTS: MESSAGES.emailTaken,
   USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL: MESSAGES.emailTaken,
   INVALID_RESET: MESSAGES.invalidReset,
+  QUOTA_EXCEEDED: MESSAGES.quota,
+  TWO_FACTOR_REQUIRED: MESSAGES.twoFactorRequired,
+  TWO_FACTOR_REQUIRED_FOR_ROLE: MESSAGES.twoFactorForRole,
+  OWNS_TREES: MESSAGES.ownsTrees,
+  PASSWORD_REQUIRED: MESSAGES.passwordRequired,
+  INVALID_INVITE: MESSAGES.invalidInvite,
+  RESET_LINK_NOT_ALLOWED: MESSAGES.resetNotAllowed,
+  FORBIDDEN: MESSAGES.forbidden,
+  NOT_FOUND: MESSAGES.notFound,
+  CONFLICT: MESSAGES.conflict,
 };
 
 /**
@@ -215,5 +238,6 @@ export function createAuthApi({ baseUrl }: { baseUrl: string }): AuthApi {
       ),
     resetWithCode: (input) => v1Post('/password-reset/totp', input),
     resetWithLink: (input) => v1Post('/password-reset/link', input),
+    deleteAccount: ({ password }) => run('session', () => client.deleteUser({ password }), nothing),
   };
 }

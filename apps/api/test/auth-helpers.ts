@@ -38,7 +38,7 @@ type Payload = Record<string, unknown>;
 /** Sends a request the way the web app does (same origin, JSON) and stores any cookies. */
 export async function call(
   app: FastifyInstance,
-  method: 'GET' | 'POST',
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
   url: string,
   {
     jar,
@@ -53,7 +53,7 @@ export async function call(
 ): Promise<LightMyRequestResponse> {
   const merged: Record<string, string | undefined> = {
     origin: WEB_ORIGIN,
-    ...(method === 'POST' ? { 'content-type': 'application/json' } : {}),
+    ...(method !== 'GET' ? { 'content-type': 'application/json' } : {}),
     ...(jar ? { cookie: jar.header() } : {}),
     ...headers,
   };
@@ -63,7 +63,7 @@ export async function call(
     headers: Object.fromEntries(
       Object.entries(merged).filter((e): e is [string, string] => e[1] !== undefined),
     ),
-    ...(method === 'POST' ? { payload: JSON.stringify(body ?? {}) } : {}),
+    ...(method !== 'GET' ? { payload: JSON.stringify(body ?? {}) } : {}),
   };
   const res = await app.inject(opts);
   jar?.store(res);

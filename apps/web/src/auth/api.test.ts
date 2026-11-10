@@ -32,7 +32,16 @@ const user = {
   name: 'Ada',
   email: 'ada@example.com',
   twoFactorEnabled: false,
+  requiresTwoFactor: false,
 };
+
+describe('toAuthError for tree roles', () => {
+  it('maps TWO_FACTOR_REQUIRED_FOR_ROLE to a fixed message', () => {
+    expect(toAuthError(403, 'TWO_FACTOR_REQUIRED_FOR_ROLE', 'session').message).toBe(
+      MESSAGES.twoFactorForRole,
+    );
+  });
+});
 
 describe('toAuthError', () => {
   it('maps a 401 to bad credentials only for sign-in', () => {

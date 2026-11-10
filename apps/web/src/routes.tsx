@@ -3,10 +3,14 @@ import { RequireAuth } from './auth/RequireAuth';
 import { AccountPage } from './pages/AccountPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { HomePage } from './pages/HomePage';
+import { InvitePage } from './pages/InvitePage';
+import { MembersPage } from './pages/MembersPage';
+import { NewTreePage } from './pages/NewTreePage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { ResetLinkPage } from './pages/ResetLinkPage';
 import { SignInPage } from './pages/SignInPage';
 import { SignUpPage } from './pages/SignUpPage';
+import { TreePage } from './pages/TreePage';
 import { VerifyTwoFactorPage } from './pages/VerifyTwoFactorPage';
 
 /** The route table. App wraps it in a BrowserRouter; tests use a MemoryRouter. */
@@ -27,6 +31,31 @@ export function AppRoutes() {
           </RequireAuth>
         }
       />
+      <Route
+        path="/trees/new"
+        element={
+          <RequireAuth>
+            <NewTreePage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/trees/:treeId/members"
+        element={
+          <RequireAuth>
+            <MembersPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/trees/:treeId"
+        element={
+          <RequireAuth>
+            <TreePage />
+          </RequireAuth>
+        }
+      />
+      <Route path="/invite/:token" element={<InvitePage />} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   );

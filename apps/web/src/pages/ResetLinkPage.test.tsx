@@ -16,7 +16,7 @@ describe('ResetLinkPage', () => {
     const api = new FakeAuthApi();
     api.addUser({ email: 'ada@example.com' });
     api.resetTokens.set(TOKEN, 'ada@example.com');
-    renderAt(`/reset/${TOKEN}`, api);
+    renderAt(`/reset/${TOKEN}`, { auth: api });
     await screen.findByLabelText('New password');
     submit('brand-new-password');
     expect(

@@ -17,6 +17,17 @@ export class AppError extends Error {
   }
 }
 
+export const notFound = () => new AppError('NOT_FOUND', 404, 'Not found');
+export const forbidden = (message = 'You don’t have permission to do that') =>
+  new AppError('FORBIDDEN', 403, message);
+
+/** A uuid route parameter. Anything else is a 404: it can't name a row the user may see. */
+export function idParam(params: unknown, key: string): string {
+  const parsed = z.uuid().safeParse((params as Record<string, unknown> | null)?.[key]);
+  if (!parsed.success) throw notFound();
+  return parsed.data;
+}
+
 export function parseBody<T extends z.ZodType>(schema: T, body: unknown): z.infer<T> {
   const result = schema.safeParse(body);
   if (!result.success) {
