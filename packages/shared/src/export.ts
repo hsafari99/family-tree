@@ -15,13 +15,15 @@ export const EXPORT_MAX_PHOTO_BYTES = 3_500_000_000;
 const text = z.string().nullable();
 const date = fuzzyDateSchema.nullable();
 
-export const exportDataSchema = z.object({
+// Strict everywhere: a loader that leaks a column (an email, createdBy, a storage key) fails.
+
+export const exportDataSchema = z.strictObject({
   format: z.literal(EXPORT_FORMAT),
   version: z.literal(EXPORT_VERSION),
   exportedAt: z.iso.datetime(),
-  tree: z.object({ id: z.uuid(), name: z.string(), rootPersonId: z.uuid().nullable() }),
+  tree: z.strictObject({ id: z.uuid(), name: z.string(), rootPersonId: z.uuid().nullable() }),
   persons: z.array(
-    z.object({
+    z.strictObject({
       id: z.uuid(),
       givenName: z.string(),
       middleName: text,
@@ -43,7 +45,7 @@ export const exportDataSchema = z.object({
     }),
   ),
   unions: z.array(
-    z.object({
+    z.strictObject({
       id: z.uuid(),
       partnerAId: z.uuid().nullable(),
       partnerBId: z.uuid().nullable(),
@@ -54,13 +56,24 @@ export const exportDataSchema = z.object({
     }),
   ),
   parentChild: z.array(
-    z.object({ id: z.uuid(), unionId: z.uuid(), childId: z.uuid(), kind: z.enum(CHILD_KINDS) }),
+    z.strictObject({
+      id: z.uuid(),
+      unionId: z.uuid(),
+      childId: z.uuid(),
+      kind: z.enum(CHILD_KINDS),
+    }),
   ),
   residences: z.array(
-    z.object({ id: z.uuid(), personId: z.uuid(), place: z.string(), fromDate: date, toDate: date }),
+    z.strictObject({
+      id: z.uuid(),
+      personId: z.uuid(),
+      place: z.string(),
+      fromDate: date,
+      toDate: date,
+    }),
   ),
   photos: z.array(
-    z.object({
+    z.strictObject({
       id: z.uuid(),
       personId: z.uuid(),
       /** Path inside the ZIP, or null when the stored object was missing at export time. */

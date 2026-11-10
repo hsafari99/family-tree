@@ -75,6 +75,30 @@ describe('exportDataSchema', () => {
     expect(exportDataSchema.safeParse({ ...sample, version: 2 }).success).toBe(false);
   });
 
+  it('rejects an extra key anywhere, so a loader cannot leak fields like emails', () => {
+    const leak = (over: object) => exportDataSchema.safeParse(over).success;
+    expect(leak({ ...sample, extra: 1 })).toBe(false);
+    expect(leak({ ...sample, tree: { ...sample.tree, createdBy: id(5) } })).toBe(false);
+    expect(leak({ ...sample, persons: [{ ...sample.persons[0]!, email: 'a@example.com' }] })).toBe(
+      false,
+    );
+    expect(leak({ ...sample, unions: [{ ...sample.unions[0]!, createdBy: id(5) }] })).toBe(false);
+    expect(
+      leak({
+        ...sample,
+        parentChild: [
+          { id: id(40), unionId: id(10), childId: id(1), kind: 'biological', createdBy: id(5) },
+        ],
+      }),
+    ).toBe(false);
+    expect(leak({ ...sample, residences: [{ ...sample.residences[0]!, createdBy: id(5) }] })).toBe(
+      false,
+    );
+    expect(leak({ ...sample, photos: [{ ...sample.photos[0]!, storageKeyFull: 'trees/x' }] })).toBe(
+      false,
+    );
+  });
+
   it('allows a photo whose stored object was missing', () => {
     const missing = { ...sample, photos: [{ ...sample.photos[0]!, file: null }] };
     expect(exportDataSchema.safeParse(missing).success).toBe(true);

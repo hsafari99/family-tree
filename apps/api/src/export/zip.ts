@@ -17,8 +17,11 @@ const UTF8_NAMES = 0x0800;
 const VERSION = 20; // PKZIP 2.0: deflate
 const MADE_BY_UNIX = (3 << 8) | VERSION;
 const FILE_MODE = 0o100644;
-// Plain relative paths only: no leading "/", no "." or ".." segment, no backslash or space.
-const SAFE_NAME = /^(?!\/)(?!(?:.*\/)?\.\.?(?:\/|$))[A-Za-z0-9._\-/]+$/;
+// Plain relative paths only: non-empty segments of [A-Za-z0-9._-], none of them "." or "..", so no
+// leading, trailing or doubled "/", no backslash or space.
+const SEGMENT = /^[A-Za-z0-9._-]+$/;
+const isSafeName = (name: string) =>
+  name.split('/').every((seg) => SEGMENT.test(seg) && seg !== '.' && seg !== '..');
 
 interface Central {
   name: Buffer;
@@ -56,20 +59,22 @@ export class ZipWriter {
 
   constructor(now: Date = new Date()) {
     this.stamp = dosDateTime(now);
+    // abort(err) destroys with an error; with no listener that would be an uncaught exception.
+    this.stream.on('error', () => {});
   }
 
   /** Text compresses well (`compress: true`); WebP photos are stored as they are. */
   async add(name: string, data: Uint8Array, { compress = false } = {}): Promise<void> {
     if (this.stream.destroyed) throw new ZipAborted('zip stream closed');
     if (this.finished) throw new Error('zip: already finished');
-    if (!SAFE_NAME.test(name)) throw new Error(`zip: unsafe entry name ${JSON.stringify(name)}`);
-    if (this.names.has(name)) throw new Error(`zip: duplicate entry ${name}`);
+    if (!isSafeName(name)) throw new Error(`zip: unsafe entry name ${JSON.stringify(name)}`);
+    if (this.names.has(name.toLowerCase())) throw new Error(`zip: duplicate entry ${name}`);
     if (this.entries.length >= MAX_ENTRIES) throw new ZipTooLarge('too many entries');
     const body = compress ? deflateRawSync(data) : data;
     const nameBuf = Buffer.from(name, 'utf8');
     const crc = crc32(data);
     const offset = this.offset;
-    if (offset + 30 + nameBuf.length + body.length > MAX_U32) {
+    if (offset + 30 + nameBuf.length + body.length >= MAX_U32) {
       throw new ZipTooLarge('archive over 4 GiB');
     }
     const method = compress ? 8 : 0;
@@ -85,7 +90,7 @@ export class ZipWriter {
     h.writeUInt32LE(data.length, 22);
     h.writeUInt16LE(nameBuf.length, 26);
     h.writeUInt16LE(0, 28);
-    this.names.add(name);
+    this.names.add(name.toLowerCase());
     this.entries.push({
       name: nameBuf,
       crc,
@@ -104,6 +109,9 @@ export class ZipWriter {
     if (this.finished) return;
     this.finished = true;
     const start = this.offset;
+    const central = this.entries.reduce((n, e) => n + 46 + e.name.length, 0);
+    // Checked before anything is written, so a refused archive isn't left half-finished.
+    if (start + central + 22 >= MAX_U32) throw new ZipTooLarge('archive over 4 GiB');
     for (const e of this.entries) {
       const c = Buffer.alloc(46);
       c.writeUInt32LE(0x02014b50, 0);
@@ -124,7 +132,6 @@ export class ZipWriter {
       await this.write(e.name);
     }
     const size = this.offset - start;
-    if (this.offset + 22 > MAX_U32) throw new ZipTooLarge('archive over 4 GiB');
     const end = Buffer.alloc(22);
     end.writeUInt32LE(0x06054b50, 0);
     end.writeUInt16LE(this.entries.length, 8);

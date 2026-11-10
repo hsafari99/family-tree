@@ -32,7 +32,7 @@ const VALUE_BYTES = 240;
 /** "1950", "MAR 1950" or "2 MAR 1950" from YYYY, YYYY-MM or YYYY-MM-DD. */
 export function gedcomPartialDate(partial: string): string {
   const [y, m, d] = partial.split('-');
-  const year = String(Number(y));
+  const year = String(Number(y)).padStart(3, '0'); // 5.5.1 years are 3 or 4 digits
   if (!m) return year;
   const month = MONTHS[Number(m) - 1]!;
   return d ? `${Number(d)} ${month} ${year}` : `${month} ${year}`;
@@ -73,10 +73,10 @@ export const photoFileName = (personXref: string, n: number) =>
 
 const bytes = (s: string) => Buffer.byteLength(s, 'utf8');
 
-/** C0 control characters and DEL never reach the file; tab and line breaks are handled apart. */
+/** C0 and C1 control characters and DEL never reach the file; tab and line breaks are handled apart. */
 const stripControls = (s: string) =>
   // eslint-disable-next-line no-control-regex
-  s.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
+  s.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, '');
 
 function line(level: number, tag: string, value?: string, xref?: string): string {
   return `${level}${xref ? ` ${xref}` : ''} ${tag}${value ? ` ${value}` : ''}`;
@@ -231,8 +231,8 @@ export function buildGedcom(data: ExportData, { exporterName, now }: GedcomOptio
   };
   const name = (given: string, surname: string | null) => {
     const sur = surname ? namePart(surname) : '';
-    out.push(...longLine(1, 'NAME', sur ? `${given} /${sur}/` : given));
-    out.push(...longLine(2, 'GIVN', given));
+    out.push(...longLine(1, 'NAME', [given, sur ? `/${sur}/` : ''].filter(Boolean).join(' ')));
+    if (given) out.push(...longLine(2, 'GIVN', given));
     if (sur) out.push(...longLine(2, 'SURN', sur));
   };
 

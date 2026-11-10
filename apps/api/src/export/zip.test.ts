@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import type { Readable } from 'node:stream';
 import { describe, expect, it } from 'vitest';
 import { readZip } from '../../test/zip-reader.js';
-import { dosDateTime, ZipAborted, ZipWriter } from './zip.js';
+import { dosDateTime, ZipAborted, ZipTooLarge, ZipWriter } from './zip.js';
 
 const NOW = new Date('2026-11-10T09:05:03Z');
 
@@ -78,11 +78,45 @@ describe('ZipWriter', () => {
   it('refuses unsafe and duplicate names', async () => {
     const zip = new ZipWriter(NOW);
     zip.stream.resume();
-    for (const bad of ['/etc/passwd', '../x', 'a/../b', 'a\\b', 'a b', '', 'photos/./x']) {
+    for (const bad of [
+      '/etc/passwd',
+      '../x',
+      'a/../b',
+      'a\\b',
+      'a b',
+      '',
+      'photos/./x',
+      'a//b',
+      'photos/',
+      'a/',
+    ]) {
       await expect(zip.add(bad, Buffer.from('x'))).rejects.toThrow(/unsafe entry name/);
     }
     await zip.add('ok.txt', Buffer.from('x'));
     await expect(zip.add('ok.txt', Buffer.from('y'))).rejects.toThrow(/duplicate entry/);
+    // Extractors on case-insensitive file systems would overwrite one with the other.
+    await expect(zip.add('OK.txt', Buffer.from('y'))).rejects.toThrow(/duplicate entry/);
+  });
+
+  it('refuses an entry that would reach the 4 GiB limit, and a central directory past it', async () => {
+    const zip = new ZipWriter(NOW);
+    zip.stream.resume();
+    const priv = zip as unknown as { offset: number };
+    priv.offset = 0xffff_ffff - 30 - 1 - 1; // "a" + 1 byte lands exactly on the limit
+    await expect(zip.add('a', Buffer.from('x'))).rejects.toBeInstanceOf(ZipTooLarge);
+    priv.offset = 0xffff_ffff - 30 - 1 - 2;
+    await zip.add('a', Buffer.from('x'));
+    const written = priv.offset;
+    priv.offset = 0xffff_ffff - 46 - 1 - 22 + 1; // central directory would end on the limit
+    await expect(zip.finish()).rejects.toBeInstanceOf(ZipTooLarge);
+    expect(written).toBeLessThan(0xffff_ffff);
+  });
+
+  it('does not crash the process when aborted with an error and nobody listens', async () => {
+    const zip = new ZipWriter(NOW);
+    zip.abort(new Error('export failed'));
+    await new Promise((r) => setTimeout(r, 20)); // an unhandled 'error' event would fail the run
+    expect(zip.stream.destroyed).toBe(true);
   });
 
   it('waits for the reader (backpressure) and continues once it reads', async () => {

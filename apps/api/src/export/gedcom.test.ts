@@ -253,6 +253,8 @@ describe('gedcomDate', () => {
     [{ qualifier: 'about', date1: '1950-12' } as FuzzyDate, 'ABT DEC 1950'],
     [{ qualifier: 'before', date1: '1901' } as FuzzyDate, 'BEF 1901'],
     [{ qualifier: 'after', date1: '0950' } as FuzzyDate, 'AFT 950'],
+    [exact('0085'), '085'],
+    [exact('0007-03'), 'MAR 007'],
     [
       { qualifier: 'between', date1: '1950-06', date2: '1951' } as FuzzyDate,
       'BET JUN 1950 AND 1951',
@@ -405,12 +407,34 @@ describe('buildGedcom', () => {
     };
     const ged = buildGedcom(data, opts);
     // eslint-disable-next-line no-control-regex
-    expect(ged).not.toMatch(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/);
+    expect(ged).not.toMatch(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/);
     const lines = linesOf(ged);
     expect(lines).toContain('1 NAME Olive Ann /Owner/');
     expect(lines).toContain('2 PLAC Toronto');
     expect(lines).toContain('1 NOTE ab');
     expect(lines).toContain('2 CONT c d');
+  });
+
+  it('strips C1 control characters (U+0080-U+009F) too', () => {
+    const data = sample();
+    data.persons[0] = {
+      ...data.persons[0]!,
+      givenName: 'Ol\u0085ive\u009f',
+      birthPlace: 'To\u0080ronto',
+    };
+    const ged = buildGedcom(data, opts);
+    expect(ged).not.toMatch(/[\u0080-\u009F]/);
+    expect(linesOf(ged)).toContain('2 PLAC Toronto');
+  });
+
+  it('writes no double space and no empty GIVN when the given name is empty', () => {
+    const data = sample();
+    data.persons[0] = { ...data.persons[0]!, givenName: '/', middleName: null, surname: 'Owner' };
+    const lines = linesOf(buildGedcom(data, opts));
+    const i = lines.indexOf('1 NAME /Owner/');
+    expect(i).toBeGreaterThan(-1);
+    expect(lines[i + 1]).toBe('2 SURN Owner');
+    expect(lines).not.toContain('2 GIVN');
   });
 
   it('names photo files after the person xref', () => {
