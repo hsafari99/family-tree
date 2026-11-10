@@ -85,6 +85,26 @@ pnpm test:int         # integration tests (needs `pnpm dev` or `docker compose u
 - **Disconnected people (N)** lists anyone not connected to the starting person.
 - `pnpm seed -- you@example.com --large 2500` adds "Large family (seed)" to try large trees.
 
+## Photos, search and relationships (dev)
+
+- **Photos:** a person's **Photos** tab uploads JPEG, PNG or WebP up to 10 MB, with an optional
+  square crop. The API re-encodes every photo and removes location (GPS) and camera details. It
+  stores a 1600 px version and a 256 px thumbnail in SeaweedFS (dev) or R2 (prod).
+- **Signed URLs:** photos are only served through signed links that expire after 15 minutes. The
+  bucket is private.
+- **Main photo:** **Make main photo** chooses the photo shown on the card. Deleting a photo is
+  permanent (two clicks).
+- **Quota:** each tree has 1 GB of photos by default (`MAX_PHOTO_BYTES_PER_TREE`). Photos of people
+  in Trash still count until the Trash is erased.
+- **Search:** **Search** in the toolbar finds people despite typos and accents, across every name,
+  including maiden names and nicknames. **Filters** narrow by birth and death years, place, living
+  or deceased, and branch. Results show how each person is related to you.
+- **How are we related?** shows the shortest family path between two people in plain English
+  ("your father’s sister’s husband", "second cousin once removed"), and **Show on the tree**
+  highlights it.
+- **Browser photo address:** in dev the browser loads photos from `http://localhost:8333`
+  (`S3_PUBLIC_ENDPOINT`).
+
 ## Known limitations
 
 - **Sign-up reveals registered emails.** Sign-up is open, and signing up with an email that
@@ -99,11 +119,16 @@ pnpm test:int         # integration tests (needs `pnpm dev` or `docker compose u
   meant to run as a single instance; a second one would need a shared store first.
 - **Moving 2FA to a new device** isn't possible yet (planned for phase 7). An owner who loses
   their phone signs in with a recovery code.
-- **Duplicate check is a simple name and birth-year match** until search arrives (phase 6). Cards
-  show initials until photos arrive, and there is no search box or "How are we related?" yet
-  (phase 6).
 - **Sibling order is per person:** a child of two unions has one position.
-- **No photos yet** (phase 6).
+- **Photos in Trash count towards the quota** until the Trash is erased.
+- **An API crash between storing a photo and committing** leaves an orphan object that the
+  deletion outbox doesn't track. A cleanup sweep for these is planned for phase 7.
+- **The upload waiter cap** (8 waiting, then 503) doesn't count request bodies that are still
+  being read. Only the per-user limit of 30 uploads per 10 minutes bounds those.
+- **A JSON body on the upload route** returns 400 with reason `type`, while other wrong content
+  types get 415.
+- **Relationship words are English only.** Rare relationships fall back to the step-by-step
+  description.
 
 ## License
 
