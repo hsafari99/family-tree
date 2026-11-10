@@ -142,6 +142,17 @@ describe('buildApp', () => {
     expect(log).not.toContain('secret-cookie-value');
   });
 
+  it('redacts the export ticket from the logged request URL', async () => {
+    const sink = logSink();
+    app = buildApp({ config: testConfig({ LOG_LEVEL: 'info' }), checks, logStream: sink.stream });
+    app.get('/dl', async () => 'ok');
+    await app.inject({ method: 'GET', url: '/dl?ticket=SECRET-ticket_value&x=1' });
+    const log = sink.text();
+    expect(log).toContain('/dl?');
+    expect(log).toContain('x=1');
+    expect(log).not.toContain('SECRET-ticket_value');
+  });
+
   it('keeps database query parameters out of the error log', async () => {
     const sink = logSink();
     app = buildApp({ config: testConfig({ LOG_LEVEL: 'info' }), checks, logStream: sink.stream });

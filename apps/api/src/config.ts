@@ -51,7 +51,8 @@ export const configSchema = z
     S3_BUCKET: z.string().min(3),
     S3_ACCESS_KEY_ID: z.string().min(1),
     S3_SECRET_ACCESS_KEY: z.string().min(1),
-    S3_FORCE_PATH_STYLE: bool.default(false),
+    // Unset: false, except in production, where it is true (see the check below).
+    S3_FORCE_PATH_STYLE: bool.optional(),
     S3_CREATE_BUCKET: bool.default(false),
     // Where browsers fetch photos from (signed URLs); defaults to S3_ENDPOINT. Differs in dev,
     // where the API reaches SeaweedFS as http://s3:8333 but the browser as http://localhost:8333.
@@ -118,6 +119,15 @@ export const configSchema = z
         message: 'Must be true in production',
       });
     }
+    // Virtual-hosted URLs (<bucket>.<account>.r2...) would be a different origin from the one
+    // the web app's CSP img-src names (VITE_PHOTO_ORIGIN), so no photo would load.
+    if (config.S3_FORCE_PATH_STYLE === false) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['S3_FORCE_PATH_STYLE'],
+        message: 'Must be true in production (R2 supports path-style URLs)',
+      });
+    }
     if (config.S3_CREATE_BUCKET) {
       ctx.addIssue({
         code: 'custom',
@@ -125,7 +135,11 @@ export const configSchema = z
         message: 'Must be false in production',
       });
     }
-  });
+  })
+  .transform((config) => ({
+    ...config,
+    S3_FORCE_PATH_STYLE: config.S3_FORCE_PATH_STYLE ?? config.NODE_ENV === 'production',
+  }));
 
 export type Config = z.infer<typeof configSchema>;
 

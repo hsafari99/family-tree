@@ -25,8 +25,9 @@ export function securityHeaders({ apiOrigin, photoOrigin }: SiteOrigins): Record
   const csp = [
     "default-src 'none'",
     "script-src 'self'",
-    // React Flow sets inline style attributes (transforms, sizes); hashes can't cover them.
-    "style-src 'self' 'unsafe-inline'",
+    // No 'unsafe-inline': React Flow and the cropper set styles through the CSSOM (element.style),
+    // which CSP allows; only style attributes in markup or <style> tags would be blocked.
+    "style-src 'self'",
     // data: for the QR code, blob: for the cropper's preview.
     `img-src 'self' data: blob: ${photos}`,
     `connect-src 'self' ${api}`,

@@ -418,6 +418,23 @@ describe('GET export', () => {
       ).toBe(200);
     });
 
+    it('does not honour a ticket on a preflight: ?check=1&ticket=T is rate-limited', async () => {
+      const { owner, treeId } = await ownerWithTree(app);
+      const { ticket } = (await call(app, 'GET', check(treeId), { jar: owner.jar })).json() as {
+        ticket: string;
+      };
+      // One preflight is already counted; four more fill the hour, whatever ticket rides along.
+      for (let i = 0; i < 4; i++) {
+        const c = await call(app, 'GET', `${check(treeId)}&ticket=${ticket}`, { jar: owner.jar });
+        expect(c.statusCode).toBe(200);
+      }
+      const sixth = await call(app, 'GET', `${check(treeId)}&ticket=${ticket}`, {
+        jar: owner.jar,
+      });
+      expect(sixth.statusCode).toBe(429);
+      expect(sixth.json().error.code).toBe('RATE_LIMITED');
+    });
+
     it('keeps the order: no session 401, outsiders 404, members 403, tooLarge 400', async () => {
       const { owner, treeId } = await ownerWithTree(app);
       const outsider = await signUp(app, { name: 'Out' });

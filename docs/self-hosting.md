@@ -112,7 +112,9 @@ Fill in every empty value. Generate each secret with `openssl rand -hex 32`. The
   which has no DDL rights).
 - `WEB_ORIGIN`, `AUTH_BASE_URL`, `SESSION_SECRET`.
 - `S3_*`: the R2 endpoint (used for both `S3_ENDPOINT` and `S3_PUBLIC_ENDPOINT`), the bucket and
-  the read-write token.
+  the read-write token. Signed photo URLs are path-style (`https://<account-id>.r2.cloudflarestorage.com/family-photos/...`),
+  so they stay on the one origin the web app's CSP allows. `compose.prod.yml` sets
+  `S3_FORCE_PATH_STYLE=true` itself, and the API refuses to start in production with it `false`.
 - `AGE_RECIPIENT`, `BACKUP_PHOTOS_*`, `BACKUP_S3_*`, `BACKUP_ROOT`: see "Backups".
 
 Never commit it: `.gitignore` covers `.env.production`, and CI runs gitleaks.
@@ -182,15 +184,20 @@ to the bucket). Watch failures with `systemctl status family-tree-backup` and
 2. Copy the age key to the server for the moment: `/root/age.key`, `chmod 600`.
 3. ```bash
    docker compose --env-file .env.production -f compose.prod.yml run --rm \
-     -v /root/age.key:/run/age/identity.txt:ro backup restore.sh latest
+     -v /root/age.key:/run/age/identity.txt:ro restore restore.sh --force latest
    ```
-   (or a dump name from `rclone lsf`).
+   (or a dump name from `rclone lsf`). `--force` is needed when the database already has tables;
+   without it the script refuses.
 4. `shred -u /root/age.key`
 5. `docker compose --env-file .env.production -f compose.prod.yml up -d`
 
 Notes:
 
 - The order is the database, then the photos.
+- The dump is restored into a scratch database (`family_restore`) and checked there. Only then
+  are the databases swapped by renaming, and the old one is dropped once the photos are back. A
+  corrupt or wrong dump fails before the live database is touched.
+- The `restore` service is separate from `backup`: only it gets the read-write photo token.
 - A database restored to before a deletion can name photos that are already gone. Those cards
   show initials. The orphan sweep removes extra objects a day later.
 - Sessions created after the dump are gone, so everyone signs in again.
@@ -198,7 +205,9 @@ Notes:
 
 ## 14. Upgrades
 
-Set a new `API_IMAGE` tag, then `pull` and `up -d`. Migrations run in `migrate`. For a Postgres
+Set a new `API_IMAGE` tag, then `pull` and `up -d`. Migrations run in `migrate`. After a
+`git pull`, rebuild the backup image too (its scripts are baked in):
+`docker compose --env-file .env.production -f compose.prod.yml --profile tools build backup`. For a Postgres
 minor upgrade, change the image tag in `compose.prod.yml`. A major upgrade means dump and restore.
 
 ## 15. Operations
@@ -217,6 +226,9 @@ minor upgrade, change the image tag in `compose.prod.yml`. A major upgrade means
 - [ ] SSH accepts keys only.
 - [ ] `.env.production` is mode 600 and not committed.
 - [ ] Postgres is not published, and the app role has no DDL rights.
+- [ ] The containers drop all Linux capabilities (Caddy keeps only `NET_BIND_SERVICE`, Postgres a
+      few it needs to start) and cannot gain privileges; the API, migrate and backup containers
+      have read-only filesystems.
 - [ ] The R2 tokens are scoped to one bucket each, and the mirror token is read-only.
 - [ ] The age private key is offline.
 - [ ] Owners and stewards have two-step verification on (the app requires it).

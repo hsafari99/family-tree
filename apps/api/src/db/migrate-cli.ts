@@ -2,6 +2,7 @@
 // compose.prod.yml `migrate` service, decision 12). Dev and tests migrate on API start instead.
 // Usage: MIGRATION_DATABASE_URL=postgres://family_owner:…@postgres:5432/family node dist/db/migrate-cli.js
 import { z } from 'zod';
+import { assertServerTarget } from '../target-guard.js';
 import { createDb } from './client.js';
 import { runMigrations } from './migrate.js';
 
@@ -10,6 +11,15 @@ const parsed = z
   .safeParse(process.env);
 if (!parsed.success) {
   console.error(`Invalid configuration:\n${z.prettifyError(parsed.error)}`);
+  process.exit(1);
+}
+try {
+  assertServerTarget({
+    DATABASE_URL: parsed.data.MIGRATION_DATABASE_URL,
+    NODE_ENV: process.env.NODE_ENV ?? 'production',
+  });
+} catch (err) {
+  console.error((err as Error).message);
   process.exit(1);
 }
 const { db, sql } = createDb(parsed.data.MIGRATION_DATABASE_URL);

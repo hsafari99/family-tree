@@ -2,7 +2,7 @@
 # Nightly backup (spec §8, decision 14): an age-encrypted pg_dump, then a mirror of the photos.
 # The host timer runs: docker compose --env-file .env.production -f compose.prod.yml run --rm backup
 # A failed dump uploads nothing and never rotates out a good backup.
-set -eu
+set -euo pipefail
 : "${AGE_RECIPIENT:?AGE_RECIPIENT (the age public key) is required}"
 : "${BACKUP_ROOT:?}" "${S3_BUCKET:?}"
 keep="${BACKUP_KEEP:-14}"
@@ -12,10 +12,11 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
 echo "backup: dumping the database"
-pg_dump --format=custom --no-owner --no-privileges --file="$tmp/db.dump"
-pg_restore --list "$tmp/db.dump" >/dev/null
-age --encrypt --recipient "$AGE_RECIPIENT" --output "$tmp/db.dump.age" "$tmp/db.dump"
-rm -f "$tmp/db.dump"
+# Streamed: the plaintext dump never touches the disk. pipefail makes a failed pg_dump fail the
+# run, so a partial dump is never uploaded or counted as a backup.
+pg_dump --format=custom --no-owner --no-privileges \
+  | age --encrypt --recipient "$AGE_RECIPIENT" --output "$tmp/db.dump.age"
+[ -s "$tmp/db.dump.age" ] || { echo "backup: the encrypted dump is empty" >&2; exit 1; }
 rclone copyto "$tmp/db.dump.age" "${BACKUP_ROOT}/db/${name}"
 local_size="$(wc -c < "$tmp/db.dump.age" | tr -d ' ')"
 remote_size="$(rclone size --json "${BACKUP_ROOT}/db/${name}" | sed -n 's/.*"bytes":\([0-9]*\).*/\1/p')"

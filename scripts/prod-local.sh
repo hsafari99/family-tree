@@ -148,6 +148,7 @@ check() { # restore-check.mjs seed|verify inside the api container
 
 backup_test() {
   init
+  "${COMPOSE[@]}" --profile tools build backup # the scripts are baked into the image
   age_key
   start
   check seed
@@ -162,13 +163,35 @@ backup_test() {
   "${COMPOSE[@]}" down
   docker volume rm "${PROJECT}_pgdata" "${PROJECT}_s3data" >/dev/null
   edge_up
-  "${COMPOSE[@]}" run --rm backup restore.sh latest
+  "${COMPOSE[@]}" run --rm restore restore.sh latest
   "${COMPOSE[@]}" up -d
   wait_for "the API over TLS" "${CURL[@]}" "$API/api/v1/health"
   local after
   after="$(counts)"
   echo "After:  $after"
   [ "$after" = "$before" ] || { echo "FAIL: counts differ" >&2; exit 1; }
+  check verify
+  echo "Failure paths: no --force over a database with data, and a corrupt dump"
+  if "${COMPOSE[@]}" run --rm restore restore.sh latest >/dev/null 2>&1; then
+    echo "FAIL: restore replaced a database that has data without --force" >&2
+    exit 1
+  fi
+  [ "$(counts)" = "$before" ] || { echo "FAIL: refused restore changed the data" >&2; exit 1; }
+  local bad="$DIR/backups/db/family-99990101T000000Z.dump.age"
+  head -c 3000 "$latest" > "$bad"
+  if "${COMPOSE[@]}" run --rm restore restore.sh --force latest >/dev/null 2>&1; then
+    echo "FAIL: restoring a corrupt dump succeeded" >&2
+    rm -f "$bad"
+    exit 1
+  fi
+  rm -f "$bad"
+  [ "$(counts)" = "$before" ] || { echo "FAIL: a corrupt dump damaged the database" >&2; exit 1; }
+  local leftover
+  leftover="$("${COMPOSE[@]}" exec -T postgres psql -U family_owner -d postgres -Atc \
+    "select count(*) from pg_database where datname <> 'family' and datname like 'family%'")"
+  [ "$leftover" = 0 ] || { echo "FAIL: $leftover scratch databases left behind" >&2; exit 1; }
+  "${COMPOSE[@]}" run --rm restore restore.sh --force latest >/dev/null
+  [ "$(counts)" = "$before" ] || { echo "FAIL: forced restore changed the data" >&2; exit 1; }
   check verify
   echo "Retention: three more backups with BACKUP_KEEP=2"
   for _ in 1 2 3; do "${COMPOSE[@]}" run --rm -e BACKUP_KEEP=2 backup >/dev/null; sleep 1; done

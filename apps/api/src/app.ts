@@ -2,7 +2,7 @@ import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import type { ApiError } from '@family-tree/shared';
-import Fastify, { type FastifyError } from 'fastify';
+import Fastify, { type FastifyError, type FastifyRequest } from 'fastify';
 import type { Auth } from './auth/auth.js';
 import { authRoutes } from './auth/fastify-adapter.js';
 import type { Config } from './config.js';
@@ -84,6 +84,17 @@ export function buildApp({
               'res.headers["set-cookie"]',
               '*.password',
             ],
+            // Fastify's own req fields, but with the export ticket (a one-time bearer in the URL)
+            // masked.
+            serializers: {
+              req: (req: FastifyRequest) => ({
+                method: req.method,
+                url: req.url.replace(/([?&]ticket=)[^&#]*/g, '$1[Redacted]'),
+                host: req.host,
+                remoteAddress: req.ip,
+                remotePort: req.socket?.remotePort,
+              }),
+            },
             ...(logStream ? { stream: logStream } : {}),
           },
   });

@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { watchCsp } from '../support/csp';
 import { API, PROD_LOCAL } from '../support/env';
 import { GPS_JPEG } from '../support/fixtures';
-import { card, signUpViaUi, startTreeViaUi } from '../support/ui';
+import { addRelative, card, signUpViaUi, startTreeViaUi } from '../support/ui';
 
 test.skip(!PROD_LOCAL, 'runs against the local production stack: pnpm test:e2e:prod-local');
 
@@ -15,6 +15,8 @@ test('@smoke the production stack: TLS, CSP, 2FA sign-up, a photo, export', asyn
 
   const me = await signUpViaUi(page, 'Smoke Owner');
   await startTreeViaUi(page, me, { given: 'Sam', surname: 'Smoke' });
+  // Canvas re-layout with two cards: the styles React Flow sets must not trip the CSP.
+  await addRelative(page, 'Sam Smoke', 'parent', { given: 'Pat', surname: 'Smoke' });
   await card(page, 'Sam Smoke').click();
   await page.getByRole('tab', { name: 'Photos' }).click();
   await page.locator('input[type="file"]').setInputFiles(GPS_JPEG);

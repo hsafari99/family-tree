@@ -18,7 +18,7 @@ describe('securityHeaders', () => {
     expect(directives).toEqual({
       'default-src': "'none'",
       'script-src': "'self'",
-      'style-src': "'self' 'unsafe-inline'",
+      'style-src': "'self'",
       'img-src': "'self' data: blob: https://abc.r2.cloudflarestorage.com",
       'connect-src': "'self' https://api.family.example.com",
       'worker-src': "'self'",

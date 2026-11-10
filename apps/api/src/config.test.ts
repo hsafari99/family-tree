@@ -116,6 +116,19 @@ describe('loadConfig', () => {
     );
   });
 
+  it('uses path-style S3 URLs in production and refuses virtual-hosted ones', () => {
+    // R2's virtual-hosted host (<bucket>.<account>.r2...) is not in the web app's CSP img-src.
+    expect(loadConfig(prodEnv).S3_FORCE_PATH_STYLE).toBe(true);
+    expect(loadConfig({ ...prodEnv, S3_FORCE_PATH_STYLE: 'true' }).S3_FORCE_PATH_STYLE).toBe(true);
+    expect(() => loadConfig({ ...prodEnv, S3_FORCE_PATH_STYLE: 'false' })).toThrowError(
+      /S3_FORCE_PATH_STYLE/,
+    );
+    expect(loadConfig(devEnv).S3_FORCE_PATH_STYLE).toBe(true);
+    const env: Record<string, string | undefined> = { ...devEnv };
+    delete env.S3_FORCE_PATH_STYLE;
+    expect(loadConfig(env).S3_FORCE_PATH_STYLE).toBe(false);
+  });
+
   it('requires AUTH_BASE_URL', () => {
     const env: Record<string, string | undefined> = { ...devEnv };
     delete env.AUTH_BASE_URL;

@@ -47,8 +47,9 @@ export const exportRoutes: FastifyPluginAsync<
   const TICKET_TTL_MS = 60_000;
   const exportLimit = extraLimit(app, { name: 'export', max: 5, timeWindow: '1 hour', by: 'user' });
   const takeTicket = (req: FastifyRequest): boolean => {
-    const { ticket } = req.query as { ticket?: unknown };
-    if (typeof ticket !== 'string') return false;
+    const { ticket, check } = req.query as { ticket?: unknown; check?: unknown };
+    // A preflight is always an ordinary, counted request: a ticket must not pay for it.
+    if (check === '1' || typeof ticket !== 'string') return false;
     const t = tickets.get(ticket);
     if (!t) return false;
     tickets.delete(ticket);
