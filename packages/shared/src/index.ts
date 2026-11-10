@@ -13,3 +13,4 @@ export * from './similar.js';
 export * from './photos.js';
 export * from './kinship.js';
 export * from './search.js';
+export * from './export.js';

@@ -85,7 +85,7 @@ export const treeDetailSchema = z.object({
   capabilities: z.object({
     /** Add and edit anywhere (owner, editor). */
     editAnywhere: z.boolean(),
-    /** Rename, change root, delete, transfer, reset links (owner). */
+    /** Rename, change root, delete, transfer, reset links, export (owner). */
     manageTree: z.boolean(),
     /** Create viewer/editor invites (owner, active steward). */
     invite: z.boolean(),
