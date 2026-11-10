@@ -295,4 +295,58 @@ describe('delete preview and delete', () => {
     });
     expect(bad.statusCode).toBe(400);
   });
+
+  it('hides the tree from non-members and forbids viewers', async () => {
+    const { treeId, p } = await setup();
+    const out = await signUp(app, { name: 'Out' });
+    for (const [m, url] of [
+      ['POST', preview(treeId, p.kim.id)],
+      ['POST', del(treeId, p.kim.id)],
+      ['POST', `${base(treeId)}/persons/${p.kim.id}/residences`],
+      ['GET', `${base(treeId)}/persons/${p.kim.id}/history`],
+    ] as const) {
+      const r = await call(app, m, url, { jar: out.jar, body: { mode: 'person', place: 'X' } });
+      expect(r.statusCode, url).toBe(404);
+    }
+    const t2 = await setup();
+    const viewer = await signUp(app, { name: 'Vera' });
+    await addMember(db, t2.treeId, viewer.userId, 'viewer', t2.owner.userId);
+    const r = await call(app, 'POST', del(t2.treeId, t2.p.kim.id), {
+      jar: viewer.jar,
+      body: { mode: 'person' },
+    });
+    expect(r.statusCode).toBe(403);
+  });
+
+  it('deletes exactly the previewed people in descendants mode', async () => {
+    const { owner, treeId, p } = await setup();
+    const pv = await call(app, 'POST', preview(treeId, p.dan.id), {
+      jar: owner.jar,
+      body: { mode: 'descendants' },
+    });
+    const previewed = pv
+      .json()
+      .people.map((x: { id: string }) => x.id)
+      .sort();
+    const res = await call(app, 'POST', del(treeId, p.dan.id), {
+      jar: owner.jar,
+      body: { mode: 'descendants' },
+    });
+    expect(res.statusCode).toBe(200);
+    const batchId = res.json().batchId as string;
+    const inBatch = (
+      await db.select({ id: persons.id }).from(persons).where(eq(persons.deletionBatchId, batchId))
+    )
+      .map((r) => r.id)
+      .sort();
+    expect(inBatch).toEqual(previewed);
+    const [b] = await db.select().from(deletionBatches).where(eq(deletionBatches.id, batchId));
+    expect(b).toMatchObject({ mode: 'descendants', rootPersonId: p.dan.id });
+    const log = (await auditRows(db, treeId)).find((r) => r.action === 'person.delete')!;
+    expect(log.after).toMatchObject({
+      rootPersonId: p.dan.id,
+      rootName: 'Dan',
+      mode: 'descendants',
+    });
+  });
 });

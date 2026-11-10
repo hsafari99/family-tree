@@ -18,7 +18,7 @@ import { type Access, authorize, loadAccess } from '../trees/access.js';
 import { audit } from '../trees/audit.js';
 import { applyPlan, createBatch } from '../trees/deletion.js';
 import { loadLiveGraph, lockTreeGraph } from '../trees/graph.js';
-import { summaryColumns } from '../trees/people.js';
+import { fullName, requireLivePerson, summaryColumns } from '../trees/people.js';
 import type { TreeRouteOptions } from './trees.js';
 
 async function personPlan(db: Queryable, access: Access, personId: string, mode: DeleteMode) {
@@ -33,6 +33,7 @@ async function commit(
   access: Access,
   plan: DeletionPlan,
   batch: Parameters<typeof createBatch>[2],
+  root?: { id: string; name: string },
 ) {
   const batchId = await createBatch(tx, access, batch);
   await applyPlan(tx, access.treeId, batchId, plan);
@@ -48,6 +49,7 @@ async function commit(
     personIds: plan.touchedPersonIds,
     after: {
       mode: batch.mode,
+      ...(root ? { rootPersonId: root.id, rootName: root.name } : {}),
       people: plan.personIds.length,
       unions: plan.unionIds.length,
       links: plan.parentChildIds.length,
@@ -97,7 +99,8 @@ export const deletionRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, 
     const batchId = await db.transaction(async (tx) => {
       await lockTreeGraph(tx, treeId);
       const access = await loadAccess(tx, treeId, req.user!.id);
-      // Serialises with a root change (PATCH /trees/:id) and reads the current root.
+      // The advisory lock above serialises us with a root change (PATCH /trees/:id); this locks
+      // the trees row and reads the current root.
       const [tree] = await tx
         .select({ rootPersonId: trees.rootPersonId })
         .from(trees)
@@ -108,7 +111,14 @@ export const deletionRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, 
         throw invalid('personId', 'Choose a new starting person first');
       }
       authorize(access, 'person.delete', { kind: 'people', personIds: plan.touchedPersonIds });
-      return commit(tx, access, plan, { mode, rootPersonId: personId, slots: plan.slots });
+      const rootRow = await requireLivePerson(tx, access.treeId, personId);
+      return commit(
+        tx,
+        access,
+        plan,
+        { mode, rootPersonId: personId, slots: plan.slots },
+        { id: personId, name: fullName(rootRow) },
+      );
     });
     return { batchId };
   });

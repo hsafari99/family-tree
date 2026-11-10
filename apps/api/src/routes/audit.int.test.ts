@@ -47,7 +47,10 @@ describe('audit of tree, member, steward and invite changes', () => {
     };
     await ok(call(app, 'PATCH', base, { jar: owner.jar, body: { name: 'Renamed' } }), 204);
     const { id: second } = await ok(
-      call(app, 'POST', `${base}/persons`, { jar: owner.jar, body: { person: { givenName: 'Sec' } } }),
+      call(app, 'POST', `${base}/persons`, {
+        jar: owner.jar,
+        body: { person: { givenName: 'Sec' } },
+      }),
       201,
     );
     await ok(call(app, 'PATCH', base, { jar: owner.jar, body: { rootPersonId: second } }), 204);
@@ -60,9 +63,15 @@ describe('audit of tree, member, steward and invite changes', () => {
       }),
       201,
     );
-    await ok(call(app, 'POST', '/api/v1/invites/accept', { jar: joiner.jar, body: { token: inv.token } }), 200);
     await ok(
-      call(app, 'PATCH', `${base}/members/${joiner.userId}`, { jar: owner.jar, body: { role: 'viewer' } }),
+      call(app, 'POST', '/api/v1/invites/accept', { jar: joiner.jar, body: { token: inv.token } }),
+      200,
+    );
+    await ok(
+      call(app, 'PATCH', `${base}/members/${joiner.userId}`, {
+        jar: owner.jar,
+        body: { role: 'viewer' },
+      }),
       204,
     );
     const other = await addPerson(db, treeId, 'Other');
@@ -141,7 +150,10 @@ describe('audit of tree, member, steward and invite changes', () => {
     for (let i = 0; i < 20; i++) {
       const p = await addPerson(db, treeId, `P${i}`);
       const [a, b] = await Promise.all([
-        call(app, 'PATCH', `/api/v1/trees/${treeId}`, { jar: owner.jar, body: { rootPersonId: p.id } }),
+        call(app, 'PATCH', `/api/v1/trees/${treeId}`, {
+          jar: owner.jar,
+          body: { rootPersonId: p.id },
+        }),
         call(app, 'POST', `/api/v1/trees/${treeId}/persons/${p.id}/delete`, {
           jar: owner.jar,
           body: { mode: 'person' },

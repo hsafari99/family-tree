@@ -51,7 +51,13 @@ export const residencesRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app
       const [n] = await tx
         .select({ n: count() })
         .from(residences)
-        .where(and(eq(residences.treeId, access.treeId), eq(residences.personId, person.id)));
+        .where(
+          and(
+            eq(residences.treeId, access.treeId),
+            eq(residences.personId, person.id),
+            isNull(residences.deletedAt),
+          ),
+        );
       if ((n?.n ?? 0) >= RESIDENCES_MAX) {
         throw invalid('place', `A person can have at most ${RESIDENCES_MAX} places of residence`);
       }
