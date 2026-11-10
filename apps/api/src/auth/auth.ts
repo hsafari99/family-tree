@@ -19,7 +19,7 @@ export type AuthLogSink = Record<AuthLogLevel, (obj: object, msg: string) => voi
 export interface AuthOptions {
   config: Config;
   db: Db;
-  /** Tests can turn Better Auth's own rate limiter off. */
+  /** Tests can force Better Auth's own rate limiter on or off; default: AUTH_RATE_LIMIT_ENABLED. */
   rateLimitEnabled?: boolean;
   /** Better Auth logs here instead of the console. */
   log?: AuthLogSink;
@@ -70,7 +70,7 @@ const serialiseArg = (arg: unknown) => {
     : safe;
 };
 
-export function createAuth({ config, db, rateLimitEnabled = true, log }: AuthOptions) {
+export function createAuth({ config, db, rateLimitEnabled, log }: AuthOptions) {
   return betterAuth({
     appName: 'Family Tree',
     baseURL: config.AUTH_BASE_URL,
@@ -149,7 +149,7 @@ export function createAuth({ config, db, rateLimitEnabled = true, log }: AuthOpt
     // cookieCache stays off: with it, a revoked session would keep working until the cache expires.
     session: { expiresIn: 60 * 60 * 24 * 30, updateAge: 60 * 60 * 24 },
     rateLimit: {
-      enabled: rateLimitEnabled,
+      enabled: rateLimitEnabled ?? config.AUTH_RATE_LIMIT_ENABLED,
       storage: 'memory',
       window: 60,
       max: 100,

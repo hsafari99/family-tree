@@ -17,7 +17,8 @@ try {
 }
 
 const deps = createDeps(config);
-await runMigrations(deps.db);
+// Production migrates in the one-shot `migrate` service as the owner role (decision 12).
+if (config.MIGRATE_ON_START) await runMigrations(deps.db);
 if (config.S3_CREATE_BUCKET) await ensureBucket(deps.s3, config.S3_BUCKET);
 
 const app = buildApp({

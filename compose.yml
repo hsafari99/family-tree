@@ -64,6 +64,8 @@ services:
     environment:
       DATABASE_URL: postgres://family:dev-only-pw@postgres:5432/family
       S3_ENDPOINT: http://s3:8333
+      # E2E only: `AUTH_RATE_LIMIT_ENABLED=false pnpm dev` (Phase 7 decision 15).
+      AUTH_RATE_LIMIT_ENABLED: ${AUTH_RATE_LIMIT_ENABLED:-true}
     ports: ['127.0.0.1:3000:3000']
     volumes: *app-volumes
     depends_on:

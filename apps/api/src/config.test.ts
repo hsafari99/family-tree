@@ -207,4 +207,30 @@ describe('loadConfig', () => {
       ).toBe('https://acc.r2.cloudflarestorage.com');
     });
   });
+
+  it('migrates on start and keeps the auth rate limits on by default', () => {
+    const config = loadConfig(devEnv);
+    expect(config.MIGRATE_ON_START).toBe(true);
+    expect(config.AUTH_RATE_LIMIT_ENABLED).toBe(true);
+  });
+
+  it('lets a local or .test stack turn the auth rate limits off (for E2E), and nothing else', () => {
+    expect(
+      loadConfig({ ...devEnv, AUTH_RATE_LIMIT_ENABLED: 'false' }).AUTH_RATE_LIMIT_ENABLED,
+    ).toBe(false);
+    expect(() =>
+      loadConfig({
+        ...devEnv,
+        AUTH_BASE_URL: 'https://api.example.com',
+        AUTH_RATE_LIMIT_ENABLED: 'false',
+      }),
+    ).toThrowError(/AUTH_RATE_LIMIT_ENABLED/);
+  });
+
+  it('refuses auth rate limits off in production, and accepts MIGRATE_ON_START=false', () => {
+    expect(() => loadConfig({ ...prodEnv, AUTH_RATE_LIMIT_ENABLED: 'false' })).toThrowError(
+      /AUTH_RATE_LIMIT_ENABLED/,
+    );
+    expect(loadConfig({ ...prodEnv, MIGRATE_ON_START: 'false' }).MIGRATE_ON_START).toBe(false);
+  });
 });
