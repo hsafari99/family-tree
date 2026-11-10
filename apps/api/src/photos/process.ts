@@ -4,7 +4,7 @@ import {
   PHOTO_MAX_SIDE,
   PHOTO_THUMB_SIDE,
 } from '@family-tree/shared';
-import sharp from 'sharp';
+import sharp, { type Metadata } from 'sharp';
 
 // Every upload is a new image: libvips' operation cache would only hold memory.
 sharp.cache(false);
@@ -59,7 +59,7 @@ const reasonOf = (err: unknown): RejectReason =>
 export async function processPhoto(buf: Buffer): Promise<ProcessedPhoto> {
   const format = sniffImageFormat(buf);
   if (!format) throw new PhotoRejected('type');
-  let meta: sharp.Metadata;
+  let meta: Metadata;
   try {
     meta = await open(buf).metadata();
   } catch (err) {

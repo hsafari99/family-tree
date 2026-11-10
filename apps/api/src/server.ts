@@ -35,6 +35,7 @@ const stopPurge =
         deps.db,
         app.log.child({ module: 'purge' }),
         config.TREE_PURGE_INTERVAL_MINUTES * 60_000,
+        deps.storage,
       )
     : async () => {};
 
