@@ -10,6 +10,7 @@
     "dev": "docker compose up --build",
     "down": "docker compose down",
     "seed": "docker compose exec api pnpm --filter @family-tree/api db:seed",
+    "purge-trees": "docker compose exec api pnpm --filter @family-tree/api purge-trees",
     "reset-link": "docker compose exec api pnpm --filter @family-tree/api reset-link",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",

@@ -140,6 +140,18 @@ describe('loadConfig', () => {
     );
   });
 
+  it('parses TREE_PURGE_INTERVAL_MINUTES, defaulting to 60', () => {
+    expect(loadConfig(devEnv).TREE_PURGE_INTERVAL_MINUTES).toBe(60);
+    expect(
+      loadConfig({ ...devEnv, TREE_PURGE_INTERVAL_MINUTES: '0' }).TREE_PURGE_INTERVAL_MINUTES,
+    ).toBe(0);
+    for (const bad of ['-1', 'abc']) {
+      expect(() => loadConfig({ ...devEnv, TREE_PURGE_INTERVAL_MINUTES: bad })).toThrowError(
+        /TREE_PURGE_INTERVAL_MINUTES/,
+      );
+    }
+  });
+
   it('parses MAX_TREES_PER_USER, defaulting to 3', () => {
     expect(loadConfig(devEnv).MAX_TREES_PER_USER).toBe(3);
     expect(loadConfig({ ...devEnv, MAX_TREES_PER_USER: '5' }).MAX_TREES_PER_USER).toBe(5);
