@@ -71,3 +71,16 @@ export function safeError(err: unknown): unknown {
     constraint: pg.constraint_name,
   };
 }
+
+export const invalid = (field: string, message: string) =>
+  new AppError('VALIDATION', 400, 'Some fields are invalid', { [field]: [message] });
+
+export const conflict = (message: string) => new AppError('CONFLICT', 409, message);
+
+/** A Postgres unique violation (23505) anywhere in the cause chain (Drizzle wraps driver errors). */
+export function isUniqueViolation(err: unknown): boolean {
+  for (let e: unknown = err, depth = 0; e instanceof Error && depth < 5; e = e.cause, depth++) {
+    if ((e as { code?: unknown }).code === '23505') return true;
+  }
+  return false;
+}

@@ -1,6 +1,14 @@
 import type { FastifyInstance } from 'fastify';
 import type { Db } from '../src/db/client.js';
-import { branchStewards, parentChild, persons, treeMembers, unions } from '../src/db/schema.js';
+import { asc, eq } from 'drizzle-orm';
+import {
+  auditLog,
+  branchStewards,
+  parentChild,
+  persons,
+  treeMembers,
+  unions,
+} from '../src/db/schema.js';
 import { call, enableTwoFactor, signUp } from './auth-helpers.js';
 
 export async function userWith2fa(app: FastifyInstance, name = 'Test User') {
@@ -75,4 +83,13 @@ export async function addGrant(
     .values({ treeId, userId, anchorPersonId, grantedByUserId, parentGrantId })
     .returning();
   return g!;
+}
+
+/** Audit rows of a tree, oldest first. */
+export async function auditRows(db: Db, treeId: string) {
+  return db
+    .select()
+    .from(auditLog)
+    .where(eq(auditLog.treeId, treeId))
+    .orderBy(asc(auditLog.createdAt));
 }
