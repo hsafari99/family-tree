@@ -229,7 +229,11 @@ const EXPECTED = [
   '0 TRLR',
 ];
 
-const linesOf = (ged: string) => ged.replace(/^﻿/, '').split('\r\n').slice(0, -1);
+const linesOf = (ged: string) =>
+  ged
+    .replace(/^\uFEFF/, '')
+    .split('\r\n')
+    .slice(0, -1);
 
 /** Joins a NOTE back together: CONT is a line break, CONC continues the same line. */
 function noteText(lines: string[], start: number): string {
@@ -261,7 +265,7 @@ describe('gedcomDate', () => {
 describe('buildGedcom', () => {
   it('writes the whole sample tree exactly, UTF-8 with a BOM and CRLF', () => {
     const ged = buildGedcom(sample(), opts);
-    expect(ged.startsWith('﻿0 HEAD\r\n')).toBe(true);
+    expect(ged.startsWith('\uFEFF0 HEAD\r\n')).toBe(true);
     expect(ged.endsWith('0 TRLR\r\n')).toBe(true);
     expect(ged).not.toMatch(/[^\r]\n/);
     expect(linesOf(ged)).toEqual(EXPECTED);
@@ -400,6 +404,7 @@ describe('buildGedcom', () => {
       biography: 'a\u0001b\nc\td',
     };
     const ged = buildGedcom(data, opts);
+    // eslint-disable-next-line no-control-regex
     expect(ged).not.toMatch(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/);
     const lines = linesOf(ged);
     expect(lines).toContain('1 NAME Olive Ann /Owner/');

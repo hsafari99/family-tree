@@ -75,6 +75,7 @@ const bytes = (s: string) => Buffer.byteLength(s, 'utf8');
 
 /** C0 control characters and DEL never reach the file; tab and line breaks are handled apart. */
 const stripControls = (s: string) =>
+  // eslint-disable-next-line no-control-regex
   s.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
 
 function line(level: number, tag: string, value?: string, xref?: string): string {
@@ -315,5 +316,5 @@ export function buildGedcom(data: ExportData, { exporterName, now }: GedcomOptio
     add(3, 'TYPE', 'photo');
   }
   add(0, 'TRLR');
-  return `﻿${out.join('\r\n')}\r\n`;
+  return `\uFEFF${out.join('\r\n')}\r\n`;
 }
