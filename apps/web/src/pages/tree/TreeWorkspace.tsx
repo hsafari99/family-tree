@@ -2,6 +2,7 @@ import type { GraphQuery, PersonSummary, RelativeRole, TreeDetail } from '@famil
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useMatch, useNavigate, useParams, useSearchParams } from 'react-router';
 import { FormError } from '../../components/forms';
+import { PhotoRefreshContext, useThrottled } from '../../components/PersonPhoto';
 import { CanvasToolbar } from '../../canvas/CanvasToolbar';
 import { FamilyCanvas } from '../../canvas/FamilyCanvas';
 import {
@@ -37,6 +38,7 @@ export function TreeWorkspace({
   const hrefOf = usePersonHref(treeId);
   const view = readCanvasParams(params);
   const [refreshKey, setRefreshKey] = useState(0);
+  const refreshPhotos = useThrottled(() => setRefreshKey((k) => k + 1));
   const [disconnected, setDisconnected] = useState<PersonSummary[]>([]);
 
   // Focus view centres on: an explicit focus, else the selected person, else the root (decision 10).
@@ -170,85 +172,87 @@ export function TreeWorkspace({
           {notice}
         </p>
       )}
-      <div className={selected ? 'tree-workspace has-panel' : 'tree-workspace'}>
-        <section
-          className="canvas-area"
-          aria-label="Family tree view"
-          tabIndex={-1}
-          ref={canvasArea}
-        >
-          {graph.status === 'loading' && <p role="status">Drawing the tree…</p>}
-          {graph.status === 'error' && (
-            <>
-              <FormError>{graph.message}</FormError>
-              <p>
-                <Link to={base}>Back to the starting person</Link>
+      <PhotoRefreshContext.Provider value={refreshPhotos}>
+        <div className={selected ? 'tree-workspace has-panel' : 'tree-workspace'}>
+          <section
+            className="canvas-area"
+            aria-label="Family tree view"
+            tabIndex={-1}
+            ref={canvasArea}
+          >
+            {graph.status === 'loading' && <p role="status">Drawing the tree…</p>}
+            {graph.status === 'error' && (
+              <>
+                <FormError>{graph.message}</FormError>
+                <p>
+                  <Link to={base}>Back to the starting person</Link>
+                </p>
+              </>
+            )}
+            {ready?.graph.needsBranch && (
+              <p role="status">
+                This tree has {ready.graph.total.toLocaleString('en')} people, too many to draw at
+                once. Choose a branch to show.
               </p>
-            </>
-          )}
-          {ready?.graph.needsBranch && (
-            <p role="status">
-              This tree has {ready.graph.total.toLocaleString('en')} people, too many to draw at
-              once. Choose a branch to show.
-            </p>
-          )}
-          {ready?.graph.truncated && (
-            <p role="status" className="notice">
-              Only part of the tree is shown. Pick a branch or use the focus view to see the rest.
-            </p>
-          )}
-          {ready && !ready.graph.needsBranch && ready.nodes.length === 0 && (
-            <p>No one to show yet.</p>
-          )}
-          {ready && ready.nodes.length > 0 && (
-            <FamilyCanvas
-              nodes={ready.nodes}
-              edges={ready.edges}
-              families={ready.families}
-              focusId={view.mode === 'focus' ? focusId : null}
-              actions={actions}
-              selectedId={personId ?? null}
-              onReorder={(u, ids) => void onReorder(u, ids)}
-            />
-          )}
-        </section>
-        {selected ? (
-          <aside className="tree-panel" aria-label="Details" ref={panel}>
-            <p className="panel-close">
-              <button type="button" className="secondary" onClick={close}>
-                Close
-              </button>
-            </p>
-            {newPerson && canAdd ? (
-              <AddPersonForm
-                treeId={treeId}
-                persons={persons}
-                detail={detail}
-                onCreated={changed}
-              />
-            ) : personId ? (
-              <PersonPanel
-                key={personId}
-                treeId={treeId}
-                personId={personId}
-                persons={persons}
-                onChanged={changed}
-              />
-            ) : (
-              <UnionPanel
-                key={unionId}
-                treeId={treeId}
-                union={ready?.graph.unions.find((u) => u.id === unionId)}
-                loading={graph.status === 'loading'}
-                persons={persons}
-                onChanged={changed}
+            )}
+            {ready?.graph.truncated && (
+              <p role="status" className="notice">
+                Only part of the tree is shown. Pick a branch or use the focus view to see the rest.
+              </p>
+            )}
+            {ready && !ready.graph.needsBranch && ready.nodes.length === 0 && (
+              <p>No one to show yet.</p>
+            )}
+            {ready && ready.nodes.length > 0 && (
+              <FamilyCanvas
+                nodes={ready.nodes}
+                edges={ready.edges}
+                families={ready.families}
+                focusId={view.mode === 'focus' ? focusId : null}
+                actions={actions}
+                selectedId={personId ?? null}
+                onReorder={(u, ids) => void onReorder(u, ids)}
               />
             )}
-          </aside>
-        ) : (
-          <p className="hint canvas-hint">Select someone on the tree to see their details.</p>
-        )}
-      </div>
+          </section>
+          {selected ? (
+            <aside className="tree-panel" aria-label="Details" ref={panel}>
+              <p className="panel-close">
+                <button type="button" className="secondary" onClick={close}>
+                  Close
+                </button>
+              </p>
+              {newPerson && canAdd ? (
+                <AddPersonForm
+                  treeId={treeId}
+                  persons={persons}
+                  detail={detail}
+                  onCreated={changed}
+                />
+              ) : personId ? (
+                <PersonPanel
+                  key={personId}
+                  treeId={treeId}
+                  personId={personId}
+                  persons={persons}
+                  onChanged={changed}
+                />
+              ) : (
+                <UnionPanel
+                  key={unionId}
+                  treeId={treeId}
+                  union={ready?.graph.unions.find((u) => u.id === unionId)}
+                  loading={graph.status === 'loading'}
+                  persons={persons}
+                  onChanged={changed}
+                />
+              )}
+            </aside>
+          ) : (
+            <p className="hint canvas-hint">Select someone on the tree to see their details.</p>
+          )}
+        </div>
+      </PhotoRefreshContext.Provider>
       {/* Opened when the layout timed out, so people stay reachable (decision 4). */}
       <details
         id="people-fallback"

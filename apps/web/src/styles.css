@@ -305,6 +305,10 @@ textarea {
   outline: 3px solid #1d4ed8;
   outline-offset: 2px;
 }
+img.card-photo {
+  object-fit: cover;
+  padding: 0;
+}
 .card-photo {
   flex: none;
   width: 44px;

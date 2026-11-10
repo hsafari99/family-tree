@@ -97,4 +97,38 @@ describe('PersonCardView', () => {
     expect(screen.getByText('<b>x</b> Hale')).toBeInTheDocument();
     expect(container.querySelector('b')).toBeNull();
   });
+
+  describe('photo', () => {
+    const withPhoto = { ...robert, photoThumbUrl: 'https://photos.test/r/thumb' };
+
+    it('shows the thumbnail on a full card without changing the name', () => {
+      const { container } = view({ person: withPhoto });
+      const img = container.querySelector('img');
+      expect(img).toHaveAttribute('src', 'https://photos.test/r/thumb');
+      expect(img).toHaveAttribute('alt', '');
+      expect(
+        screen.getByRole('button', { name: 'Robert Hale, 1930–1998, deceased' }),
+      ).toBeInTheDocument();
+    });
+
+    it('falls back to initials when the image fails', () => {
+      const { container } = view({ person: withPhoto });
+      fireEvent.error(container.querySelector('img')!);
+      expect(container.querySelector('img')).toBeNull();
+      expect(screen.getByText('RH')).toBeInTheDocument();
+    });
+
+    it('shows initials without a url', () => {
+      view();
+      expect(screen.getByText('RH')).toBeInTheDocument();
+    });
+
+    it('renders no image on name-only and dot cards', () => {
+      for (const d of ['compact', 'dot'] as const) {
+        const { container, unmount } = view({ person: withPhoto }, d);
+        expect(container.querySelector('img')).toBeNull();
+        unmount();
+      }
+    });
+  });
 });
