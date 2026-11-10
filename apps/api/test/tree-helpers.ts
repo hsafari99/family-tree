@@ -1,9 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import type { Db } from '../src/db/client.js';
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, inArray } from 'drizzle-orm';
 import {
   auditLog,
   branchStewards,
+  deletionBatches,
   parentChild,
   persons,
   treeMembers,
@@ -92,4 +93,17 @@ export async function auditRows(db: Db, treeId: string) {
     .from(auditLog)
     .where(eq(auditLog.treeId, treeId))
     .orderBy(asc(auditLog.createdAt));
+}
+
+/** Soft-deletes people into a new person batch (for isolation snapshots). */
+export async function softDeleteBatch(db: Db, treeId: string, userId: string, personIds: string[]) {
+  const [b] = await db
+    .insert(deletionBatches)
+    .values({ treeId, deletedByUserId: userId, mode: 'person', rootPersonId: personIds[0]! })
+    .returning();
+  await db
+    .update(persons)
+    .set({ deletedAt: new Date(), deletionBatchId: b!.id })
+    .where(inArray(persons.id, personIds));
+  return b!;
 }
