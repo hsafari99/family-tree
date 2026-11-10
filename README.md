@@ -58,6 +58,19 @@ pnpm test:int         # integration tests (needs `pnpm dev` or `docker compose u
   no tree you don't own.
 - Deleted trees stay restorable by the owner for 30 days under _Deleted trees_.
 
+## People and Trash (dev)
+
+- Open a tree to see the people list. Click someone to open their panel (Info, Places, Photos,
+  Relations, History).
+- Add relatives from the Relations tab, or use **Add a person**. Dates can be exact, "about",
+  "before", "after" or "between".
+- Two people editing the same person at once can't overwrite each other: the second save is
+  refused with a "someone else changed this person" message and can reload and retry.
+- Deleting moves people or relations to the Trash, after a preview. Only the owner can restore or
+  erase permanently. Stewards can delete inside their branch only.
+- Trees deleted more than 30 days ago are purged hourly by the API (`TREE_PURGE_INTERVAL_MINUTES`,
+  0 turns it off), or at once with `pnpm purge-trees`.
+
 ## Known limitations
 
 - **Sign-up reveals registered emails.** Sign-up is open, and signing up with an email that
@@ -72,7 +85,9 @@ pnpm test:int         # integration tests (needs `pnpm dev` or `docker compose u
   meant to run as a single instance; a second one would need a shared store first.
 - **Moving 2FA to a new device** isn't possible yet (planned for phase 7). An owner who loses
   their phone signs in with a recovery code.
-- **People can't be edited yet** (phase 4), and there is **no tree canvas yet** (phase 5).
+- **No tree canvas or duplicate check when adding people yet** (phase 5), and disconnected people
+  are not listed separately yet (phase 5).
+- **No photos yet** (phase 6).
 
 ## License
 
