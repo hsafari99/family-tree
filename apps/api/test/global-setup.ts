@@ -1,6 +1,7 @@
 import { loadConfig } from '../src/config.js';
 import { runMigrations } from '../src/db/migrate.js';
 import { createDeps } from '../src/deps.js';
+import { assertTestTargets } from '../src/target-guard.js';
 import { ensureBucket } from '../src/storage/s3.js';
 
 const HINT = 'Start it with: docker compose up -d --wait postgres s3';
@@ -15,6 +16,7 @@ function unavailable(service: string, url: string, err: unknown): Error {
 
 export default async function setup() {
   const config = loadConfig();
+  assertTestTargets(config);
   const deps = createDeps(config);
   try {
     try {

@@ -5,7 +5,7 @@ import { ConfirmButton } from '../components/ConfirmButton';
 import { FormError } from '../components/forms';
 import { Page } from '../components/Page';
 import { TreeWorkspace } from './tree/TreeWorkspace';
-import { saveFile } from '../trees/download';
+import { startDownload } from '../trees/download';
 import { personName } from '../trees/format';
 import { useTreesApi } from '../trees/TreesApiContext';
 
@@ -242,7 +242,7 @@ function ExportSection({ treeId }: { treeId: string }) {
     const res = await api.exportTree(treeId);
     setPending(false);
     if (!res.ok) return setError(res.error.message);
-    saveFile(res.data.blob, res.data.fileName);
+    startDownload(res.data.url);
     setDone(true);
   }
 
@@ -257,7 +257,7 @@ function ExportSection({ treeId }: { treeId: string }) {
       <FormError>{error}</FormError>
       {done && (
         <p role="status" className="success">
-          Your export has downloaded.
+          Your export is downloading.
         </p>
       )}
       <button type="button" disabled={pending} onClick={() => void run()}>

@@ -25,7 +25,7 @@ export interface ObjectStore {
   /** A GET URL for the browser, valid PHOTO_URL_TTL_SECONDS from the start of `now`'s window. */
   signedUrl(key: string, now?: number): Promise<string>;
   /** The object's bytes, or null when the key doesn't exist. For the export (one at a time). */
-  get(key: string): Promise<Uint8Array | null>;
+  get(key: string, signal?: AbortSignal): Promise<Uint8Array | null>;
   /** Every object under `prefix`, page by page (1,000 per request). For the orphan sweep. */
   list(prefix: string): AsyncGenerator<{ key: string; lastModified: Date }>;
   close(): void;
@@ -72,9 +72,11 @@ export function createObjectStore(config: Config, shared?: S3Client): ObjectStor
       cache.set(key, { window, url });
       return url;
     },
-    async get(key) {
+    async get(key, signal) {
       try {
-        const res = await s3.send(new GetObjectCommand({ Bucket, Key: key }));
+        const res = await s3.send(new GetObjectCommand({ Bucket, Key: key }), {
+          abortSignal: signal,
+        });
         return res.Body ? await res.Body.transformToByteArray() : new Uint8Array();
       } catch (err) {
         if (

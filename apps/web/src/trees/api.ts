@@ -57,7 +57,6 @@ import {
   updatedPersonSchema,
 } from '@family-tree/shared';
 import { type AuthError, type CallKind, MESSAGES, type Result, toAuthError } from '../auth/api';
-import { fileNameFrom } from './download';
 
 /** Everything the tree pages need. Tests use FakeTreesApi (test/fake-trees.ts). */
 export interface TreesApi {
@@ -131,7 +130,7 @@ export interface TreesApi {
   deletePhoto(treeId: string, photoId: string): Promise<Result<void>>;
   search(treeId: string, query: SearchQuery, signal?: AbortSignal): Promise<Result<SearchResult[]>>;
   relationship(treeId: string, from: string, to: string): Promise<Result<Relationship>>;
-  exportTree(treeId: string): Promise<Result<{ blob: Blob; fileName: string }>>;
+  exportTree(treeId: string): Promise<Result<{ url: string }>>;
 }
 
 /** Every TreesApi method; the Record type makes the compiler flag a missing one. */
@@ -417,10 +416,13 @@ export function createTreesApi({ baseUrl }: { baseUrl: string }): TreesApi {
         ),
         (d) => d.results,
       ),
+    // The preflight (?check=1) does the access, busy, size and rate-limit checks and returns a
+    // one-time ticket; the download itself is a browser navigation, not a fetch (review fix I1).
     exportTree: async (treeId) => {
+      const base = `${origin}/api/v1${t(treeId)}/export`;
       let res: Response;
       try {
-        res = await fetch(`${origin}/api/v1${t(treeId)}/export`, { credentials: 'include' });
+        res = await fetch(`${base}?check=1`, { credentials: 'include' });
       } catch {
         return { ok: false, error: { code: 'NETWORK', message: MESSAGES.network } };
       }
@@ -436,11 +438,11 @@ export function createTreesApi({ baseUrl }: { baseUrl: string }): TreesApi {
         };
       }
       try {
-        const blob = await res.blob();
-        return {
-          ok: true,
-          data: { blob, fileName: fileNameFrom(res.headers.get('content-disposition')) },
-        };
+        const body: unknown = await res.json();
+        const ticket = (body as { ticket?: unknown } | null)?.ticket;
+        if (typeof ticket !== 'string' || !/^[A-Za-z0-9_-]+$/.test(ticket))
+          throw new Error('shape');
+        return { ok: true, data: { url: `${base}?ticket=${ticket}` } };
       } catch {
         return { ok: false, error: { code: 'NETWORK', message: MESSAGES.network } };
       }

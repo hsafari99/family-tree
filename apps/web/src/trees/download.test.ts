@@ -1,41 +1,26 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fileNameFrom, saveFile } from './download';
+import { startDownload } from './download';
 
-afterEach(() => {
-  vi.restoreAllMocks();
-  vi.useRealTimers();
-});
+afterEach(() => vi.restoreAllMocks());
 
-describe('fileNameFrom', () => {
-  it('reads a plain quoted file name', () => {
-    expect(fileNameFrom('attachment; filename="family-tree-2026-11-10.zip"')).toBe(
-      'family-tree-2026-11-10.zip',
-    );
-  });
-
-  it('falls back for a missing or unusual name', () => {
-    expect(fileNameFrom(null)).toBe('family-tree-export.zip');
-    expect(fileNameFrom('attachment; filename="../../x y.zip"')).toBe('family-tree-export.zip');
-  });
-});
-
-describe('saveFile', () => {
-  it('clicks a temporary download link and revokes the URL a minute later', () => {
-    vi.useFakeTimers();
-    const create = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:export');
-    const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
-    const seen: { href: string; download: string }[] = [];
+describe('startDownload', () => {
+  it('navigates to the URL through a temporary link, so the browser streams the file to disk', () => {
+    const seen: { href: string; download: string; rel: string }[] = [];
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
       this: HTMLAnchorElement,
     ) {
-      seen.push({ href: this.href, download: this.download });
+      seen.push({ href: this.href, download: this.getAttribute('download') ?? '', rel: this.rel });
     });
-    saveFile(new Blob(['PK']), 't.zip');
-    expect(create).toHaveBeenCalledOnce();
-    expect(seen).toEqual([{ href: 'blob:export', download: 't.zip' }]);
-    expect(document.querySelector('a[download]')).toBeNull();
-    expect(revoke).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(60_000);
-    expect(revoke).toHaveBeenCalledWith('blob:export');
+    const blob = vi.spyOn(URL, 'createObjectURL');
+    startDownload('https://api.example.com/api/v1/trees/t1/export?ticket=abc');
+    expect(seen).toEqual([
+      {
+        href: 'https://api.example.com/api/v1/trees/t1/export?ticket=abc',
+        download: '',
+        rel: 'noopener',
+      },
+    ]);
+    expect(blob).not.toHaveBeenCalled(); // never holds the archive in memory
+    expect(document.querySelector('a[hidden]')).toBeNull();
   });
 });

@@ -15,14 +15,15 @@ export async function writeExport(
   zip: ZipWriter,
   loaded: LoadedExport,
   store: ObjectStore,
-  { exporterName, now }: { exporterName: string; now: Date },
+  { exporterName, now, signal }: { exporterName: string; now: Date; signal?: AbortSignal },
 ): Promise<{ photos: number; missing: number }> {
   const xrefs = personXrefs(loaded.data.persons);
   const perPerson = new Map<string, number>();
   const written: ExportData['photos'] = [];
   let missing = 0;
   for (const photo of loaded.data.photos) {
-    const body = await store.get(loaded.photoKeys.get(photo.id)!);
+    signal?.throwIfAborted();
+    const body = await store.get(loaded.photoKeys.get(photo.id)!, signal);
     if (body === null) {
       missing++;
       written.push({ ...photo, file: null });

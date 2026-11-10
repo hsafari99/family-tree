@@ -192,7 +192,12 @@ describe('TreePage', () => {
 
   it('lets the owner download the export', async () => {
     const s = setup();
-    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const hrefs: string[] = [];
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      hrefs.push(this.href);
+    });
     renderAt(`/trees/${s.id}`, s);
     const section = await screen.findByRole('region', { name: 'Export' });
     expect(section).toHaveTextContent('living relatives');
@@ -202,9 +207,9 @@ describe('TreePage', () => {
       await within(section).findByRole('button', { name: 'Preparing export…' }),
     ).toBeDisabled();
     s.trees.release();
-    expect(await within(section).findByText('Your export has downloaded.')).toBeInTheDocument();
+    expect(await within(section).findByText('Your export is downloading.')).toBeInTheDocument();
     expect(s.trees.callsTo('exportTree')).toEqual([s.id]);
-    expect(click).toHaveBeenCalledOnce();
+    expect(hrefs).toEqual([`https://api.example.com/api/v1/trees/${s.id}/export?ticket=fake`]);
     click.mockRestore();
   });
 

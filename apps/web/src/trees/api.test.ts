@@ -456,27 +456,33 @@ describe('exportTree', () => {
   afterEach(() => vi.unstubAllGlobals());
   const api = createTreesApi({ baseUrl: 'https://api.example.com' });
 
-  it('returns the ZIP and its file name', async () => {
+  it('checks first, then returns the download URL with the one-time ticket', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(
-        async () =>
-          new Response(new Uint8Array([0x50, 0x4b]), {
-            status: 200,
-            headers: {
-              'content-type': 'application/zip',
-              'content-disposition': 'attachment; filename="family-tree-2026-11-10.zip"',
-            },
-          }),
-      ),
+      vi.fn(async () => Response.json({ ticket: 'tk_1-x' })),
     );
     const res = await api.exportTree('t1');
-    expect(fetch).toHaveBeenCalledWith('https://api.example.com/api/v1/trees/t1/export', {
+    expect(fetch).toHaveBeenCalledWith('https://api.example.com/api/v1/trees/t1/export?check=1', {
       credentials: 'include',
     });
-    if (!res.ok) throw new Error('expected ok');
-    expect(res.data.fileName).toBe('family-tree-2026-11-10.zip');
-    expect((await res.data.blob.arrayBuffer()).byteLength).toBe(2);
+    // The archive itself is never read into memory: the browser downloads it by navigation.
+    expect(res).toEqual({
+      ok: true,
+      data: { url: 'https://api.example.com/api/v1/trees/t1/export?ticket=tk_1-x' },
+    });
+  });
+
+  it('reports a network failure', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('offline');
+      }),
+    );
+    expect(await api.exportTree('t1')).toEqual({
+      ok: false,
+      error: expect.objectContaining({ code: 'NETWORK', message: MESSAGES.network }),
+    });
   });
 
   it.each([

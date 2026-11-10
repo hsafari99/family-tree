@@ -67,12 +67,12 @@ export function startPurgeJob(
   log: JobLog,
   intervalMs: number,
   store?: ObjectStore,
-  { sweepEveryMs = 0 }: { sweepEveryMs?: number } = {},
+  { sweepEveryMs = 0, now = Date.now }: { sweepEveryMs?: number; now?: () => number } = {},
 ): () => Promise<void> {
   let current: Promise<void> | null = null;
   // Guard 1 (review fix C1): the first sweep comes one full period after startup, never on the
   // first tick, so a crash loop or a just-restored database is never swept.
-  let lastSweep = Date.now();
+  let lastSweep = now();
   const tick = () => {
     if (current) return;
     current = purgeDeletedTrees(db)
@@ -84,10 +84,14 @@ export function startPurgeJob(
           if (deleted > 0) log.info({ deleted }, 'deleted stored objects');
           if (deleted + failed < 500 || failed > 0) break; // done, or storage is down: next tick
         }
-        if (sweepEveryMs > 0 && Date.now() - lastSweep >= sweepEveryMs) {
-          lastSweep = Date.now();
-          const { deleted } = await sweepOrphans(db, store, { log });
-          if (deleted > 0) log.info({ deleted }, 'removed orphaned stored objects');
+        if (sweepEveryMs > 0 && now() - lastSweep >= sweepEveryMs) {
+          lastSweep = now();
+          try {
+            const { deleted } = await sweepOrphans(db, store, { log });
+            if (deleted > 0) log.info({ deleted }, 'removed orphaned stored objects');
+          } catch (err: unknown) {
+            log.error({ err: safeError(err) }, 'orphan sweep failed');
+          }
         }
       })
       .catch((err: unknown) => log.error({ err: safeError(err) }, 'tree purge failed'))

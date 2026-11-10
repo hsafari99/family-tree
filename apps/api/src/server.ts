@@ -2,6 +2,7 @@ import { buildApp } from './app.js';
 import { ConfigError, loadConfig, type Config } from './config.js';
 import { runMigrations } from './db/migrate.js';
 import { createDeps } from './deps.js';
+import { assertServerTarget } from './target-guard.js';
 import { ensureBucket } from './storage/s3.js';
 import { startPurgeJob } from './trees/purge.js';
 
@@ -16,6 +17,7 @@ try {
   throw err;
 }
 
+assertServerTarget(config);
 const deps = createDeps(config);
 // Production migrates in the one-shot `migrate` service as the owner role (decision 12).
 if (config.MIGRATE_ON_START) await runMigrations(deps.db);

@@ -1,6 +1,7 @@
 import { exportDataSchema } from '@family-tree/shared';
 import { eq } from 'drizzle-orm';
-import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
+import http from 'node:http';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { call, signUp } from '../../test/auth-helpers.js';
 import { jpegWithExif, SECRET } from '../../test/photo-fixtures.js';
 import { addPhotoRow, upload } from '../../test/photo-helpers.js';
@@ -224,5 +225,228 @@ describe('GET export', () => {
     const first = await call(app, 'GET', url(treeId), { jar: owner.jar }).catch(() => null);
     if (first) expect(() => readZip(first.rawPayload)).toThrow(); // never a valid archive
     expect((await call(app, 'GET', url(treeId), { jar: owner.jar })).statusCode).toBe(200);
+  });
+
+  it('writes tree.json objects with exactly the expected keys', async () => {
+    const { owner, treeId } = await ownerWithTree(app, 'Keys');
+    const root = await rootOf(treeId);
+    const partner = await addPerson(db, treeId, 'Pat', { sex: 'female' });
+    const child = await addPerson(db, treeId, 'Kid');
+    await family(db, treeId, { id: root }, partner, [child]);
+    await db.insert(residences).values({ treeId, personId: root, place: 'Leeds' });
+    await addPhotoRow(db, treeId, root);
+    const res = await call(app, 'GET', url(treeId), { jar: owner.jar });
+    const raw = JSON.parse(
+      new Map(readZip(res.rawPayload).map((f) => [f.name, f]))
+        .get('tree.json')!
+        .data.toString('utf8'),
+    ) as Record<string, unknown>;
+    const keys = (o: unknown) => Object.keys(o as object).sort();
+    const first = (name: string) => (raw[name] as unknown[])[0];
+    expect(keys(raw)).toEqual(
+      [
+        'exportedAt',
+        'format',
+        'parentChild',
+        'persons',
+        'photos',
+        'residences',
+        'tree',
+        'unions',
+        'version',
+      ].sort(),
+    );
+    expect(keys(raw.tree)).toEqual(['id', 'name', 'rootPersonId']);
+    expect(keys(first('persons'))).toEqual(
+      [
+        'id',
+        'givenName',
+        'middleName',
+        'surname',
+        'maidenName',
+        'nickname',
+        'sex',
+        'birthDate',
+        'birthPlace',
+        'deathDate',
+        'deathPlace',
+        'causeOfDeath',
+        'isLiving',
+        'occupation',
+        'education',
+        'biography',
+        'notes',
+        'siblingOrder',
+      ].sort(),
+    );
+    expect(keys(first('unions'))).toEqual(
+      ['id', 'partnerAId', 'partnerBId', 'type', 'status', 'startDate', 'endDate'].sort(),
+    );
+    expect(keys(first('parentChild'))).toEqual(['id', 'unionId', 'childId', 'kind'].sort());
+    expect(keys(first('residences'))).toEqual(
+      ['id', 'personId', 'place', 'fromDate', 'toDate'].sort(),
+    );
+    expect(keys(first('photos'))).toEqual(
+      ['id', 'personId', 'file', 'width', 'height', 'isPrimary'].sort(),
+    );
+  });
+
+  describe('slots and aborts', () => {
+    /** A get() that hangs until its signal aborts, recording the signal it was given. */
+    function hangingStore(seen: {
+      signal?: AbortSignal;
+      hung?: boolean;
+      entered: ReturnType<typeof deferred>;
+    }) {
+      return {
+        ...deps.storage,
+        async get(key: string, signal?: AbortSignal) {
+          if (seen.hung) return deps.storage.get(key, signal);
+          seen.hung = true;
+          seen.signal = signal;
+          seen.entered.resolve();
+          await new Promise<void>((_, reject) => {
+            if (!signal) return; // no signal passed: hangs for good (the bug under test)
+            signal.addEventListener('abort', () => reject(new Error('aborted')));
+          });
+          return null;
+        },
+      };
+    }
+
+    it('aborts a pending store read, and frees the slot, when the client disconnects', async () => {
+      const seen: { signal?: AbortSignal; hung?: boolean; entered: ReturnType<typeof deferred> } = {
+        entered: deferred(),
+      };
+      await app.close();
+      app = buildApp({ config, checks: deps.checks, auth, db, storage: hangingStore(seen) });
+      const { owner, treeId } = await ownerWithTree(app);
+      await addPhotoRow(db, treeId, await rootOf(treeId));
+      await app.listen({ port: 0, host: '127.0.0.1' });
+      const port = (app.server.address() as { port: number }).port;
+      const req = http.get(
+        { host: '127.0.0.1', port, path: url(treeId), headers: { cookie: owner.jar.header() } },
+        (res) => res.resume(),
+      );
+      req.on('error', () => {});
+      await seen.entered.promise;
+      req.destroy(); // the client leaves while the photo read is pending
+      await vi.waitFor(() => expect(seen.signal?.aborted).toBe(true));
+      // The same user can export again at once: the slot was freed.
+      const second = await call(app, 'GET', url(treeId), { jar: owner.jar });
+      expect(second.statusCode).toBe(200);
+    });
+
+    it('aborts the pending read at the time limit', async () => {
+      const seen: { signal?: AbortSignal; hung?: boolean; entered: ReturnType<typeof deferred> } = {
+        entered: deferred(),
+      };
+      await app.close();
+      app = buildApp({
+        config,
+        checks: deps.checks,
+        auth,
+        db,
+        storage: hangingStore(seen),
+        exportTimeoutMs: 200,
+      });
+      const { owner, treeId } = await ownerWithTree(app);
+      await addPhotoRow(db, treeId, await rootOf(treeId));
+      await call(app, 'GET', url(treeId), { jar: owner.jar }).catch(() => null);
+      expect(seen.signal?.aborted).toBe(true);
+    });
+
+    it('frees the slot when storage fails mid-stream', async () => {
+      let calls = 0;
+      const storage = {
+        ...deps.storage,
+        async get(key: string, signal?: AbortSignal) {
+          if (calls++ === 0) throw new Error('storage is down');
+          return deps.storage.get(key, signal);
+        },
+      };
+      await app.close();
+      app = buildApp({ config, checks: deps.checks, auth, db, storage });
+      const { owner, treeId } = await ownerWithTree(app);
+      await addPhotoRow(db, treeId, await rootOf(treeId));
+      const first = await call(app, 'GET', url(treeId), { jar: owner.jar }).catch(() => null);
+      if (first) expect(() => readZip(first.rawPayload)).toThrow();
+      const second = await call(app, 'GET', url(treeId), { jar: owner.jar });
+      expect(second.statusCode).toBe(200);
+      expect(() => readZip(second.rawPayload)).not.toThrow();
+    });
+  });
+
+  describe('the preflight check', () => {
+    const check = (t: string) => `${url(t)}?check=1`;
+
+    it('returns a one-time ticket that the download accepts, counting once against the limit', async () => {
+      const { owner, treeId } = await ownerWithTree(app);
+      for (let i = 0; i < 5; i++) {
+        const c = await call(app, 'GET', check(treeId), { jar: owner.jar });
+        expect(c.statusCode).toBe(200);
+        const { ticket } = c.json() as { ticket: string };
+        const d = await call(app, 'GET', `${url(treeId)}?ticket=${ticket}`, { jar: owner.jar });
+        expect(d.statusCode).toBe(200);
+        expect(d.headers['content-type']).toBe('application/zip');
+        expect(d.headers['content-disposition']).toMatch(/^attachment;/);
+      }
+      const sixth = await call(app, 'GET', check(treeId), { jar: owner.jar });
+      expect(sixth.statusCode).toBe(429);
+      expect(sixth.json().error.code).toBe('RATE_LIMITED');
+    });
+
+    it('refuses a reused, foreign or unknown ticket the free pass', async () => {
+      const a = await ownerWithTree(app, 'A');
+      const b = await ownerWithTree(app, 'B');
+      const { ticket } = (await call(app, 'GET', check(a.treeId), { jar: a.owner.jar })).json() as {
+        ticket: string;
+      };
+      // Another user, another tree: the ticket doesn't work, and the request counts normally.
+      const foreign = await call(app, 'GET', `${url(b.treeId)}?ticket=${ticket}`, {
+        jar: b.owner.jar,
+      });
+      expect(foreign.statusCode).toBe(200);
+      expect(
+        (await call(app, 'GET', `${url(a.treeId)}?ticket=${ticket}`, { jar: a.owner.jar }))
+          .statusCode,
+      ).toBe(200);
+      // Used once: a second use is an ordinary (counted) request, still served, never an error.
+      expect(
+        (await call(app, 'GET', `${url(a.treeId)}?ticket=${ticket}`, { jar: a.owner.jar }))
+          .statusCode,
+      ).toBe(200);
+    });
+
+    it('keeps the order: no session 401, outsiders 404, members 403, tooLarge 400', async () => {
+      const { owner, treeId } = await ownerWithTree(app);
+      const outsider = await signUp(app, { name: 'Out' });
+      const editor = await signUp(app, { name: 'Ed' });
+      await addMember(db, treeId, editor.userId, 'editor', owner.userId);
+      expect((await call(app, 'GET', check(treeId))).statusCode).toBe(401);
+      expect((await call(app, 'GET', check(treeId), { jar: outsider.jar })).statusCode).toBe(404);
+      expect((await call(app, 'GET', check(treeId), { jar: editor.jar })).statusCode).toBe(403);
+      await addPhotoRow(db, treeId, await rootOf(treeId));
+      await addPhotoRow(db, treeId, await rootOf(treeId), false);
+      await db.update(photos).set({ bytes: 2_000_000_000 }).where(eq(photos.treeId, treeId));
+      const big = await call(app, 'GET', check(treeId), { jar: owner.jar });
+      expect(big.statusCode).toBe(400);
+      expect(big.json().error.details).toEqual({ reason: 'tooLarge' });
+    });
+
+    it('answers 503 when busy', async () => {
+      await app.close();
+      app = buildApp({
+        config,
+        checks: deps.checks,
+        auth,
+        db,
+        storage: deps.storage,
+        exportConcurrency: 0,
+      });
+      const { owner, treeId } = await ownerWithTree(app);
+      const res = await call(app, 'GET', check(treeId), { jar: owner.jar });
+      expect(res.statusCode).toBe(503);
+    });
   });
 });

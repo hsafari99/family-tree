@@ -1,20 +1,15 @@
-/** The file name from `Content-Disposition: attachment; filename="…"`, or a safe default. */
-export function fileNameFrom(header: string | null): string {
-  const match = header?.match(/filename="([A-Za-z0-9._-]+)"/);
-  return match?.[1] ?? 'family-tree-export.zip';
-}
-
-/** Saves a blob through a temporary object URL and a download link (decision 9). */
-export function saveFile(blob: Blob, fileName: string): void {
-  const url = URL.createObjectURL(blob);
+/**
+ * Starts a download by navigating to `url` through a temporary link (review fix I1). The API
+ * answers with `Content-Disposition: attachment`, so the page stays put and the browser streams
+ * the file to disk; nothing is read into memory here (an archive can reach 3.5 GB). The session
+ * cookie goes along because this is a top-level GET (SameSite=Lax allows that).
+ */
+export function startDownload(url: string): void {
   const a = document.createElement('a');
   a.href = url;
-  a.download = fileName;
   a.rel = 'noopener';
   a.hidden = true;
   document.body.append(a);
   a.click();
   a.remove();
-  // The download has started by then; keeping the URL longer would hold the blob in memory.
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }

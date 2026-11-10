@@ -1279,10 +1279,7 @@ export class FakeTreesApi implements TreesApi {
     const t = this.find(treeId);
     if (!t) return notFound();
     if (!t.detail.capabilities.manageTree) return forbidden();
-    return ok({
-      blob: new Blob(['PK'], { type: 'application/zip' }),
-      fileName: 'family-tree-2026-11-10.zip',
-    });
+    return ok({ url: `https://api.example.com/api/v1/trees/${treeId}/export?ticket=fake` });
   }
 
   async relationship(treeId: string, from: string, to: string): Promise<Result<Relationship>> {
