@@ -157,15 +157,20 @@ export function initials(p: NameParts): string {
   return (first(p.givenName) + first(p.surname)).toLocaleUpperCase();
 }
 
-/** 950 B, 12.3 KB, 4.5 MB, 1 GB: decimal units, one decimal below 100. */
+/**
+ * 950 B, 12.1 KB, 4.5 MB, 1 GB: binary steps (1024) labelled KB/MB/GB, so the 1 GiB quota reads
+ * "1 GB". One decimal below 100. Rounds before choosing the unit: 1,048,575 B is "1 MB", never
+ * "1024 KB".
+ */
 export function formatBytes(n: number): string {
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const show = (v: number, i: number) =>
+    i === 0 || v >= 100 ? Math.round(v) : Math.round(v * 10) / 10;
   let v = n;
   let i = 0;
-  while (v >= 1000 && i < units.length - 1) {
-    v /= 1000;
+  while (i < units.length - 1 && show(v, i) >= 1024) {
+    v /= 1024;
     i++;
   }
-  const digits = i === 0 || v >= 100 || Number.isInteger(v) ? 0 : 1;
-  return `${v.toFixed(digits)} ${units[i]}`;
+  return `${show(v, i)} ${units[i]}`;
 }

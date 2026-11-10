@@ -26,10 +26,10 @@ export type PhotoRejectReason = (typeof PHOTO_REJECT_REASONS)[number];
 export const photoSchema = z.object({
   id: z.uuid(),
   /** Of the full version. */
-  width: z.number().int(),
-  height: z.number().int(),
+  width: z.number().int().nonnegative(),
+  height: z.number().int().nonnegative(),
   /** Stored bytes of both versions: what counts towards the tree's quota. */
-  bytes: z.number().int(),
+  bytes: z.number().int().nonnegative(),
   isPrimary: z.boolean(),
   createdAt: z.string(),
   uploadedByName: z.string().nullable(),
@@ -39,8 +39,8 @@ export const photoSchema = z.object({
 export type Photo = z.infer<typeof photoSchema>;
 
 export const photoUsageSchema = z.object({
-  usedBytes: z.number().int(),
-  limitBytes: z.number().int(),
+  usedBytes: z.number().int().nonnegative(),
+  limitBytes: z.number().int().nonnegative(),
 });
 export type PhotoUsage = z.infer<typeof photoUsageSchema>;
 

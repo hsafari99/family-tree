@@ -63,10 +63,17 @@ describe('initials', () => {
 });
 
 describe('formatBytes', () => {
-  it('uses decimal units', () => {
+  it('uses binary math with KB/MB/GB labels', () => {
+    expect(formatBytes(0)).toBe('0 B');
     expect(formatBytes(950)).toBe('950 B');
-    expect(formatBytes(12_345)).toBe('12.3 KB');
-    expect(formatBytes(1_073_741_824)).toBe('1.1 GB');
-    expect(formatBytes(1_000_000_000)).toBe('1 GB');
+    expect(formatBytes(12_345)).toBe('12.1 KB');
+    expect(formatBytes(1536)).toBe('1.5 KB');
+    expect(formatBytes(1_073_741_824)).toBe('1 GB');
+    expect(formatBytes(10 * 1024 * 1024)).toBe('10 MB');
+  });
+  it('rounds before choosing the unit', () => {
+    expect(formatBytes(999_999)).toBe('977 KB');
+    expect(formatBytes(1023)).toBe('1023 B');
+    expect(formatBytes(1024 * 1024 - 1)).toBe('1 MB');
   });
 });

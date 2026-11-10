@@ -230,3 +230,39 @@ describe('the path itself', () => {
     expect(closeRelativeSteps(fromMe('scKid')!)).toBe(6);
   });
 });
+
+describe('step links inside longer blood patterns', () => {
+  const steps = (build: (f: ReturnType<typeof family>) => void, to: string) => {
+    const f = family();
+    build(f);
+    return kinPathsFrom(f.g, 'me')(to)!;
+  };
+
+  it('UU through a stepfather link is not a plain grandfather', () => {
+    const s = steps((f) => {
+      f.people({ me: 'male', sp: 'male', gp: 'male' });
+      f.union('U1', 'sp', null, [['me', 'step']]);
+      f.union('U2', 'gp', null, ['sp']);
+    }, 'gp');
+    expect(kinshipTerm(s)).toBeNull();
+    expect(kinshipChain(s, 'your')).toBe('your stepfather’s father');
+  });
+
+  it('UUD through a step link is not a plain uncle', () => {
+    const s = steps((f) => {
+      f.people({ me: 'male', sp: 'male', gp: 'male', unc: 'male' });
+      f.union('U1', 'sp', null, [['me', 'step']]);
+      f.union('U2', 'gp', null, ['sp', 'unc']);
+    }, 'unc');
+    expect(kinshipTerm(s)).toBeNull();
+  });
+
+  it('DD with a step first link is not a plain grandson', () => {
+    const s = steps((f) => {
+      f.people({ me: 'male', sk: 'male', gk: 'male' });
+      f.union('U1', 'me', null, [['sk', 'step']]);
+      f.union('U2', 'sk', null, ['gk']);
+    }, 'gk');
+    expect(kinshipTerm(s)).toBeNull();
+  });
+});

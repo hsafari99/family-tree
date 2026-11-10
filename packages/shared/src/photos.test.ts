@@ -36,6 +36,19 @@ describe('photo limits (spec §8)', () => {
     ).toEqual({ usedBytes: 210_000, limitBytes: 1 });
     expect(photoSchema.safeParse({ ...photo, thumbUrl: undefined }).success).toBe(false);
   });
+  it('refuses negative or fractional sizes', () => {
+    for (const k of ['width', 'height', 'bytes'] as const) {
+      expect(photoSchema.safeParse({ ...photo, [k]: -1 }).success).toBe(false);
+      expect(photoSchema.safeParse({ ...photo, [k]: 1.5 }).success).toBe(false);
+    }
+    expect(photoSchema.safeParse({ ...photo, bytes: 0 }).success).toBe(true);
+    expect(
+      uploadedPhotoSchema.safeParse({ photo, usage: { usedBytes: -1, limitBytes: 1 } }).success,
+    ).toBe(false);
+    expect(
+      uploadedPhotoSchema.safeParse({ photo, usage: { usedBytes: 1, limitBytes: -1 } }).success,
+    ).toBe(false);
+  });
   it('shows photo changes in History', () => {
     expect(HISTORY_ACTION_PREFIXES).toContain('photo.');
   });

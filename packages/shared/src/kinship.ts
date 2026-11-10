@@ -256,11 +256,14 @@ export function kinshipTerm(steps: readonly KinStep[]): string | null {
   if (blood) {
     const up = blood[1]!.length;
     const down = blood[2]!.length;
-    const half = up > 0 && down > 0 && steps[up - 1]!.unionId !== steps[up]!.unionId;
-    // A sibling through a step link (a parent's stepchild, recorded as kind 'step').
-    if (up === 1 && down === 1 && (steps[0]!.kind === 'step' || steps[1]!.kind === 'step')) {
-      return bySex(sex, 'stepbrother', 'stepsister', 'step-sibling');
+    // A step link anywhere makes a plain blood word wrong ("grandfather" for a stepfather's
+    // father): only a step-sibling has a word, everything else uses the chain.
+    if (steps.some((s) => s.kind === 'step')) {
+      return up === 1 && down === 1
+        ? bySex(sex, 'stepbrother', 'stepsister', 'step-sibling')
+        : null;
     }
+    const half = up > 0 && down > 0 && steps[up - 1]!.unionId !== steps[up]!.unionId;
     return bloodTerm(up, down, sex, half);
   }
   const term = relationByMarriage(pattern, sex);
