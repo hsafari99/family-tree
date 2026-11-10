@@ -44,5 +44,18 @@ services:
     depends_on:
       caddy: { condition: service_healthy }
 
+  backup:
+    # Runs as the host user so it can write .prod-local/backups and read the local age key.
+    user: '${LOCAL_UID:-1000}:${LOCAL_GID:-1000}'
+    environment:
+      RCLONE_CA_CERT: /etc/family-tree-ca/root.crt
+      # A local folder instead of a second bucket; it survives `prod-local.sh reset`.
+      RCLONE_CONFIG_BACKUP_TYPE: local
+    volumes:
+      - ./.prod-local/ca:/etc/family-tree-ca:ro
+      - ./.prod-local/backups:/backups
+      # Local test only. In production the private key is never on the server (decision 14).
+      - ./.prod-local/age/identity.txt:/run/age/identity.txt:ro
+
 volumes:
   s3data:

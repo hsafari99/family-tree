@@ -122,8 +122,63 @@ up() {
   echo "Up: $WEB (API $API). To use a browser, see docs/self-hosting.md, \"Try it locally first\"."
 }
 
+age_key() { # a local age key pair; its public half goes into .prod-local/env
+  if [ -s "$DIR/age/identity.txt" ]; then return 0; fi
+  mkdir -p "$DIR/age" "$DIR/backups" "$DIR/state"
+  chmod 700 "$DIR/age"
+  "${COMPOSE[@]}" --profile tools build backup
+  docker run --rm --entrypoint age-keygen family-tree-backup:local > "$DIR/age/identity.txt" 2>/dev/null
+  chmod 600 "$DIR/age/identity.txt"
+  local recipient
+  recipient="$(sed -n 's/^# public key: //p' "$DIR/age/identity.txt")"
+  sed -i "s/^AGE_RECIPIENT=.*/AGE_RECIPIENT=$recipient/" "$DIR/env"
+}
+
+counts() {
+  "${COMPOSE[@]}" exec -T postgres psql -U family_owner -d family -Atc \
+    "select (select count(*) from users) || ' users, ' || (select count(*) from persons) \
+     || ' persons, ' || (select count(*) from photos) || ' photos'"
+}
+
+check() { # restore-check.mjs seed|verify inside the api container
+  "${COMPOSE[@]}" run --rm --no-deps --user "$LOCAL_UID:$LOCAL_GID" \
+    -v "$PWD/scripts/restore-check.mjs:/app/restore-check.mjs:ro" -v "$PWD/$DIR/state:/state" \
+    api node restore-check.mjs "$1"
+}
+
+backup_test() {
+  init
+  age_key
+  start
+  check seed
+  local before latest
+  before="$(counts)"
+  echo "Before: $before"
+  "${COMPOSE[@]}" run --rm backup
+  latest="$(find "$DIR/backups/db" -name 'family-*.dump.age' | sort | tail -n 1)"
+  head -c 21 "$latest" | grep -q '^age-encryption.org/v1' || { echo "FAIL: dump is not age-encrypted" >&2; exit 1; }
+  if grep -qa 'Restore test' "$latest"; then echo "FAIL: dump has plain text" >&2; exit 1; fi
+  echo "Wiping the database and photo volumes"
+  "${COMPOSE[@]}" down
+  docker volume rm "${PROJECT}_pgdata" "${PROJECT}_s3data" >/dev/null
+  edge_up
+  "${COMPOSE[@]}" run --rm backup restore.sh latest
+  "${COMPOSE[@]}" up -d
+  wait_for "the API over TLS" "${CURL[@]}" "$API/api/v1/health"
+  local after
+  after="$(counts)"
+  echo "After:  $after"
+  [ "$after" = "$before" ] || { echo "FAIL: counts differ" >&2; exit 1; }
+  check verify
+  echo "Retention: three more backups with BACKUP_KEEP=2"
+  for _ in 1 2 3; do "${COMPOSE[@]}" run --rm -e BACKUP_KEEP=2 backup >/dev/null; sleep 1; done
+  [ "$(find "$DIR/backups/db" -name 'family-*.dump.age' | wc -l)" -eq 2 ] || { echo "FAIL: retention" >&2; exit 1; }
+  echo "PASS: backup, wipe, restore and retention"
+}
+
 case "${1:-}" in
   up) up ;;
+  backup-test) backup_test ;;
   down) "${COMPOSE[@]}" down ;;
   reset) "${COMPOSE[@]}" down -v ;;
   compose)
