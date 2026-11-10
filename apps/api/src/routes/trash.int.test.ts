@@ -454,7 +454,22 @@ describe('Trash erase and photos', () => {
     expect(await queued(t.keys)).toHaveLength(0);
   });
 
-  it.todo('restore brings the photos back (filled in with the upload routes)');
+  it('restore brings the photos back', async () => {
+    const t = await personWithPhoto(app);
+    const restore = await call(
+      app,
+      'POST',
+      `/api/v1/trees/${t.treeId}/trash/${t.batch.id}/restore`,
+      {
+        jar: t.owner.jar,
+      },
+    );
+    expect(restore.statusCode).toBe(204);
+    const view = await call(app, 'GET', `/api/v1/trees/${t.treeId}/persons/${t.person.id}`, {
+      jar: t.owner.jar,
+    });
+    expect(view.json().photos.map((p: { id: string }) => p.id)).toEqual([t.photo.id]);
+  });
 
   it('still answers 204 when storage is down, and keeps the keys queued', async () => {
     const down = {

@@ -1,5 +1,5 @@
 import { fromNodeHeaders } from 'better-auth/node';
-import type { preHandlerAsyncHookHandler } from 'fastify';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import { AppError } from '../errors.js';
 import type { Auth, AuthUser } from './auth.js';
 
@@ -11,8 +11,10 @@ declare module 'fastify' {
   }
 }
 
-/** preHandler that rejects requests without a valid session and exposes the user. */
-export function requireSession(auth: Auth): preHandlerAsyncHookHandler {
+/** Rejects requests without a valid session and exposes the user. Usable as onRequest or preHandler. */
+export function requireSession(
+  auth: Auth,
+): (req: FastifyRequest, reply: FastifyReply) => Promise<void> {
   return async (req, reply) => {
     const { headers, response: session } = await auth.api.getSession({
       headers: fromNodeHeaders(req.headers),

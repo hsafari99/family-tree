@@ -3,6 +3,8 @@ import { and, asc, eq, isNull } from 'drizzle-orm';
 import type { Queryable } from '../db/client.js';
 import { parentChild, persons, residences, unions, users } from '../db/schema.js';
 import { notFound } from '../errors.js';
+import { loadPhotos, photoUsage } from '../photos/photos.js';
+import type { ObjectStore } from '../storage/objects.js';
 import { can } from '../permissions/can.js';
 import type { Access } from './access.js';
 import { isLivePerson, summaryColumns, toPersonDetail } from './people.js';
@@ -12,6 +14,8 @@ export async function loadPersonView(
   db: Queryable,
   access: Access,
   personId: string,
+  store: ObjectStore,
+  limitBytes: number,
 ): Promise<PersonView> {
   const { treeId } = access;
   const [row] = await db
@@ -115,8 +119,8 @@ export async function loadPersonView(
   return {
     person: toPersonDetail(row.p, row.createdByName),
     residences: homes,
-    photos: [],
-    photoUsage: { usedBytes: 0, limitBytes: 0 },
+    photos: await loadPhotos(db, store, treeId, personId),
+    photoUsage: await photoUsage(db, treeId, limitBytes),
     relations: { parents, unions: own, siblings },
     capabilities: {
       edit: can(access, 'person.edit', { kind: 'person', personId }),

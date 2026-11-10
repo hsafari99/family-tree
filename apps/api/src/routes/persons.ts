@@ -21,13 +21,22 @@ import { loadPersonView } from '../trees/person-view.js';
 import { attachRelative, relativeEnds } from '../trees/relatives.js';
 import type { TreeRouteOptions } from './trees.js';
 
-export const personsRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, { auth, db }) => {
+export const personsRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
+  app,
+  { auth, db, config, storage },
+) => {
   app.addHook('preHandler', requireSession(auth));
 
   app.get('/api/v1/trees/:treeId/persons/:personId', async (req) => {
     const access = await loadAccess(db, idParam(req.params, 'treeId'), req.user!.id);
     authorize(access, 'tree.view', TREE);
-    return loadPersonView(db, access, idParam(req.params, 'personId'));
+    return loadPersonView(
+      db,
+      access,
+      idParam(req.params, 'personId'),
+      storage,
+      config.MAX_PHOTO_BYTES_PER_TREE,
+    );
   });
 
   app.post('/api/v1/trees/:treeId/persons', async (req, reply) => {

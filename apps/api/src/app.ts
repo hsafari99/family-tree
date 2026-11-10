@@ -15,7 +15,9 @@ import { meRoutes } from './routes/me.js';
 import { personsRoutes } from './routes/persons.js';
 import { relationsRoutes } from './routes/relations.js';
 import { residencesRoutes } from './routes/residences.js';
+import { photosRoutes } from './routes/photos.js';
 import { trashRoutes } from './routes/trash.js';
+import type { limiter } from './photos/limiter.js';
 import { graphRoutes } from './routes/graph.js';
 import { deletionRoutes } from './routes/deletion.js';
 import { passwordResetRoutes } from './routes/password-reset.js';
@@ -36,6 +38,8 @@ export type AppOptions = AuthOptions & {
   rateLimitMax?: number;
   /** Where log lines go (default stdout). Tests pass a stream to inspect them. */
   logStream?: { write(line: string): void };
+  /** Photo processing slots; tests inject a full one to check the busy answer. */
+  photoJobs?: ReturnType<typeof limiter>;
 };
 
 /**
@@ -56,6 +60,7 @@ export function buildApp({
   storage,
   rateLimitMax = 300,
   logStream,
+  photoJobs,
 }: AppOptions) {
   const app = Fastify({
     trustProxy: trustHops(config.TRUST_PROXY),
@@ -105,6 +110,13 @@ export function buildApp({
     app.register(personsRoutes, { auth, db, config, storage: store! });
     app.register(relationsRoutes, { auth, db, config, storage: store! });
     app.register(residencesRoutes, { auth, db, config, storage: store! });
+    app.register(photosRoutes, {
+      auth,
+      db,
+      config,
+      storage: store!,
+      ...(photoJobs ? { photoJobs } : {}),
+    });
     app.register(deletionRoutes, { auth, db, config, storage: store! });
     app.register(trashRoutes, { auth, db, config, storage: store! });
     app.register(graphRoutes, { auth, db, config, storage: store! });
