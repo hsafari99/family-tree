@@ -127,6 +127,9 @@ pnpm test:int         # integration tests (needs `pnpm dev` or `docker compose u
   being read. Only the per-user limit of 30 uploads per 10 minutes bounds those.
 - **A JSON body on the upload route** returns 400 with reason `type`, while other wrong content
   types get 415.
+- **Search and the person pickers aren't a full combobox.** Their results are ordinary buttons you
+  reach with Tab; there is no arrow-key navigation through the list yet. That is a known
+  accessibility gap.
 - **Relationship words are English only.** Rare relationships fall back to the step-by-step
   description.
 

@@ -109,7 +109,7 @@ describe('RelationshipPanel', () => {
   it('changes the target through the picker and replaces the URL', async () => {
     setup('/trees/$ID/relationship?to=emma');
     await screen.findByText('Emma Hale is your half-sister.');
-    fireEvent.click(screen.getAllByRole('button', { name: 'Change' })[1]!);
+    fireEvent.click(screen.getByRole('button', { name: 'Change To' }));
     fireEvent.change(screen.getByLabelText('To'), { target: { value: 'Mia' } });
     fireEvent.click(screen.getByRole('button', { name: /^Mia Hale/ }));
     expect(await screen.findByText('Mia Hale is your sister.')).toBeInTheDocument();
@@ -127,5 +127,23 @@ describe('RelationshipPanel', () => {
   it('shows a fixed message when a person is not found', async () => {
     setup('/trees/$ID/relationship?to=ghost');
     expect(await screen.findByText(MESSAGES.personNotFound)).toBeInTheDocument();
+  });
+
+  it('moves focus to the Change button after picking, and to the input after Change', async () => {
+    setup('/trees/$ID/relationship?from=leo');
+    const input = await screen.findByLabelText('To');
+    fireEvent.change(input, { target: { value: 'Mia' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Mia Hale/ }));
+    const change = await screen.findByRole('button', { name: 'Change To' });
+    expect(document.activeElement).toBe(change);
+    fireEvent.click(change);
+    expect(document.activeElement).toBe(await screen.findByLabelText('To'));
+  });
+
+  it('has one live region for the result', async () => {
+    setup('/trees/$ID/relationship?to=emma');
+    await screen.findByText('Emma Hale is your half-sister.');
+    const regions = document.querySelectorAll('[aria-live], [role="status"]');
+    expect(regions).toHaveLength(1);
   });
 });

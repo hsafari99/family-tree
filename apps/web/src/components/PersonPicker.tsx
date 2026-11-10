@@ -1,5 +1,5 @@
 import { normalizeName, type PersonSummary } from '@family-tree/shared';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { personName, personYears } from '../trees/format';
 
 const MATCHES_MAX = 20;
@@ -11,20 +11,44 @@ export function PersonPicker({
   value,
   onChange,
   clearLabel = 'Clear',
+  clearAriaLabel,
 }: {
   label: string;
   persons: PersonSummary[];
   value: string | null;
   onChange: (id: string | null) => void;
   clearLabel?: string;
+  /** When two pickers share a clear label, a name that tells them apart. */
+  clearAriaLabel?: string;
 }) {
   const [text, setText] = useState('');
+  // Where focus goes after the next render: the picker swaps its own controls, which would
+  // otherwise drop focus on <body>.
+  const focusNext = useRef<'change' | 'input' | null>(null);
+  const changeButton = useRef<HTMLButtonElement>(null);
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const target = focusNext.current === 'change' ? changeButton.current : input.current;
+    if (focusNext.current && target) {
+      target.focus();
+      focusNext.current = null;
+    }
+  });
   const chosen = value ? persons.find((p) => p.id === value) : undefined;
   if (value) {
     return (
       <p className="person-picker branch-current">
         {label}: <strong>{chosen ? personName(chosen) : 'someone'}</strong>{' '}
-        <button type="button" className="secondary" onClick={() => onChange(null)}>
+        <button
+          ref={changeButton}
+          type="button"
+          className="secondary"
+          aria-label={clearAriaLabel}
+          onClick={() => {
+            focusNext.current = 'input';
+            onChange(null);
+          }}
+        >
           {clearLabel}
         </button>
       </p>
@@ -40,6 +64,7 @@ export function PersonPicker({
       <label>
         {label}{' '}
         <input
+          ref={input}
           type="search"
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -63,6 +88,7 @@ export function PersonPicker({
                   className="secondary"
                   onClick={() => {
                     setText('');
+                    focusNext.current = 'change';
                     onChange(p.id);
                   }}
                 >

@@ -31,7 +31,7 @@ export function CanvasToolbar({
     <div className="canvas-toolbar">
       <SearchBox treeId={treeId} persons={persons} meId={detail.me.personId} />
       <Link
-        to={`/trees/${treeId}/relationship${canvasSearch(search, { tab: null, add: null, to: selectedId ?? null })}`}
+        to={`/trees/${treeId}/relationship${canvasSearch(search, { tab: null, add: null, ...(selectedId ? { to: selectedId } : {}) })}`}
       >
         How are we related?
       </Link>

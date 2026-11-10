@@ -197,7 +197,7 @@ describe('PhotosTab', () => {
     const s = setup();
     renderAt(at(s), s);
     await screen.findByText('No photos yet.');
-    const region = document.querySelector('p[role="status"]')!;
+    const region = document.querySelector('.tree-panel p[role="status"]')!;
     expect(region).toBeInTheDocument();
     expect(region).toHaveTextContent('');
     s.trees.hold('uploadPhoto');
@@ -205,7 +205,7 @@ describe('PhotosTab', () => {
     loadCropper(400, 200);
     fireEvent.click(screen.getByRole('button', { name: 'Use the whole photo' }));
     await waitFor(() => expect(region).toHaveTextContent('Working…'));
-    expect(document.querySelector('p[role="status"]')).toBe(region);
+    expect(document.querySelector('.tree-panel p[role="status"]')).toBe(region);
     s.trees.release();
     await waitFor(() => expect(region).toHaveTextContent(''));
   });

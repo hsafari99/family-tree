@@ -291,8 +291,10 @@ describe('duplicate check on trigrams', () => {
     await addPerson(db, treeId, 'Hannah', { surname: 'Zed' });
     await addPerson(db, treeId, 'Anya', { surname: 'Zed' });
     await addPerson(db, treeId, 'Mary', { surname: 'Ann' });
+    await addPerson(db, treeId, 'Marie', { surname: 'Zed', middleName: 'Quinn-Anders' });
+    await addPerson(db, treeId, 'Mary-Ann', { surname: 'Zeta' });
     const found = await names(owner.jar, treeId, 'q=an');
-    expect(found).toEqual(expect.arrayContaining(['Anna', 'Anya', 'Mary']));
+    expect(found).toEqual(expect.arrayContaining(['Anna', 'Anya', 'Mary', 'Mary-Ann', 'Marie']));
     expect(found).not.toContain('Hannah');
     expect(found).not.toContain('Susan');
     // Three letters and more still match inside a word.

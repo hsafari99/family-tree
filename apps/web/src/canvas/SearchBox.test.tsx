@@ -48,7 +48,11 @@ describe('SearchBox', () => {
     expect(searchCalls(s.trees)).toHaveLength(0);
     await settle();
     expect(searchCalls(s.trees)).toEqual([{ q: 'marg', limit: 20 }]);
-    expect(await screen.findByText('1 person found')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(document.querySelector('.search-box [role="status"]')).toHaveTextContent(
+        '1 person found',
+      ),
+    );
     const result = await hit(/Margaret Hale/);
     expect(result).toHaveTextContent('1932');
     expect(result).toHaveTextContent('Your grandparent');
@@ -184,5 +188,48 @@ describe('SearchBox', () => {
     type(await box(), 'marg');
     await settle();
     expect(await screen.findByText(MESSAGES.tooMany)).toBeInTheDocument();
+  });
+
+  it('Escape on a result does not close the side panel, and focus returns to the box', async () => {
+    const s = setup();
+    renderAt(`/trees/${s.id}/people/robert`, s);
+    const input = await box();
+    await screen.findByRole('complementary', { name: 'Details' });
+    type(input, 'marg');
+    await settle();
+    const result = await hit(/Margaret Hale/);
+    result.focus();
+    fireEvent.keyDown(result, { key: 'Escape' });
+    expect(screen.queryByRole('list', { name: 'Search results' })).toBeNull();
+    expect(screen.getByRole('complementary', { name: 'Details' })).toBeInTheDocument();
+    expect(document.activeElement).toBe(input);
+  });
+
+  it('keeps the result count region mounted and changes only its text', async () => {
+    const s = setup();
+    renderAt(`/trees/${s.id}`, s);
+    const input = await box();
+    const region = document.querySelector('.search-box [role="status"]')!;
+    expect(region).toBeInTheDocument();
+    expect(region).toHaveTextContent('');
+    type(input, 'marg');
+    await settle();
+    await waitFor(() => expect(region).toHaveTextContent('1 person found'));
+    expect(document.querySelector('.search-box [role="status"]')).toBe(region);
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(region).toHaveTextContent('');
+  });
+
+  it('clears an old error when the query is cleared', async () => {
+    const s = setup();
+    s.trees.failNext('search', toAuthError(429));
+    renderAt(`/trees/${s.id}`, s);
+    const input = await box();
+    type(input, 'marg');
+    await settle();
+    await screen.findByText(MESSAGES.tooMany);
+    type(input, '');
+    await settle();
+    expect(screen.queryByText(MESSAGES.tooMany)).toBeNull();
   });
 });

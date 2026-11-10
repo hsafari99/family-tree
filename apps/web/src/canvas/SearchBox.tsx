@@ -65,6 +65,7 @@ export function SearchBox({
   const [results, setResults] = useState<SearchResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const seq = useRef(0);
+  const searchInput = useRef<HTMLInputElement>(null);
 
   const years = [filters.bornFrom, filters.bornTo, filters.diedFrom, filters.diedTo];
   const badYear = years.some((y) => y.trim() !== '' && !/^\d{1,4}$/.test(y.trim()));
@@ -82,12 +83,20 @@ export function SearchBox({
   const key = parsed?.success
     ? JSON.stringify({ ...parsed.data, ...(filters.branch ? { branch: filters.branch } : {}) })
     : '';
+  const countText = !results
+    ? ''
+    : results.length === 0
+      ? 'No one found'
+      : results.length === 1
+        ? '1 person found'
+        : `${results.length} people found`;
   const active = Object.values(filters).filter((v) => v !== '').length;
 
   useEffect(() => {
     const id = ++seq.current;
     if (!key) {
       setResults(null);
+      setError(null);
       return;
     }
     // A newer query (or unmount) aborts the request in flight, not just ignores it.
@@ -118,11 +127,21 @@ export function SearchBox({
   };
 
   return (
-    <div className="search-box" onKeyDown={(e) => e.key === 'Escape' && close()}>
+    <div
+      className="search-box"
+      onKeyDown={(e) => {
+        if (e.key !== 'Escape') return;
+        // Handled here: the workspace's Escape listener must not also close the side panel.
+        e.preventDefault();
+        close();
+        searchInput.current?.focus();
+      }}
+    >
       <form role="search" aria-label="Search people" onSubmit={(e) => e.preventDefault()}>
         <label>
           Search{' '}
           <input
+            ref={searchInput}
             type="search"
             value={q}
             autoComplete="off"
@@ -182,15 +201,13 @@ export function SearchBox({
         </fieldset>
       )}
       <FormError>{error}</FormError>
+      {/* Always mounted, so a screen reader announces each change of its text. */}
+      <p role="status" className="sr-only">
+        {countText}
+      </p>
       {results && (
         <div className="search-results">
-          <p role="status">
-            {results.length === 0
-              ? 'No one found'
-              : results.length === 1
-                ? '1 person found'
-                : `${results.length} people found`}
-          </p>
+          <p aria-hidden="true">{countText}</p>
           <ul aria-label="Search results">
             {results.map((r) => (
               <li key={r.id}>

@@ -30,10 +30,10 @@ export function searchPersons(db: Db, treeId: string, q: ParsedSearchQuery) {
   const conds: (SQL | undefined)[] = [eq(persons.treeId, treeId), isNull(persons.deletedAt)];
   for (const w of words) {
     // One or two letters match trigrams of almost everything: only the start of the name or of a
-    // word counts, so "an" finds Anna and Mary Ann but not Hannah.
+    // word (after a space or a hyphen) counts, so "an" finds Anna and Mary Ann but not Hannah.
     conds.push(
       w.length < SHORT_WORD
-        ? sql`(${persons.searchName} like ${norm(likeEscape(w))} || '%' or ${persons.searchName} like '% ' || ${norm(likeEscape(w))} || '%')`
+        ? sql`(${persons.searchName} like ${norm(likeEscape(w))} || '%' or ${persons.searchName} like '% ' || ${norm(likeEscape(w))} || '%' or ${persons.searchName} like '%-' || ${norm(likeEscape(w))} || '%')`
         : sql`(${norm(w)} <% ${persons.searchName} or ${persons.searchName} like '%' || ${norm(likeEscape(w))} || '%')`,
     );
   }

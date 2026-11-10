@@ -120,9 +120,12 @@ export function TreeWorkspace({
     (newPerson && canAdd) || personId !== undefined || unionId !== undefined || relationship;
   const ready = graph.status === 'ready' ? graph : null;
   const [highlight, setHighlight] = useState<PathHighlight | null>(null);
+  // The drawn path belongs to one From/To pair: another pair, or leaving the panel, clears it.
+  const fromParam = params.get('from');
+  const toParam = params.get('to');
   useEffect(() => {
-    if (!relationship) setHighlight(null);
-  }, [relationship]);
+    setHighlight(null);
+  }, [relationship, fromParam, toParam]);
   const showPath = useCallback(
     (fromId: string, steps: KinStep[]) => {
       setHighlight(pathHighlight(fromId, steps));

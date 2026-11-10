@@ -383,4 +383,20 @@ describe('TreeWorkspace relationships', () => {
     const href = screen.getByRole('link', { name: 'How are we related?' }).getAttribute('href')!;
     expect(href).not.toMatch(/from=|to=/);
   });
+
+  it('drops the highlight when To changes', async () => {
+    const s = relSetup();
+    renderAt(`/trees/${s.id}/relationship?from=leo&to=robert`, s);
+    fireEvent.click(await screen.findByRole('button', { name: 'Show on the tree' }));
+    await waitFor(() => expect(isPath().length).toBeGreaterThan(0));
+    fireEvent.click(screen.getByRole('button', { name: 'Change To' }));
+    await waitFor(() => expect(isPath()).toHaveLength(0));
+  });
+
+  it('keeps to when "How are we related?" is clicked on the relationship page', async () => {
+    const s = relSetup();
+    renderAt(`/trees/${s.id}/relationship?from=leo&to=robert`, s);
+    const link = await screen.findByRole('link', { name: 'How are we related?' });
+    expect(link.getAttribute('href')).toContain('to=robert');
+  });
 });

@@ -93,6 +93,7 @@ export function RelationshipPanel({
         value={from}
         onChange={choose('from')}
         clearLabel="Change"
+        clearAriaLabel="Change From"
       />
       <PersonPicker
         label="To"
@@ -100,9 +101,10 @@ export function RelationshipPanel({
         value={to}
         onChange={choose('to')}
         clearLabel="Change"
+        clearAriaLabel="Change To"
       />
       <div aria-live="polite">
-        {state.status === 'loading' && <p role="status">Finding the path…</p>}
+        {state.status === 'loading' && <p>Finding the path…</p>}
         {state.status === 'error' && <FormError>{state.message}</FormError>}
         {state.status === 'ready' && (
           <Result rel={state.rel} meId={meId} hrefOf={hrefOf} onShow={onShow} />
