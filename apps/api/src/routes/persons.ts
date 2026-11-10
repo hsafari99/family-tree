@@ -101,7 +101,13 @@ export const personsRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, {
         const [still] = await tx
           .select({ id: persons.id })
           .from(persons)
-          .where(and(eq(persons.id, current.id), isNull(persons.deletedAt)));
+          .where(
+            and(
+              eq(persons.treeId, access.treeId),
+              eq(persons.id, current.id),
+              isNull(persons.deletedAt),
+            ),
+          );
         throw still ? staleEdit() : notFound();
       }
       await audit(tx, access, {

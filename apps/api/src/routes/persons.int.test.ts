@@ -1,7 +1,15 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { call } from '../../test/auth-helpers.js';
-import { addMember, addPerson, auditRows, ownerWithTree } from '../../test/tree-helpers.js';
+import {
+  addGrant,
+  addMember,
+  addPerson,
+  auditRows,
+  family,
+  ownerWithTree,
+  userWith2fa,
+} from '../../test/tree-helpers.js';
 import { signUp } from '../../test/auth-helpers.js';
 import { buildApp } from '../app.js';
 import { createAuth } from '../auth/auth.js';
@@ -194,5 +202,40 @@ describe('person routes', () => {
     const get = await call(app, 'GET', url(treeId, root), { jar: viewer.jar });
     expect(get.statusCode).toBe(200);
     expect(get.json().capabilities).toEqual({ edit: false, addRelative: false, delete: false });
+  });
+
+  it('404s for a logged-in non-member on every route', async () => {
+    const { treeId } = await ownerWithTree(app);
+    const root = await rootOf(treeId);
+    const outsider = await signUp(app, { name: 'Out' });
+    const jar = outsider.jar;
+    const rs = await Promise.all([
+      call(app, 'GET', url(treeId, root), { jar }),
+      call(app, 'PATCH', url(treeId, root), { jar, body: { version: 1, surname: 'X' } }),
+      call(app, 'POST', url(treeId), { jar, body: { person: { givenName: 'X' } } }),
+    ]);
+    expect(rs.map((r) => r.statusCode)).toEqual([404, 404, 404]);
+  });
+
+  it('limits a steward to their branch', async () => {
+    const { owner, treeId } = await ownerWithTree(app);
+    const dan = await addPerson(db, treeId, 'Dan');
+    const george = await addPerson(db, treeId, 'George');
+    await family(db, treeId, dan, null);
+    const steward = await userWith2fa(app, 'Sam');
+    await addMember(db, treeId, steward.userId, 'viewer', owner.userId);
+    await addGrant(db, treeId, steward.userId, dan.id, owner.userId);
+    const jar = steward.jar;
+    const add = (to: string) =>
+      call(app, 'POST', url(treeId), {
+        jar,
+        body: { person: { givenName: 'Kid' }, attach: { to, as: 'child' } },
+      });
+    expect((await add(dan.id)).statusCode).toBe(201);
+    expect((await add(george.id)).statusCode).toBe(403);
+    const patch = (id: string) =>
+      call(app, 'PATCH', url(treeId, id), { jar, body: { version: 1, surname: 'Z' } });
+    expect((await patch(dan.id)).statusCode).toBe(200);
+    expect((await patch(george.id)).statusCode).toBe(403);
   });
 });

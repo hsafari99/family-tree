@@ -73,7 +73,9 @@ export function relativeEnds(graph: LiveGraph, subjectId: string, spec: Spec): s
     throw invalid('to', 'Choose a person in this tree');
   }
   const u = chooseUnion(graph, subjectId, spec);
-  return [...new Set([subjectId, ...(u ? partnersOf(u) : [])])];
+  // A parent filling a slot also becomes a parent of the union's other children.
+  const kids = u && spec.as === 'parent' ? childrenOf(graph, u.id) : [];
+  return [...new Set([subjectId, ...(u ? partnersOf(u) : []), ...kids])];
 }
 
 /**
@@ -122,6 +124,13 @@ export async function attachRelative(
     case 'parent': {
       if (u) {
         if (partnersOf(u).includes(relativeId)) throw conflict('They are already related this way');
+        const other = partnersOf(u)[0]!;
+        const pair = [relativeId, other];
+        if (
+          graph.unions.some((x) => x.id !== u.id && pair.every((id) => partnersOf(x).includes(id)))
+        ) {
+          throw conflict('They are already partners');
+        }
         const kids = childrenOf(graph, u.id);
         noCycle([relativeId], kids);
         await fillSlot(tx, actor, u, relativeId, kids);
@@ -196,7 +205,14 @@ async function fillSlot(
   const [row] = await tx
     .update(unions)
     .set(slot === 'partnerAId' ? { partnerAId: personId } : { partnerBId: personId })
-    .where(and(eq(unions.id, u.id), isNull(unions[slot]), isNull(unions.deletedAt)))
+    .where(
+      and(
+        eq(unions.treeId, actor.treeId),
+        eq(unions.id, u.id),
+        isNull(unions[slot]),
+        isNull(unions.deletedAt),
+      ),
+    )
     .returning();
   if (!row) throw conflict('Those parents changed; reload and try again');
   await audit(tx, actor, {

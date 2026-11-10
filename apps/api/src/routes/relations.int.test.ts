@@ -2,7 +2,15 @@ import type { PersonView } from '@family-tree/shared';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { call, signUp, type CookieJar } from '../../test/auth-helpers.js';
-import { addMember, auditRows, ownerWithTree } from '../../test/tree-helpers.js';
+import {
+  addGrant,
+  addMember,
+  addPerson,
+  auditRows,
+  family,
+  ownerWithTree,
+  userWith2fa,
+} from '../../test/tree-helpers.js';
 import { buildApp } from '../app.js';
 import { createAuth } from '../auth/auth.js';
 import { loadConfig } from '../config.js';
@@ -269,5 +277,127 @@ describe('editing unions and links', () => {
       call(app, 'PATCH', `${base}/parent-child/${linkId}`, { jar, body: { kind: 'step' } }),
     ]);
     expect(rs.map((r) => r.statusCode)).toEqual([403, 403, 403]);
+  });
+});
+
+describe('fill-slot edge cases', () => {
+  it('refuses to fill a slot when it would duplicate an existing pair', async () => {
+    const { owner, treeId } = await setup();
+    const a = await addPerson(db, treeId, 'A');
+    const b = await addPerson(db, treeId, 'B');
+    const kid = await addPerson(db, treeId, 'Kid');
+    await family(db, treeId, a, null, [kid]);
+    await family(db, treeId, a, b);
+    const res = await call(app, 'POST', relatives(treeId, kid.id), {
+      jar: owner.jar,
+      body: { as: 'parent', personId: b.id },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe('CONFLICT');
+  });
+
+  it('fills the only open parent union when adding an existing parent', async () => {
+    const { owner, treeId } = await setup();
+    const a = await addPerson(db, treeId, 'A');
+    const b = await addPerson(db, treeId, 'B');
+    const kid = await addPerson(db, treeId, 'Kid');
+    const u = await family(db, treeId, a, null, [kid]);
+    const res = await call(app, 'POST', relatives(treeId, kid.id), {
+      jar: owner.jar,
+      body: { as: 'parent', personId: b.id },
+    });
+    expect(res.statusCode).toBe(204);
+    const [row] = await db.select().from(unions).where(eq(unions.id, u.id));
+    expect(row!.partnerBId).toBe(b.id);
+    expect(await db.select().from(unions).where(eq(unions.treeId, treeId))).toHaveLength(1);
+  });
+});
+
+describe('outsiders and stewards', () => {
+  async function branchSetup() {
+    const { owner, treeId } = await setup();
+    const robert = await addPerson(db, treeId, 'Robert');
+    const dan = await addPerson(db, treeId, 'Dan');
+    const george = await addPerson(db, treeId, 'George');
+    const gwen = await addPerson(db, treeId, 'Gwen');
+    const spare = await addPerson(db, treeId, 'Spare');
+    const uIn = await family(db, treeId, robert, null, [dan]);
+    const uOut = await family(db, treeId, george, null, [gwen]);
+    const [lIn] = await db.select().from(parentChild).where(eq(parentChild.unionId, uIn.id));
+    const [lOut] = await db.select().from(parentChild).where(eq(parentChild.unionId, uOut.id));
+    const steward = await userWith2fa(app, 'Sam');
+    await addMember(db, treeId, steward.userId, 'viewer', owner.userId);
+    await addGrant(db, treeId, steward.userId, dan.id, owner.userId);
+    return {
+      owner,
+      treeId,
+      robert,
+      dan,
+      george,
+      gwen,
+      spare,
+      uIn,
+      uOut,
+      lIn: lIn!,
+      lOut: lOut!,
+      steward,
+    };
+  }
+
+  it('404s for a logged-in non-member', async () => {
+    const { treeId, dan, uIn, lIn } = await branchSetup();
+    const outsider = await signUp(app, { name: 'Out' });
+    const jar = outsider.jar;
+    const base = `/api/v1/trees/${treeId}`;
+    const rs = await Promise.all([
+      call(app, 'POST', relatives(treeId, dan.id), {
+        jar,
+        body: { as: 'child', personId: dan.id },
+      }),
+      call(app, 'PATCH', `${base}/unions/${uIn.id}`, { jar, body: { status: 'divorced' } }),
+      call(app, 'PATCH', `${base}/parent-child/${lIn.id}`, { jar, body: { kind: 'step' } }),
+    ]);
+    expect(rs.map((r) => r.statusCode)).toEqual([404, 404, 404]);
+  });
+
+  it('scopes a steward on add and edit', async () => {
+    const s = await branchSetup();
+    const jar = s.steward.jar;
+    const base = `/api/v1/trees/${s.treeId}`;
+    const rel = (subject: string) =>
+      call(app, 'POST', relatives(s.treeId, subject), {
+        jar,
+        body: { as: 'child', personId: s.spare.id },
+      });
+    expect((await rel(s.george.id)).statusCode).toBe(403);
+    expect((await rel(s.dan.id)).statusCode).toBe(204);
+    const patchUnion = (id: string) =>
+      call(app, 'PATCH', `${base}/unions/${id}`, { jar, body: { status: 'divorced' } });
+    expect((await patchUnion(s.uOut.id)).statusCode).toBe(403);
+    expect((await patchUnion(s.uIn.id)).statusCode).toBe(204);
+    const patchLink = (id: string) =>
+      call(app, 'PATCH', `${base}/parent-child/${id}`, { jar, body: { kind: 'step' } });
+    expect((await patchLink(s.lOut.id)).statusCode).toBe(403);
+    expect((await patchLink(s.lIn.id)).statusCode).toBe(204);
+  });
+
+  it("counts the union's other children when a parent fills its slot", async () => {
+    const s = await branchSetup();
+    const jar = s.steward.jar;
+    const newParent = await addPerson(db, s.treeId, 'NewParent');
+    // Out of scope entirely: 403.
+    const out = await call(app, 'POST', relatives(s.treeId, s.gwen.id), {
+      jar,
+      body: { as: 'parent', personId: newParent.id },
+    });
+    expect(out.statusCode).toBe(403);
+    // A child the steward created sits in George's union: in scope, so they reach it through them.
+    const mine = await addPerson(db, s.treeId, 'Mine', { createdBy: s.steward.userId });
+    await db.insert(parentChild).values({ treeId: s.treeId, unionId: s.uOut.id, childId: mine.id });
+    const via = await call(app, 'POST', relatives(s.treeId, s.gwen.id), {
+      jar,
+      body: { as: 'parent', personId: newParent.id },
+    });
+    expect(via.statusCode).toBe(204);
   });
 });

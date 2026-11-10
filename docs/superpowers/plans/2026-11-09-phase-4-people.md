@@ -1793,7 +1793,7 @@ const staleEdit = () => conflict('This person was changed by someone else; reloa
 
 | Method | Path | Authorises |
 |---|---|---|
-| POST | `/api/v1/trees/:treeId/persons/:personId/relatives` | `relation.add`. Ends: subject, relative, partners of the chosen union |
+| POST | `/api/v1/trees/:treeId/persons/:personId/relatives` | `relation.add`. Ends: subject, relative, partners of the chosen union, plus the union's existing children when a `parent` fills its slot |
 | PATCH | `/api/v1/trees/:treeId/unions/:unionId` | `relation.edit`. Ends: partners |
 | PATCH | `/api/v1/trees/:treeId/parent-child/:linkId` | `relation.edit`. Ends: child plus partners |
 
@@ -1966,7 +1966,9 @@ export function relativeEnds(graph: LiveGraph, subjectId: string, spec: Spec): s
     throw invalid('to', 'Choose a person in this tree');
   }
   const u = chooseUnion(graph, subjectId, spec);
-  return [...new Set([subjectId, ...(u ? partnersOf(u) : [])])];
+  // A parent filling a slot also becomes a parent of the union's other children.
+  const kids = u && spec.as === 'parent' ? childrenOf(graph, u.id) : [];
+  return [...new Set([subjectId, ...(u ? partnersOf(u) : []), ...kids])];
 }
 
 /**
@@ -2007,6 +2009,11 @@ export async function attachRelative(
     case 'parent': {
       if (u) {
         if (partnersOf(u).includes(relativeId)) throw conflict('They are already related this way');
+        const other = partnersOf(u)[0]!;
+        const pair = [relativeId, other];
+        if (graph.unions.some((x) => x.id !== u.id && pair.every((id) => partnersOf(x).includes(id)))) {
+          throw conflict('They are already partners');
+        }
         const kids = childrenOf(graph, u.id);
         noCycle([relativeId], kids);
         await fillSlot(tx, actor, u, relativeId, kids);
