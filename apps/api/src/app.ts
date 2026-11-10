@@ -13,6 +13,7 @@ import { membersRoutes } from './routes/members.js';
 import { stewardsRoutes } from './routes/stewards.js';
 import { meRoutes } from './routes/me.js';
 import { personsRoutes } from './routes/persons.js';
+import { relationsRoutes } from './routes/relations.js';
 import { passwordResetRoutes } from './routes/password-reset.js';
 import { treesRoutes } from './routes/trees.js';
 import type { Db } from './db/client.js';
@@ -84,6 +85,7 @@ export function buildApp({ config, checks, auth, db, rateLimitMax = 300, logStre
     app.register(stewardsRoutes, { auth, db, config });
     app.register(invitesRoutes, { auth, db, config });
     app.register(personsRoutes, { auth, db, config });
+    app.register(relationsRoutes, { auth, db, config });
   }
 
   app.setNotFoundHandler((_req, reply) => {
