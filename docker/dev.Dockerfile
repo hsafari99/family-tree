@@ -8,7 +8,7 @@ ENV pnpm_config_store_dir=/pnpm-store CI=true
 # so named volumes inherit that ownership and files written to the bind-mounted
 # repo belong to the host user, not root.
 RUN mkdir -p /pnpm-store /app/node_modules /app/apps/api/node_modules \
-      /app/apps/web/node_modules /app/packages/shared/node_modules \
+      /app/apps/web/node_modules /app/packages/shared/node_modules /app/e2e/node_modules \
   && chown -R node:node /pnpm-store /app
 USER node
 WORKDIR /app
