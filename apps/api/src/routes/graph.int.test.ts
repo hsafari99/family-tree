@@ -198,3 +198,97 @@ describe('GET graph', () => {
     expect([order('Olive'), order('Sis')]).toEqual([2, 1]);
   });
 });
+
+describe('GET disconnected', () => {
+  const d = (t: string) => `/api/v1/trees/${t}/disconnected`;
+  it('lists people not reachable from the root, as summaries', async () => {
+    const { owner, treeId } = await setup();
+    const res = await call(app, 'GET', d(treeId), { jar: owner.jar });
+    expect(res.statusCode).toBe(200);
+    const list = res.json().persons as Record<string, unknown>[];
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ givenName: 'Lone' });
+    expect(Object.keys(list[0]!).sort()).toEqual(
+      ['birthYear', 'deathYear', 'givenName', 'id', 'isLiving', 'middleName', 'surname'].sort(),
+    );
+  });
+  it('is empty once Lone is linked', async () => {
+    const { owner, treeId, p } = await setup();
+    await family(db, treeId, p.sam!, p.lone!);
+    const res = await call(app, 'GET', d(treeId), { jar: owner.jar });
+    expect(res.json().persons).toEqual([]);
+  });
+  it('soft-deleting Pa disconnects Gp and Gm but not Ma', async () => {
+    const { owner, treeId, p } = await setup();
+    await softDeleteBatch(db, treeId, owner.userId, [p.pa!.id]);
+    const res = await call(app, 'GET', d(treeId), { jar: owner.jar });
+    expect((res.json().persons as { givenName: string }[]).map((x) => x.givenName)).toEqual([
+      'Gm',
+      'Gp',
+      'Lone',
+    ]);
+  });
+  it('lets a viewer read it and hides it from outsiders', async () => {
+    const { owner, treeId } = await setup();
+    const viewer = await signUp(app, { name: 'Vera' });
+    await addMember(db, treeId, viewer.userId, 'viewer', owner.userId);
+    expect((await call(app, 'GET', d(treeId), { jar: viewer.jar })).statusCode).toBe(200);
+    const stranger = await signUp(app, { name: 'Stranger' });
+    expect((await call(app, 'GET', d(treeId), { jar: stranger.jar })).statusCode).toBe(404);
+  });
+});
+
+describe('GET persons/similar', () => {
+  const s = (t: string, qs: string) => `/api/v1/trees/${t}/persons/similar?${qs}`;
+  async function people() {
+    const ctx = await setup();
+    const { treeId } = ctx;
+    const yr = (y: number) => ({ birthSortYear: y });
+    await addPerson(db, treeId, 'Ada', { surname: 'Lovelace', ...yr(1815) });
+    await addPerson(db, treeId, 'Adah', { surname: 'Lovelace', ...yr(1816) });
+    await addPerson(db, treeId, 'Ada', { surname: 'Lovelace', ...yr(1840) });
+    await addPerson(db, treeId, 'Zoë', { surname: 'Ångström' });
+    await addPerson(db, treeId, 'Ada', { surname: 'King', maidenName: 'Lovelace', ...yr(1815) });
+    return ctx;
+  }
+  it('ranks exact matches first and drops far birth years', async () => {
+    const { owner, treeId } = await people();
+    const res = await call(app, 'GET', s(treeId, 'givenName=Ada&surname=Lovelace&birthYear=1815'), {
+      jar: owner.jar,
+    });
+    expect(res.statusCode).toBe(200);
+    const got = (res.json().persons as { givenName: string; surname: string; birthYear: number }[]).map(
+      (x) => `${x.givenName} ${x.surname} ${x.birthYear}`,
+    );
+    expect(got).toEqual(['Ada King 1815', 'Ada Lovelace 1815', 'Adah Lovelace 1816']);
+  });
+  it('ignores accents and case', async () => {
+    const { owner, treeId } = await people();
+    const res = await call(app, 'GET', s(treeId, 'givenName=zoe&surname=angstrom'), {
+      jar: owner.jar,
+    });
+    expect(res.json().persons).toHaveLength(1);
+  });
+  it('rejects bad queries', async () => {
+    const { owner, treeId } = await people();
+    for (const qs of ['givenName=', 'surname=x', 'givenName=Ada&birthYear=abc']) {
+      expect((await call(app, 'GET', s(treeId, qs), { jar: owner.jar })).statusCode, qs).toBe(400);
+    }
+  });
+  it('lets a viewer read it, hides it from outsiders, and does not shadow /persons/:id', async () => {
+    const { owner, treeId, p } = await people();
+    const viewer = await signUp(app, { name: 'Vera' });
+    await addMember(db, treeId, viewer.userId, 'viewer', owner.userId);
+    expect((await call(app, 'GET', s(treeId, 'givenName=Ada'), { jar: viewer.jar })).statusCode).toBe(
+      200,
+    );
+    const stranger = await signUp(app, { name: 'Stranger' });
+    expect(
+      (await call(app, 'GET', s(treeId, 'givenName=Ada'), { jar: stranger.jar })).statusCode,
+    ).toBe(404);
+    const one = await call(app, 'GET', `/api/v1/trees/${treeId}/persons/${p.sam!.id}`, {
+      jar: owner.jar,
+    });
+    expect(one.statusCode).toBe(200);
+  });
+});
