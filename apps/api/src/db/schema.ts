@@ -94,6 +94,10 @@ export const persons = pgTable(
     biography: text('biography'),
     notes: text('notes'),
     siblingOrder: integer('sibling_order'),
+    /** Every name, lower case without accents, for pg_trgm search (decision 18). */
+    searchName: text('search_name').generatedAlwaysAs(
+      sql`lower(family_unaccent(given_name || ' ' || coalesce(middle_name, '') || ' ' || coalesce(surname, '') || ' ' || coalesce(maiden_name, '') || ' ' || coalesce(nickname, '')))`,
+    ),
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
     version: integer('version').notNull().default(1),
@@ -117,6 +121,16 @@ export const persons = pgTable(
       foreignColumns: [deletionBatches.treeId, deletionBatches.id],
     }),
     index('persons_deletion_batch_idx').on(t.deletionBatchId),
+    index('persons_search_name_trgm_idx').using('gin', t.searchName.op('gin_trgm_ops')),
+    // Expression indexes matching the accent-insensitive place filter (decision 18).
+    index('persons_birth_place_trgm_idx').using(
+      'gin',
+      sql`lower(family_unaccent(${t.birthPlace})) gin_trgm_ops`,
+    ),
+    index('persons_death_place_trgm_idx').using(
+      'gin',
+      sql`lower(family_unaccent(${t.deathPlace})) gin_trgm_ops`,
+    ),
   ],
 );
 
@@ -232,8 +246,59 @@ export const residences = pgTable(
     }).onDelete('cascade'),
     index('residences_person_idx').on(t.personId),
     index('residences_tree_idx').on(t.treeId),
+    index('residences_place_trgm_idx').using(
+      'gin',
+      sql`lower(family_unaccent(${t.place})) gin_trgm_ops`,
+    ),
   ],
 );
+
+/** Spec §3 photos (decision 9). Hidden with their person; the objects live in S3 under the keys. */
+export const photos = pgTable(
+  'photos',
+  {
+    /** Set by the API before upload: the storage keys contain it. */
+    id: uuid('id').primaryKey(),
+    treeId: uuid('tree_id')
+      .notNull()
+      .references(() => trees.id, { onDelete: 'cascade' }),
+    personId: uuid('person_id').notNull(),
+    storageKeyFull: text('storage_key_full').notNull(),
+    storageKeyThumb: text('storage_key_thumb').notNull(),
+    width: integer('width').notNull(),
+    height: integer('height').notNull(),
+    /** Full plus thumbnail: what counts towards the tree's quota. */
+    bytes: integer('bytes').notNull(),
+    isPrimary: boolean('is_primary').notNull().default(false),
+    uploadedBy: uuid('uploaded_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // Cascade: erasing a person (or purging the tree) drops their rows; the outbox has the keys.
+    foreignKey({
+      name: 'photos_person_fk',
+      columns: [t.treeId, t.personId],
+      foreignColumns: [persons.treeId, persons.id],
+    }).onDelete('cascade'),
+    uniqueIndex('photos_one_primary_uq')
+      .on(t.personId)
+      .where(sql`${t.isPrimary}`),
+    index('photos_person_idx').on(t.personId, t.createdAt),
+    index('photos_tree_idx').on(t.treeId),
+    check('photos_bytes_chk', sql`${t.bytes} > 0 and ${t.width} > 0 and ${t.height} > 0`),
+  ],
+);
+
+/**
+ * Objects to delete from storage (decision 13): written in the transaction that drops the photo
+ * rows, removed once the object is gone. No FKs: rows outlive their tree.
+ */
+export const storageDeletions = pgTable('storage_deletions', {
+  key: text('key').primaryKey(),
+  attempts: integer('attempts').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  lastTriedAt: timestamp('last_tried_at', { withTimezone: true }),
+});
 
 // ---------------------------------------------------------------------------------------------
 // Auth. Better Auth's drizzle adapter maps by JS property name, so these must equal its field
