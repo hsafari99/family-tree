@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fakePerson } from '../test/fake-trees';
-import { parseYear, personName, personYears } from './format';
+import { formatFuzzyDate, parseYear, personName, personYears } from './format';
 
 describe('personName', () => {
   it('joins given, middle and surname, skipping blanks', () => {
@@ -31,5 +31,18 @@ describe('parseYear', () => {
     expect(parseYear(' 1990 ')).toBe(1990);
     expect(parseYear('abc')).toBeNaN();
     expect(parseYear('1e999')).toBeNaN();
+  });
+});
+
+describe('formatFuzzyDate', () => {
+  it('formats fuzzy dates in English', () => {
+    expect(formatFuzzyDate(null)).toBe('');
+    expect(formatFuzzyDate({ qualifier: 'exact', date1: '1950' })).toBe('1950');
+    expect(formatFuzzyDate({ qualifier: 'about', date1: '1950-03' })).toBe('about March 1950');
+    expect(formatFuzzyDate({ qualifier: 'exact', date1: '1950-03-07' })).toBe('7 March 1950');
+    expect(formatFuzzyDate({ qualifier: 'before', date1: '0950' })).toBe('before 950');
+    expect(formatFuzzyDate({ qualifier: 'between', date1: '1950', date2: '1955' })).toBe(
+      'between 1950 and 1955',
+    );
   });
 });

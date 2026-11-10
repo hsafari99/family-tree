@@ -230,3 +230,26 @@ a {
   display: inline-flex;
   gap: 0.5rem;
 }
+
+/* Tabs and fuzzy dates */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--border);
+}
+.tabs button {
+  border: 0;
+  border-bottom: 3px solid transparent;
+  border-radius: 0;
+}
+.tabs button[aria-selected='true'] {
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+.fuzzy-date {
+  display: inline-grid;
+  gap: 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+}
