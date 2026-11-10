@@ -5,5 +5,7 @@ useDefault = true
 description = "Committed fake values used only in development and tests"
 # The last entry is a historical fake test value (an earlier config.test.ts SESSION_SECRET)
 # that remains in git history; it was never a real secret. The alphabet string is the fake
-# invite token in apps/web/src/pages/InvitePage.test.tsx.
-regexes = ['''dev-only''', '''test-only''', '''k3J9xQ2vL8mN4pR7tW1yZ6bC5dF0gH2jK4lM8nP3qS''', '''abcdefghijklmnopqrstuvwxyz0123456789''']
+# invite token in apps/web/src/pages/InvitePage.test.tsx. `8443/api/v1/health` is the tail of the
+# local production stack's URL (https://api.family.test:8443/...) in the Phase 7 plan, which the
+# generic-api-key rule reads as a key assignment.
+regexes = ['''dev-only''', '''test-only''', '''k3J9xQ2vL8mN4pR7tW1yZ6bC5dF0gH2jK4lM8nP3qS''', '''abcdefghijklmnopqrstuvwxyz0123456789''', '''8443/api/v1/health''']

@@ -2,6 +2,8 @@
 # Nightly backup (spec §8, decision 14): an age-encrypted pg_dump, then a mirror of the photos.
 # The host timer runs: docker compose --env-file .env.production -f compose.prod.yml run --rm backup
 # A failed dump uploads nothing and never rotates out a good backup.
+# busybox ash (the Alpine image's sh) supports pipefail.
+# shellcheck disable=SC3040
 set -euo pipefail
 : "${AGE_RECIPIENT:?AGE_RECIPIENT (the age public key) is required}"
 : "${BACKUP_ROOT:?}" "${S3_BUCKET:?}"

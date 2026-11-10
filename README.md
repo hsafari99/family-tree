@@ -3,7 +3,7 @@
 An open-source, self-hostable web app for building a family tree together with your relatives.
 Each side of the family is completed by the people who know it.
 
-> Status: early development (phase 1 — foundation).
+> Status: all seven planned phases are built. Two spec items are still open: moving 2FA to a new device (spec §5) and the single message catalog (spec §6). Not deployed yet.
 
 ## Local development
 
@@ -105,6 +105,41 @@ pnpm test:int         # integration tests (needs `pnpm dev` or `docker compose u
 - **Browser photo address:** in dev the browser loads photos from `http://localhost:8333`
   (`S3_PUBLIC_ENDPOINT`).
 
+## Export (dev)
+
+- The tree owner opens **Tree settings → Export → Download export**. The download is one ZIP
+  (`family-tree-YYYY-MM-DD.zip`): `tree.ged` (GEDCOM 5.5.1, UTF-8), `tree.json` (a complete copy of
+  the data) and `photos/`.
+- It includes details of living relatives, so keep it private. Only the owner can export, up to
+  5 times an hour.
+
+## End-to-end tests
+
+Playwright drives a real browser against the dev stack.
+
+1. Start the stack with the limits relaxed: `pnpm down && AUTH_RATE_LIMIT_ENABLED=false pnpm dev`.
+   This switch is for development only (the API refuses it in production). It turns off Better
+   Auth's sign-in, sign-up and 2FA limits, the invite limiters and the per-IP request cap, because
+   the whole suite runs from one address.
+2. Once: `pnpm --filter @family-tree/e2e exec playwright install --only-shell chromium`.
+3. `pnpm test:e2e` runs the suite. Each run makes fresh accounts and re-seeds "Sample family
+   (seed)", replacing any tree of that name in the dev database.
+4. For the local production stack: `scripts/prod-local.sh up && pnpm test:e2e:prod-local` (a smoke
+   test of TLS, the CSP, 2FA sign-up, a photo and an export).
+
+Failures leave traces and screenshots in `e2e/test-results/`.
+
+## Production and self-hosting
+
+Nothing is deployed yet. The repository contains everything needed to run it: `compose.prod.yml`
+(Caddy, the API and Postgres with a least-privilege app role), strict security headers for the
+static site, nightly age-encrypted database backups with a photo mirror and a tested restore
+(`docker/backup/`), and an orphan-photo sweep. `scripts/prod-local.sh` runs the whole production
+stack on this machine only, with a local certificate authority and SeaweedFS standing in for R2;
+`scripts/prod-local.sh backup-test` rehearses a backup and restore. See
+[docs/self-hosting.md](docs/self-hosting.md) for a deployment of your own and
+[docs/deployment.md](docs/deployment.md) for the author's runbook.
+
 ## Known limitations
 
 - **Sign-up reveals registered emails.** Sign-up is open, and signing up with an email that
@@ -117,12 +152,10 @@ pnpm test:int         # integration tests (needs `pnpm dev` or `docker compose u
 - **Rate limits live in memory.** Both Fastify's and Better Auth's rate-limit counters are kept in
   the API process, so they reset on restart and are not shared between instances. The API is
   meant to run as a single instance; a second one would need a shared store first.
-- **Moving 2FA to a new device** isn't possible yet (planned for phase 7). An owner who loses
-  their phone signs in with a recovery code.
+- **Moving 2FA to a new device** isn't available yet; an owner who loses their phone signs in
+  with a recovery code.
 - **Sibling order is per person:** a child of two unions has one position.
 - **Photos in Trash count towards the quota** until the Trash is erased.
-- **An API crash between storing a photo and committing** leaves an orphan object that the
-  deletion outbox doesn't track. A cleanup sweep for these is planned for phase 7.
 - **The upload waiter cap** (8 waiting, then 503) doesn't count request bodies that are still
   being read. Only the per-user limit of 30 uploads per 10 minutes bounds those.
 - **A JSON body on the upload route** returns 400 with reason `type`, while other wrong content
@@ -132,6 +165,12 @@ pnpm test:int         # integration tests (needs `pnpm dev` or `docker compose u
   accessibility gap.
 - **Relationship words are English only.** Rare relationships fall back to the step-by-step
   description.
+- **Exports have no ZIP64:** about 3.5 GB of photos per tree at most.
+- **GEDCOM 5.5.1 has no neutral partner roles or step-child type.** Same-sex couples are written
+  as HUSB/WIFE by position, and step children get a note. `tree.json` keeps everything.
+- **The export doesn't hide living people.** Only the owner can export.
+- **The photo backup mirror isn't encrypted** (the database dump is).
+- **E2E needs `AUTH_RATE_LIMIT_ENABLED=false`** on the dev stack.
 
 ## License
 

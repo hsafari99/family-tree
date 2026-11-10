@@ -11,6 +11,8 @@
 # A database that already has tables needs --force.
 # The database must be called "family": /grants/20-app-grants.sql names it. Don't run the backup
 # timer while a restore is running.
+# busybox ash (the Alpine image's sh) supports pipefail.
+# shellcheck disable=SC3040
 set -euo pipefail
 : "${BACKUP_ROOT:?}" "${S3_BUCKET:?}" "${PGUSER:?}"
 force=no
