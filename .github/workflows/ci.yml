@@ -55,6 +55,11 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
       - run: pnpm --filter @family-tree/e2e exec playwright install --with-deps --only-shell chromium
       # The dev stack in Docker, with Better Auth's limits off for E2E only (decision 15).
       - run: docker compose up -d --build --wait postgres s3
@@ -64,7 +69,7 @@ jobs:
       - run: pnpm test:e2e
         env:
           CI: 'true'
-      - if: failure()
+      - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report

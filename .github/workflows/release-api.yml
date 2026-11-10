@@ -32,9 +32,18 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      # GHCR names must be lowercase, and the owner may not be.
+      - name: Image name
+        id: image
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: echo "name=ghcr.io/${OWNER,,}/family-tree-api" >> "$GITHUB_OUTPUT"
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: apps/api/Dockerfile
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/family-tree-api:${{ inputs.tag }}
+          tags: ${{ steps.image.outputs.name }}:${{ inputs.tag }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}

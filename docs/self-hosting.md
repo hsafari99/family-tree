@@ -197,6 +197,9 @@ Notes:
 - The dump is restored into a scratch database (`family_restore`) and checked there. Only then
   are the databases swapped by renaming, and the old one is dropped once the photos are back. A
   corrupt or wrong dump fails before the live database is touched.
+- The database is always called `family` (the grants file names it); don't change `PGDATABASE`.
+- Stop the backup timer during a restore (`sudo systemctl stop family-tree-backup.timer`, and
+  start it again afterwards).
 - The `restore` service is separate from `backup`: only it gets the read-write photo token.
 - A database restored to before a deletion can name photos that are already gone. Those cards
   show initials. The orphan sweep removes extra objects a day later.

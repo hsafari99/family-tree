@@ -4,10 +4,14 @@ import { readZip } from '../../apps/api/test/zip-reader';
 import { PROD_LOCAL, statePath } from '../support/env';
 import { treeUrl } from '../support/fixture';
 import { GPS_JPEG } from '../support/fixtures';
-import { card } from '../support/ui';
+import { card, clearPhotos } from '../support/ui';
 
 test.skip(PROD_LOCAL, 'dev stack only');
 test.use({ storageState: statePath('owner.json') });
+
+// This test adds a photo to the shared sample tree; leave it as found, even when retried.
+test.beforeEach(async ({ page }) => clearPhotos(page, 'Margaret Hale', treeUrl()));
+test.afterEach(async ({ page }) => clearPhotos(page, 'Margaret Hale', treeUrl()));
 
 test('the owner downloads one ZIP with GEDCOM 5.5.1, JSON and photos', async ({ page }) => {
   await page.goto(treeUrl());
@@ -44,8 +48,4 @@ test('the owner downloads one ZIP with GEDCOM 5.5.1, JSON and photos', async ({ 
   expect(json).toMatchObject({ format: 'family-tree-export', version: 1 });
   expect(json.persons.length).toBeGreaterThanOrEqual(10);
   await expect(section.getByText('Your export is downloading.')).toBeVisible();
-
-  await page.getByRole('button', { name: 'Delete', exact: true }).click();
-  await page.getByRole('button', { name: 'Delete photo' }).click();
-  await expect(page.getByText('Photo removed')).toBeVisible();
 });

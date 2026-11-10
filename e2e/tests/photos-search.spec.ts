@@ -2,10 +2,15 @@ import { expect, test } from '@playwright/test';
 import { PROD_LOCAL, statePath } from '../support/env';
 import { treeUrl } from '../support/fixture';
 import { GPS_JPEG, SECRET_MARKER } from '../support/fixtures';
-import { card } from '../support/ui';
+import { card, clearPhotos } from '../support/ui';
 
 test.skip(PROD_LOCAL, 'dev stack only');
 test.use({ storageState: statePath('owner.json') });
+
+// The photo tests change the shared sample tree: start and finish without Robert's/Margaret's
+// photos, whether the test passed, failed or is being retried.
+test.beforeEach(async ({ page }) => clearPhotos(page, 'Robert Hale', treeUrl()));
+test.afterEach(async ({ page }) => clearPhotos(page, 'Robert Hale', treeUrl()));
 
 test('an uploaded photo is stored without EXIF and shows on the card', async ({ page }) => {
   await page.goto(treeUrl());
@@ -29,11 +34,6 @@ test('an uploaded photo is stored without EXIF and shows on the card', async ({ 
   await expect(
     page.locator('.react-flow__node', { has: card(page, 'Robert Hale') }).locator('img'),
   ).toBeVisible();
-
-  // Leave the shared sample tree as it was found.
-  await page.getByRole('button', { name: 'Delete', exact: true }).click();
-  await page.getByRole('button', { name: 'Delete photo' }).click();
-  await expect(page.getByText('Photo removed')).toBeVisible();
 });
 
 test('search tolerates a typo and says how each person is related to you', async ({ page }) => {

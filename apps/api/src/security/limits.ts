@@ -14,6 +14,13 @@ export const rateLimited = () =>
  * route-level limit, so whichever ran first would silently disable the other.
  * `by` picks the bucket: the client IP (default) or the signed-in user.
  */
+declare module 'fastify' {
+  interface FastifyInstance {
+    /** True only when AUTH_RATE_LIMIT_ENABLED=false (dev/E2E; production refuses that). */
+    devLimitsOff: boolean;
+  }
+}
+
 export function extraLimit(
   app: FastifyInstance,
   {
@@ -21,7 +28,15 @@ export function extraLimit(
     max,
     timeWindow,
     by = 'ip',
-  }: { name: string; max: number; timeWindow: string; by?: 'ip' | 'user' },
+    devSwitch = false,
+  }: {
+    name: string;
+    max: number;
+    timeWindow: string;
+    by?: 'ip' | 'user';
+    /** Also turned off by AUTH_RATE_LIMIT_ENABLED=false (the invite limiters, for E2E). */
+    devSwitch?: boolean;
+  },
 ) {
   const check = app.createRateLimit({
     max,
@@ -32,6 +47,7 @@ export function extraLimit(
       `${name}:${by === 'user' && req.user ? `u:${req.user.id}` : `ip:${clientKey(req)}`}`,
   });
   return async (req: FastifyRequest) => {
+    if (devSwitch && app.devLimitsOff) return;
     const result = await check(req);
     if (!result.isAllowed && result.isExceeded) throw rateLimited();
   };

@@ -163,6 +163,8 @@ backup_test() {
   "${COMPOSE[@]}" down
   docker volume rm "${PROJECT}_pgdata" "${PROJECT}_s3data" >/dev/null
   edge_up
+  # No database at all: the restore creates it (the path a rebuilt server takes).
+  "${COMPOSE[@]}" exec -T postgres psql -U family_owner -d postgres -c 'DROP DATABASE family WITH (FORCE)'
   "${COMPOSE[@]}" run --rm restore restore.sh latest
   "${COMPOSE[@]}" up -d
   wait_for "the API over TLS" "${CURL[@]}" "$API/api/v1/health"

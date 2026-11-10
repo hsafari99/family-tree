@@ -14,12 +14,21 @@ test('the layout runs in a worker and puts generations in rows', async ({ page }
   expect((await worker).url()).toMatch(/worker|elk/i);
   await page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Full' }).click();
   await expect(card(page, 'Margaret Hale')).toBeVisible();
-  const [grandmother, father, mother, me] = await Promise.all(
-    ['Margaret Hale', 'David Hale', 'Susan Hale', 'Leo Hale'].map((n) => top(page, n)),
-  );
-  expect(grandmother).toBeLessThan(father!);
-  expect(father).toBeLessThan(me!);
-  expect(Math.abs(father! - mother!)).toBeLessThan(5); // siblings share a row
+  // Layout settles asynchronously, so poll the positions rather than read them once.
+  await expect
+    .poll(async () => {
+      const [grandmother, david, sister, laura, me] = await Promise.all(
+        ['Margaret Hale', 'David Hale', 'Susan Hale', 'Laura Hale', 'Leo Hale'].map((n) =>
+          top(page, n),
+        ),
+      );
+      return {
+        generations: grandmother! < david! && david! < me!,
+        siblingsShareARow: Math.abs(david! - sister!) < 5, // David and Susan, Robert's children
+        partnersShareARow: Math.abs(david! - laura!) < 5, // David and Laura
+      };
+    })
+    .toEqual({ generations: true, siblingsShareARow: true, partnersShareARow: true });
 });
 
 test.describe('on a phone', () => {

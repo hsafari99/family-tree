@@ -99,6 +99,9 @@ export function buildApp({
           },
   });
 
+  // Dev/E2E only: AUTH_RATE_LIMIT_ENABLED=false (production config refuses it) also relaxes the
+  // invite limiters, which E2E hits on every run.
+  app.decorate('devLimitsOff', !config.AUTH_RATE_LIMIT_ENABLED);
   app.register(helmet);
   app.register(cors, {
     origin: [config.WEB_ORIGIN],
@@ -110,7 +113,9 @@ export function buildApp({
   // Every route must be registered inside a plugin (app.register) after this line; routes added
   // directly on `app`, or before this plugin, are not rate-limited.
   app.register(rateLimit, {
-    max: rateLimitMax,
+    // The E2E switch (AUTH_RATE_LIMIT_ENABLED=false) lifts the per-IP cap too: the whole suite is
+    // one IP. Production refuses that setting.
+    max: config.AUTH_RATE_LIMIT_ENABLED ? rateLimitMax : 1_000_000,
     timeWindow: '1 minute',
     errorResponseBuilder: () =>
       new AppError('RATE_LIMITED', 429, 'Too many requests, try again later'),

@@ -11,13 +11,17 @@ test('a viewer can look and search, but not change or export (UI and API)', asyn
   await expect(page.getByText('You are a viewer of this tree.')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Tree settings' })).toHaveCount(0);
   await expect(page.getByRole('region', { name: 'Export' })).toHaveCount(0);
+  await page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Full' }).click();
+  // The canvas is showing people, yet none of them offers an add button.
+  await expect(card(page, 'Leo Hale')).toBeVisible();
   await expect(
     page.getByRole('button', { name: /^Add a (parent|partner|sibling|child) of / }),
   ).toHaveCount(0);
-  await page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Full' }).click();
   await card(page, 'Robert Hale').click();
+  await expect(page.getByRole('heading', { name: /^Robert Hale/ })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Edit details' })).toHaveCount(0);
   await page.getByRole('tab', { name: 'Photos' }).click();
+  await expect(page.getByText(/Photos use .* of this tree/)).toBeVisible(); // the tab is open
   await expect(page.getByText('Add a photo')).toHaveCount(0);
   await page.getByRole('searchbox', { name: 'Search' }).fill('Margret');
   await expect(

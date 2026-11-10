@@ -9,6 +9,8 @@
 # touches the live database. The previous database is dropped after the photos are copied back.
 # Photos are copied without deleting any (the orphan sweep removes leftovers after a day).
 # A database that already has tables needs --force.
+# The database must be called "family": /grants/20-app-grants.sql names it. Don't run the backup
+# timer while a restore is running.
 set -euo pipefail
 : "${BACKUP_ROOT:?}" "${S3_BUCKET:?}" "${PGUSER:?}"
 force=no
@@ -59,7 +61,6 @@ rclone cat "${BACKUP_ROOT}/db/${want}" \
   | pg_restore --no-owner --no-privileges --exit-on-error --single-transaction -d "$scratch"
 n="$(psqlx -d "$scratch" -Atc "select count(*) from information_schema.tables where table_schema = 'public'")"
 [ "$n" != 0 ] || { echo "restore: the dump restored no tables; nothing was changed" >&2; exit 1; }
-psqlx -d "$scratch" -f /grants/20-app-grants.sql
 
 echo "restore: swapping ${scratch} in for ${db}"
 had=no
@@ -71,6 +72,7 @@ swap="select pg_terminate_backend(pid) from pg_stat_activity
 swap="${swap} alter database \"${scratch}\" rename to \"${db}\"; commit;"
 printf '%s\n' "$swap" | psqlx -d postgres -o /dev/null
 
+# The grants run after the swap: they name the live database, which only exists from here.
 # From here the old database is kept until everything has worked, and put back if it doesn't.
 rollback() {
   echo "restore: failed after the swap; putting the previous database back" >&2
@@ -85,6 +87,7 @@ if ! { psqlx -d "$db" -f /grants/20-app-grants.sql && rclone copy "${BACKUP_ROOT
   rollback
   exit 1
 fi
+trap - INT TERM
 trap cleanup EXIT
 if [ "$had" = yes ]; then
   psqlx -d postgres -c "DROP DATABASE IF EXISTS \"${old}\" WITH (FORCE)"

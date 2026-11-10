@@ -54,6 +54,8 @@ test('spec §9: family, steward invite, steward edits and deletes, owner restore
   await expect(steward.getByText('Architect')).toBeVisible();
   await steward.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Full' }).click();
   await card(steward, 'Paul Owner').click();
+  // The panel is open on Paul (so "no Edit details" means something).
+  await expect(steward.getByRole('heading', { name: 'Paul Owner' })).toBeVisible();
   await expect(steward.getByRole('button', { name: 'Edit details' })).toHaveCount(0);
 
   // 6. The steward adds Eve as Pete's child on his own (so every link is inside the branch), then
@@ -78,6 +80,7 @@ test('spec §9: family, steward invite, steward edits and deletes, owner restore
   await owner.goto(`/trees/${treeId}/trash`);
   await expect(owner.getByText(/Eve Partner/)).toBeVisible();
   await owner.getByRole('button', { name: 'Restore' }).first().click();
+  await expect(owner.getByText('Restored.')).toBeVisible();
   await owner.goto(`/trees/${treeId}`);
   await owner.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Full' }).click();
   await expect(card(owner, 'Eve Partner')).toBeVisible();
