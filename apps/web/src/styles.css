@@ -255,18 +255,6 @@ a {
 }
 
 /* People list and person panel */
-.tree-layout {
-  display: grid;
-  grid-template-columns: 280px 1fr;
-  gap: 1.5rem;
-  align-items: start;
-}
-.tree-layout ul {
-  padding-left: 1.1rem;
-}
-.tree-layout a[aria-current='page'] {
-  font-weight: 700;
-}
 .prose {
   white-space: pre-line;
   margin: 0;
@@ -290,14 +278,6 @@ textarea {
   border-radius: 0.4rem;
   background: Canvas;
   color: CanvasText;
-}
-@media (max-width: 720px) {
-  .tree-layout {
-    grid-template-columns: 1fr;
-  }
-  .tree-panel {
-    order: -1;
-  }
 }
 
 .person-card {
@@ -452,4 +432,96 @@ textarea {
 .react-flow__edge.edge-ended path {
   stroke: #9a9a9a;
   stroke-dasharray: 8 6;
+}
+
+.people-fallback a[aria-current='page'] {
+  font-weight: 700;
+}
+.card-full {
+  max-width: none;
+  width: 100%;
+}
+.canvas-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: center;
+  margin: 0.5rem 0;
+}
+.canvas-toolbar [aria-pressed='true'] {
+  background: #1d4ed8;
+  color: #fff;
+}
+.tree-workspace {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+.tree-workspace.has-panel {
+  grid-template-columns: 1fr 400px;
+}
+.canvas-area {
+  position: relative;
+  min-height: 480px;
+  height: calc(100vh - 260px);
+  border: 1px solid #ccd;
+  border-radius: 8px;
+}
+.family-canvas {
+  width: 100%;
+  height: 100%;
+}
+.tree-panel {
+  max-height: calc(100vh - 260px);
+  overflow: auto;
+}
+.panel-close {
+  text-align: right;
+  margin: 0;
+}
+.disconnected {
+  position: relative;
+}
+.disconnected-list {
+  position: absolute;
+  z-index: 10;
+  background: #fff;
+  border: 1px solid #ccd;
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  min-width: 240px;
+  max-height: 50vh;
+  overflow: auto;
+}
+.branch-matches {
+  list-style: none;
+  margin: 0.25rem 0;
+  padding: 0;
+  max-height: 40vh;
+  overflow: auto;
+}
+.people-fallback {
+  margin-top: 1rem;
+}
+@media (max-width: 720px) {
+  .tree-workspace.has-panel {
+    grid-template-columns: 1fr;
+  }
+  .canvas-area {
+    height: 70vh;
+  }
+  /* The side panel becomes a bottom sheet (spec §6). */
+  .tree-panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 20;
+    max-height: 65vh;
+    background: #fff;
+    border-top-left-radius: 14px;
+    border-top-right-radius: 14px;
+    box-shadow: 0 -4px 16px rgb(0 0 0 / 20%);
+    padding: 0.5rem 1rem 1rem;
+  }
 }

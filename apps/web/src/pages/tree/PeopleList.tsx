@@ -1,5 +1,6 @@
 import type { PersonSummary, TreeDetail } from '@family-tree/shared';
 import { Link } from 'react-router';
+import { usePersonHref } from '../../canvas/params';
 import { personName, personYears } from '../../trees/format';
 
 export function PeopleList({
@@ -13,25 +14,17 @@ export function PeopleList({
   detail: TreeDetail;
   selectedId: string | undefined;
 }) {
-  const { me, capabilities } = detail;
+  const { me } = detail;
+  const hrefOf = usePersonHref(treeId);
   return (
     <section className="people-list">
       <h2>People ({persons.length})</h2>
-      <p className="hint">The interactive family tree arrives in a later version.</p>
-      {(capabilities.editAnywhere || me.steward.active) && (
-        <p>
-          <Link to={`/trees/${treeId}/people/new`}>Add a person</Link>
-        </p>
-      )}
       <ul>
         {persons.map((p) => {
           const years = personYears(p);
           return (
             <li key={p.id}>
-              <Link
-                to={`/trees/${treeId}/people/${p.id}`}
-                aria-current={p.id === selectedId ? 'page' : undefined}
-              >
+              <Link to={hrefOf(p.id)} aria-current={p.id === selectedId ? 'page' : undefined}>
                 {personName(p)}
                 {years && ` ${years}`}
               </Link>

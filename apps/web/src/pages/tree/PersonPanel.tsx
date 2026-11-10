@@ -86,7 +86,17 @@ export function PersonPanel({
       <Tabs
         tabs={TABS}
         current={tab}
-        onChange={(id) => setParams({ tab: id }, { replace: true })}
+        onChange={(id) =>
+          setParams(
+            (p) => {
+              const next = new URLSearchParams(p);
+              next.set('tab', id);
+              next.delete('add');
+              return next;
+            },
+            { replace: true },
+          )
+        }
       />
       <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
         {tab === 'info' && <InfoTab {...tabProps} />}

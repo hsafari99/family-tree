@@ -4,20 +4,11 @@ import {
   type PersonSummary,
   type PersonView,
   type RelativeRole,
-  UNION_STATUSES,
-  UNION_TYPES,
-  updateUnionSchema,
 } from '@family-tree/shared';
-import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { ConfirmButton } from '../../components/ConfirmButton';
-import {
-  FuzzyDateField,
-  fromDraft,
-  toDraft,
-  type FuzzyDraft,
-} from '../../components/FuzzyDateField';
-import { FormError, Success, validate, type FieldErrors } from '../../components/forms';
+import { FormError, Success } from '../../components/forms';
 import {
   CHILD_KIND_LABEL,
   formatFuzzyDate,
@@ -27,6 +18,8 @@ import {
 } from '../../trees/format';
 import { useTreesApi } from '../../trees/TreesApiContext';
 import { AddRelativeForm } from './AddRelativeForm';
+import { usePersonHref } from '../../canvas/params';
+import { UnionForm } from './UnionForm';
 import type { TabProps } from './usePersonSave';
 
 type Union = PersonView['relations']['unions'][number];
@@ -46,6 +39,7 @@ export function RelationsTab({
   persons,
 }: TabProps & { persons: PersonSummary[] }) {
   const api = useTreesApi();
+  const hrefOf = usePersonHref(treeId);
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;
@@ -58,9 +52,7 @@ export function RelationsTab({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const { relations: rel, capabilities: caps } = view;
-  const person = (p: PersonSummary) => (
-    <Link to={`/trees/${treeId}/people/${p.id}`}>{personName(p)}</Link>
-  );
+  const person = (p: PersonSummary) => <Link to={hrefOf(p.id)}>{personName(p)}</Link>;
 
   const [busy, setBusy] = useState(false);
 
@@ -262,89 +254,4 @@ function unionDates(u: Union): string {
   if (from) return ` from ${from}`;
   if (to) return ` until ${to}`;
   return '';
-}
-
-const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
-
-function UnionForm({
-  union,
-  pending,
-  onSubmit,
-  onCancel,
-}: {
-  union: Union;
-  pending: boolean;
-  onSubmit: (input: Parameters<ReturnType<typeof useTreesApi>['updateUnion']>[2]) => Promise<void>;
-  onCancel: () => void;
-}) {
-  const uid = useId();
-  const [type, setType] = useState<string>(union.type);
-  const [status, setStatus] = useState<string>(union.status);
-  const [start, setStart] = useState<FuzzyDraft>(toDraft(union.startDate));
-  const [end, setEnd] = useState<FuzzyDraft>(toDraft(union.endDate));
-  const [errors, setErrors] = useState<FieldErrors>({});
-
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    const change: Record<string, unknown> = {};
-    if (type !== union.type) change.type = type;
-    if (status !== union.status) change.status = status;
-    const startDate = fromDraft(start);
-    const endDate = fromDraft(end);
-    if (!same(startDate, fromDraft(toDraft(union.startDate)))) change.startDate = startDate;
-    if (!same(endDate, fromDraft(toDraft(union.endDate)))) change.endDate = endDate;
-    if (Object.keys(change).length === 0) return onCancel();
-    const v = validate(updateUnionSchema, change);
-    if (!v.ok) return setErrors(v.errors);
-    setErrors({});
-    await onSubmit(change as Parameters<typeof onSubmit>[0]);
-  }
-
-  const select = (
-    id: string,
-    label: string,
-    value: string,
-    set: (v: string) => void,
-    options: Record<string, string>,
-  ) => (
-    <div className="field">
-      <label htmlFor={id}>{label}</label>
-      <select id={id} value={value} onChange={(e) => set(e.target.value)}>
-        {Object.entries(options).map(([k, l]) => (
-          <option key={k} value={k}>
-            {l}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-
-  return (
-    <form onSubmit={(e) => void submit(e)}>
-      {select(
-        `${uid}-type`,
-        'Type',
-        type,
-        setType,
-        Object.fromEntries(UNION_TYPES.map((k) => [k, UNION_TYPE_LABEL[k]])),
-      )}
-      {select(
-        `${uid}-status`,
-        'Status',
-        status,
-        setStatus,
-        Object.fromEntries(UNION_STATUSES.map((k) => [k, UNION_STATUS_LABEL[k]])),
-      )}
-      <FuzzyDateField label="Start" value={start} onChange={setStart} error={errors.startDate} />
-      <FuzzyDateField label="End" value={end} onChange={setEnd} error={errors.endDate} />
-      <p className="actions">
-        <button type="submit" disabled={pending}>
-          Save relationship
-        </button>
-        <button type="button" className="secondary" onClick={onCancel}>
-          Cancel
-        </button>
-      </p>
-    </form>
-  );
 }
