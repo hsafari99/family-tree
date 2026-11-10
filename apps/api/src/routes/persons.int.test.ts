@@ -14,7 +14,7 @@ import { signUp } from '../../test/auth-helpers.js';
 import { buildApp } from '../app.js';
 import { createAuth } from '../auth/auth.js';
 import { loadConfig } from '../config.js';
-import { persons } from '../db/schema.js';
+import { auditLog, persons } from '../db/schema.js';
 import { createDeps } from '../deps.js';
 
 const config = loadConfig();
@@ -237,5 +237,70 @@ describe('person routes', () => {
       call(app, 'PATCH', url(treeId, id), { jar, body: { version: 1, surname: 'Z' } });
     expect((await patch(dan.id)).statusCode).toBe(200);
     expect((await patch(george.id)).statusCode).toBe(403);
+  });
+});
+
+describe('person history', () => {
+  it('lists changes to the person, newest first, without leaking member rows', async () => {
+    const { owner, treeId } = await ownerWithTree(app);
+    const created = await call(app, 'POST', url(treeId), {
+      jar: owner.jar,
+      body: { person: { givenName: 'Ada', surname: 'King' } },
+    });
+    const id = created.json().id as string;
+    const other = await addPerson(db, treeId, 'Other');
+    await call(app, 'PATCH', url(treeId, id), {
+      jar: owner.jar,
+      body: { version: 1, middleName: 'A' },
+    });
+    await call(app, 'PATCH', url(treeId, id), {
+      jar: owner.jar,
+      body: { version: 2, surname: 'Lovelace' },
+    });
+    await call(app, 'PATCH', url(treeId, other.id), {
+      jar: owner.jar,
+      body: { version: 1, surname: 'Q' },
+    });
+    await call(app, 'POST', `${url(treeId, id)}/relatives`, {
+      jar: owner.jar,
+      body: { as: 'partner', personId: other.id },
+    });
+    await call(app, 'POST', `${url(treeId, id)}/residences`, {
+      jar: owner.jar,
+      body: { place: 'Leeds' },
+    });
+    // Rows that must never reach a viewer, even with person_ids set.
+    await db.insert(auditLog).values({
+      treeId,
+      userId: owner.userId,
+      action: 'invite.create',
+      entityType: 'invite',
+      entityId: null,
+      personIds: [id],
+    });
+    const viewer = await signUp(app, { name: 'Vera' });
+    await addMember(db, treeId, viewer.userId, 'viewer', owner.userId);
+
+    for (const jar of [owner.jar, viewer.jar]) {
+      const res = await call(app, 'GET', `${url(treeId, id)}/history`, { jar });
+      expect(res.statusCode).toBe(200);
+      const entries = res.json().entries as {
+        action: string;
+        by: string;
+        changes: unknown[];
+      }[];
+      expect(entries.map((e) => e.action)).toEqual([
+        'residence.create',
+        'union.create',
+        'person.update',
+        'person.update',
+        'person.create',
+      ]);
+      expect(entries.every((e) => e.by === 'Owner')).toBe(true);
+      expect(entries[2]!.changes).toEqual([
+        { field: 'surname', before: 'King', after: 'Lovelace' },
+      ]);
+      expect(entries[0]!.changes).toEqual([]);
+    }
   });
 });

@@ -1,13 +1,16 @@
 import {
   createPersonSchema,
+  HISTORY_ACTION_PREFIXES,
+  HISTORY_LIMIT,
+  type HistoryEntry,
   PERSON_FIELDS,
   personConsistencyErrors,
   updatePersonSchema,
 } from '@family-tree/shared';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, arrayContains, desc, eq, isNull, like, or, sql } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 import { requireSession } from '../auth/session-guard.js';
-import { persons } from '../db/schema.js';
+import { auditLog, persons, users } from '../db/schema.js';
 import { AppError, conflict, idParam, notFound, parseBody } from '../errors.js';
 import { TREE } from '../permissions/can.js';
 import { authorize, loadAccess } from '../trees/access.js';
@@ -120,6 +123,49 @@ export const personsRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, {
       return row.version;
     });
     return { version: next };
+  });
+
+  app.get('/api/v1/trees/:treeId/persons/:personId/history', async (req) => {
+    const access = await loadAccess(db, idParam(req.params, 'treeId'), req.user!.id);
+    authorize(access, 'tree.view', TREE);
+    const person = await requireLivePerson(db, access.treeId, idParam(req.params, 'personId'));
+    const rows = await db
+      .select({
+        id: auditLog.id,
+        action: auditLog.action,
+        entityId: auditLog.entityId,
+        before: auditLog.before,
+        after: auditLog.after,
+        createdAt: auditLog.createdAt,
+        by: users.name,
+      })
+      .from(auditLog)
+      .leftJoin(users, eq(users.id, auditLog.userId))
+      .where(
+        and(
+          eq(auditLog.treeId, access.treeId),
+          arrayContains(auditLog.personIds, [person.id]),
+          // Decision 13: only changes to people and relations, never member/steward/invite rows.
+          or(...HISTORY_ACTION_PREFIXES.map((prefix) => like(auditLog.action, `${prefix}%`))),
+        ),
+      )
+      .orderBy(desc(auditLog.createdAt), desc(auditLog.id))
+      .limit(HISTORY_LIMIT);
+    const entries: HistoryEntry[] = rows.map((r) => ({
+      id: r.id,
+      action: r.action,
+      at: r.createdAt.toISOString(),
+      by: r.by,
+      changes:
+        r.action === 'person.update' && r.entityId === person.id
+          ? Object.keys((r.after ?? {}) as object).map((field) => ({
+              field,
+              before: (r.before as Record<string, unknown> | null)?.[field] ?? null,
+              after: (r.after as Record<string, unknown>)[field],
+            }))
+          : [],
+    }));
+    return { entries };
   });
 };
 
