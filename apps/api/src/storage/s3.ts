@@ -6,15 +6,18 @@ import {
 } from '@aws-sdk/client-s3';
 import type { Config } from '../config.js';
 
-export function createS3(config: Config): S3Client {
+export function createS3(config: Config, endpoint: string = config.S3_ENDPOINT): S3Client {
   return new S3Client({
-    endpoint: config.S3_ENDPOINT,
+    endpoint,
     region: config.S3_REGION,
     forcePathStyle: config.S3_FORCE_PATH_STYLE,
     credentials: {
       accessKeyId: config.S3_ACCESS_KEY_ID,
       secretAccessKey: config.S3_SECRET_ACCESS_KEY,
     },
+    // Plain SigV4 works with SeaweedFS and R2; skip the SDK's default CRC32 trailers (decision 8).
+    requestChecksumCalculation: 'WHEN_REQUIRED',
+    responseChecksumValidation: 'WHEN_REQUIRED',
   });
 }
 

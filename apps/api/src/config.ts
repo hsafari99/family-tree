@@ -48,6 +48,16 @@ export const configSchema = z
     S3_SECRET_ACCESS_KEY: z.string().min(1),
     S3_FORCE_PATH_STYLE: bool.default(false),
     S3_CREATE_BUCKET: bool.default(false),
+    // Where browsers fetch photos from (signed URLs); defaults to S3_ENDPOINT. Differs in dev,
+    // where the API reaches SeaweedFS as http://s3:8333 but the browser as http://localhost:8333.
+    S3_PUBLIC_ENDPOINT: z.url().optional(),
+    // Spec §3: photo storage per tree, in bytes (default 1 GiB).
+    MAX_PHOTO_BYTES_PER_TREE: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(1_099_511_627_776)
+      .default(1_073_741_824),
   })
   .superRefine((config, ctx) => {
     if (config.NODE_ENV !== 'production') return;
@@ -64,10 +74,16 @@ export const configSchema = z
         });
       }
     }
-    for (const key of ['S3_ENDPOINT', 'WEB_ORIGIN', 'AUTH_BASE_URL'] as const) {
+    for (const key of [
+      'S3_ENDPOINT',
+      'S3_PUBLIC_ENDPOINT',
+      'WEB_ORIGIN',
+      'AUTH_BASE_URL',
+    ] as const) {
+      const value = config[key];
       // Field-level errors are already reported; superRefine still runs, so don't throw here.
-      if (!URL.canParse(config[key])) continue;
-      const url = new URL(config[key]);
+      if (value === undefined || !URL.canParse(value)) continue;
+      const url = new URL(value);
       if (url.protocol !== 'https:') {
         ctx.addIssue({ code: 'custom', path: [key], message: 'Must use https in production' });
       }

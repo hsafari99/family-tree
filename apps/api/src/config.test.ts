@@ -178,4 +178,33 @@ describe('loadConfig', () => {
       /AUTH_BASE_URL/,
     );
   });
+
+  describe('photo settings', () => {
+    it('defaults and parses MAX_PHOTO_BYTES_PER_TREE', () => {
+      expect(loadConfig(devEnv).MAX_PHOTO_BYTES_PER_TREE).toBe(1_073_741_824);
+      expect(
+        loadConfig({ ...devEnv, MAX_PHOTO_BYTES_PER_TREE: '5000' }).MAX_PHOTO_BYTES_PER_TREE,
+      ).toBe(5000);
+    });
+
+    it('makes S3_PUBLIC_ENDPOINT optional', () => {
+      expect(loadConfig(devEnv).S3_PUBLIC_ENDPOINT).toBeUndefined();
+      expect(
+        loadConfig({ ...devEnv, S3_PUBLIC_ENDPOINT: 'http://localhost:8333' }).S3_PUBLIC_ENDPOINT,
+      ).toBe('http://localhost:8333');
+    });
+
+    it('requires a public https, non-local S3_PUBLIC_ENDPOINT in production', () => {
+      expect(() =>
+        loadConfig({ ...prodEnv, S3_PUBLIC_ENDPOINT: 'http://r2.example.com' }),
+      ).toThrowError(/Must use https in production/);
+      expect(() =>
+        loadConfig({ ...prodEnv, S3_PUBLIC_ENDPOINT: 'https://localhost:8333' }),
+      ).toThrowError(/Must not point to a local host in production/);
+      expect(
+        loadConfig({ ...prodEnv, S3_PUBLIC_ENDPOINT: 'https://acc.r2.cloudflarestorage.com' })
+          .S3_PUBLIC_ENDPOINT,
+      ).toBe('https://acc.r2.cloudflarestorage.com');
+    });
+  });
 });
