@@ -303,4 +303,24 @@ describe('person history', () => {
       expect(entries[0]!.changes).toEqual([]);
     }
   });
+
+  it('lists children and siblings in sibling order', async () => {
+    const { owner, treeId } = await ownerWithTree(app);
+    const olive = { id: await rootOf(treeId) };
+    const [pa, ma, sis, ann] = await Promise.all(
+      ['Pa', 'Ma', 'Sis', 'Ann'].map((n) => addPerson(db, treeId, n)),
+    );
+    const u = await family(db, treeId, pa!, ma!, [olive, sis!, ann!]);
+    const res = await call(app, 'POST', `/api/v1/trees/${treeId}/unions/${u.id}/child-order`, {
+      jar: owner.jar,
+      body: { childIds: [sis!.id, ann!.id, olive.id] },
+    });
+    expect(res.statusCode).toBe(204);
+    const paView = await call(app, 'GET', url(treeId, pa!.id), { jar: owner.jar });
+    const kids = paView.json().relations.unions[0].children as { person: { givenName: string } }[];
+    expect(kids.map((k) => k.person.givenName)).toEqual(['Sis', 'Ann', 'Olive']);
+    const oliveView = await call(app, 'GET', url(treeId, olive.id), { jar: owner.jar });
+    const sibs = oliveView.json().relations.siblings as { person: { givenName: string } }[];
+    expect(sibs.map((k) => k.person.givenName)).toEqual(['Sis', 'Ann']);
+  });
 });

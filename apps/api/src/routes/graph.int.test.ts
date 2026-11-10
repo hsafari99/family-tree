@@ -13,7 +13,8 @@ import {
 import { buildApp } from '../app.js';
 import { createAuth } from '../auth/auth.js';
 import { loadConfig } from '../config.js';
-import { persons } from '../db/schema.js';
+import { eq } from 'drizzle-orm';
+import { auditLog, parentChild, persons, unions } from '../db/schema.js';
 import { createDeps } from '../deps.js';
 
 const config = loadConfig();
@@ -190,7 +191,6 @@ describe('GET graph', () => {
 
   it('carries sibling order', async () => {
     const { owner, treeId, p } = await setup();
-    const { eq } = await import('drizzle-orm');
     await db.update(persons).set({ siblingOrder: 2 }).where(eq(persons.id, p.olive!.id));
     await db.update(persons).set({ siblingOrder: 1 }).where(eq(persons.id, p.sis!.id));
     const body = parse((await call(app, 'GET', g(treeId), { jar: owner.jar })).json());
@@ -290,5 +290,97 @@ describe('GET persons/similar', () => {
       jar: owner.jar,
     });
     expect(one.statusCode).toBe(200);
+  });
+});
+
+describe('POST child-order', () => {
+  const co = (t: string, u: string) => `/api/v1/trees/${t}/unions/${u}/child-order`;
+  const order = async (ids: string[]) => {
+    const rows = await db.select().from(persons);
+    return ids.map((id) => rows.find((r) => r.id === id)!.siblingOrder);
+  };
+
+  it('reorders as the owner: sibling_order, no version bump, one audit row', async () => {
+    const { owner, treeId, p, uPa } = await setup();
+    const before = await db.select().from(persons).where(eq(persons.id, p.olive!.id));
+    const res = await call(app, 'POST', co(treeId, uPa.id), {
+      jar: owner.jar,
+      body: { childIds: [p.sis!.id, p.olive!.id] },
+    });
+    expect(res.statusCode).toBe(204);
+    expect(await order([p.sis!.id, p.olive!.id])).toEqual([1, 2]);
+    const after = await db.select().from(persons).where(eq(persons.id, p.olive!.id));
+    expect(after[0]!.version).toBe(before[0]!.version);
+    const rows = (await db.select().from(auditLog).where(eq(auditLog.treeId, treeId))).filter((r) => r.action === 'link.reorder');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      entityType: 'union',
+      entityId: uPa.id,
+      after: { childIds: [p.sis!.id, p.olive!.id] },
+    });
+    expect(rows[0]!.personIds).toEqual(
+      expect.arrayContaining([p.pa!.id, p.ma!.id, p.olive!.id, p.sis!.id]),
+    );
+    expect((rows[0]!.before as { childIds: string[] }).childIds).toHaveLength(2);
+    const hist = await call(app, 'GET', `/api/v1/trees/${treeId}/persons/${p.pa!.id}/history`, {
+      jar: owner.jar,
+    });
+    expect(JSON.stringify(hist.json())).toContain('link.reorder');
+    const graph = parse((await call(app, 'GET', g(treeId), { jar: owner.jar })).json());
+    const so = (n: string) => graph.persons.find((x) => x.givenName === n)!.siblingOrder;
+    expect([so('Sis'), so('Olive')]).toEqual([1, 2]);
+  });
+
+  it('rejects the wrong set of children', async () => {
+    const { owner, treeId, p, uPa } = await setup();
+    const post = (childIds: string[]) =>
+      call(app, 'POST', co(treeId, uPa.id), { jar: owner.jar, body: { childIds } });
+    expect((await post([p.sis!.id, p.gk!.id])).statusCode).toBe(409);
+    expect((await post([p.sis!.id])).statusCode).toBe(400);
+    expect((await post([p.sis!.id, p.sis!.id])).statusCode).toBe(400);
+    expect(await order([p.sis!.id, p.olive!.id])).toEqual([null, null]);
+  });
+
+  it('404s for another tree\'s union and a deleted union', async () => {
+    const { owner, treeId, p, uPa } = await setup();
+    const other = await setup();
+    const body = { childIds: [p.sis!.id, p.olive!.id] };
+    expect(
+      (await call(app, 'POST', co(treeId, other.uPa.id), { jar: owner.jar, body })).statusCode,
+    ).toBe(404);
+    await db.update(unions).set({ deletedAt: new Date() }).where(eq(unions.id, uPa.id));
+    expect((await call(app, 'POST', co(treeId, uPa.id), { jar: owner.jar, body })).statusCode).toBe(
+      404,
+    );
+  });
+
+  it('enforces roles, including every child being in a steward\'s scope', async () => {
+    const { owner, treeId, p, uPa, uOlive } = await setup();
+    const ann = await addPerson(db, treeId, 'Ann');
+    await db.insert(parentChild).values({ treeId, unionId: uOlive.id, childId: ann.id });
+    const [x, y1, y2] = await Promise.all(['X', 'Y1', 'Y2'].map((n) => addPerson(db, treeId, n)));
+    const uKp = await family(db, treeId, p.kp!, x!, [y1!, y2!]);
+
+    const viewer = await signUp(app, { name: 'Vera' });
+    await addMember(db, treeId, viewer.userId, 'viewer', owner.userId);
+    const editor = await signUp(app, { name: 'Edie' });
+    await addMember(db, treeId, editor.userId, 'editor', owner.userId);
+    const steward = await userWith2fa(app, 'Sam Steward');
+    await addMember(db, treeId, steward.userId, 'viewer', owner.userId);
+    await addGrant(db, treeId, steward.userId, p.sam!.id, owner.userId);
+    const stranger = await signUp(app, { name: 'Stranger' });
+
+    const go = (jar: typeof owner.jar, u: string, ids: string[]) =>
+      call(app, 'POST', co(treeId, u), { jar, body: { childIds: ids } });
+    const paIds = [p.sis!.id, p.olive!.id];
+    expect((await go(viewer.jar, uPa.id, paIds)).statusCode).toBe(403);
+    expect((await go(steward.jar, uOlive.id, [ann.id, p.kid!.id])).statusCode).toBe(204);
+    expect((await go(steward.jar, uPa.id, paIds)).statusCode).toBe(403);
+    const kpIds = [y2!.id, y1!.id];
+    expect((await go(steward.jar, uKp.id, kpIds)).statusCode).toBe(403);
+    expect(await order(kpIds)).toEqual([null, null]);
+    expect((await go(owner.jar, uKp.id, kpIds)).statusCode).toBe(204);
+    expect((await go(editor.jar, uKp.id, [y1!.id, y2!.id])).statusCode).toBe(204);
+    expect((await go(stranger.jar, uPa.id, paIds)).statusCode).toBe(404);
   });
 });

@@ -1,4 +1,4 @@
-import type { PersonSummary, PersonView } from '@family-tree/shared';
+import { compareSiblings, type PersonSummary, type PersonView } from '@family-tree/shared';
 import { and, asc, eq, isNull } from 'drizzle-orm';
 import type { Queryable } from '../db/client.js';
 import { parentChild, persons, residences, unions, users } from '../db/schema.js';
@@ -38,14 +38,20 @@ export async function loadPersonView(
     )
     .orderBy(asc(residences.createdAt));
 
-  const people = new Map<string, PersonSummary>(
-    (
-      await db
-        .select(summaryColumns)
-        .from(persons)
-        .where(and(eq(persons.treeId, treeId), isNull(persons.deletedAt)))
-    ).map((p) => [p.id, p]),
-  );
+  const order = new Map<string, number | null>();
+  const people = new Map<string, PersonSummary>();
+  for (const { siblingOrder, ...summary } of await db
+    .select({ ...summaryColumns, siblingOrder: persons.siblingOrder })
+    .from(persons)
+    .where(and(eq(persons.treeId, treeId), isNull(persons.deletedAt)))) {
+    people.set(summary.id, summary);
+    order.set(summary.id, siblingOrder);
+  }
+  const bySibling = <T extends { childId: string }>(a: T, b: T) =>
+    compareSiblings(
+      { ...people.get(a.childId)!, siblingOrder: order.get(a.childId) ?? null },
+      { ...people.get(b.childId)!, siblingOrder: order.get(b.childId) ?? null },
+    );
   const liveUnions = await db
     .select({
       id: unions.id,
@@ -89,6 +95,7 @@ export async function loadPersonView(
   const parentUnionIds = new Set(parents.map((p) => p.union.id));
   const siblings = links
     .filter((l) => parentUnionIds.has(l.unionId) && l.childId !== personId)
+    .sort(bySibling)
     .map((l) => ({ unionId: l.unionId, kind: l.kind, person: people.get(l.childId)! }));
   const own = liveUnions
     .filter((u) => u.partnerAId === personId || u.partnerBId === personId)
@@ -101,6 +108,7 @@ export async function loadPersonView(
       partner: summary(u.partnerAId === personId ? u.partnerBId : u.partnerAId),
       children: links
         .filter((l) => l.unionId === u.id)
+        .sort(bySibling)
         .map((l) => ({ linkId: l.id, kind: l.kind, person: people.get(l.childId)! })),
     }));
 

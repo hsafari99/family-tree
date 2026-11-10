@@ -1,19 +1,24 @@
 import {
+  childOrderSchema,
+  compareSiblings,
   connectedTo,
   findSimilar,
   graphQuerySchema,
   kinIndex,
+  partnersOf,
   type PersonSummary,
   SIMILAR_LIMIT,
   similarQuerySchema,
 } from '@family-tree/shared';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 import { requireSession } from '../auth/session-guard.js';
 import { persons } from '../db/schema.js';
-import { idParam, parseBody } from '../errors.js';
+import { conflict, idParam, notFound, parseBody } from '../errors.js';
 import { TREE } from '../permissions/can.js';
 import { authorize, loadAccess } from '../trees/access.js';
+import { audit } from '../trees/audit.js';
+import { loadLiveGraph, lockTreeGraph } from '../trees/graph.js';
 import { loadGraphRows } from '../trees/graph-rows.js';
 import { buildTreeGraph } from '../trees/graph-view.js';
 import { summaryColumns } from '../trees/people.js';
@@ -69,5 +74,60 @@ export const graphRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, { a
       .from(persons)
       .where(and(eq(persons.treeId, access.treeId), isNull(persons.deletedAt)));
     return { persons: findSimilar(candidates, q, SIMILAR_LIMIT).map(toSummary) };
+  });
+
+  /** Sets sibling_order for every live child of a union (decision 16). */
+  app.post('/api/v1/trees/:treeId/unions/:unionId/child-order', async (req, reply) => {
+    const treeId = idParam(req.params, 'treeId');
+    await loadAccess(db, treeId, req.user!.id); // outsiders: 404 before anything else
+    const unionId = idParam(req.params, 'unionId');
+    const { childIds } = parseBody(childOrderSchema, req.body);
+    await db.transaction(async (tx) => {
+      await lockTreeGraph(tx, treeId);
+      const access = await loadAccess(tx, treeId, req.user!.id);
+      const graph = await loadLiveGraph(tx, treeId);
+      const union = graph.unions.find((u) => u.id === unionId);
+      if (!union) throw notFound();
+      const current = graph.parentChild.filter((l) => l.unionId === unionId).map((l) => l.childId);
+      const partners = partnersOf(union);
+      authorize(access, 'relation.edit', { kind: 'relation', ends: [...partners, ...current] });
+      // It writes every child's person row, so a steward needs each child in scope (decision 16).
+      // person.edit is editsAnywhere || inScope: owners and editors pass unrestricted.
+      for (const childId of current) {
+        authorize(access, 'person.edit', { kind: 'person', personId: childId });
+      }
+      const same =
+        current.length === childIds.length && childIds.every((id) => current.includes(id));
+      if (!same) throw conflict('The children of this relationship changed; reload and try again');
+      const before = (
+        await tx
+          .select({
+            id: persons.id,
+            givenName: persons.givenName,
+            siblingOrder: persons.siblingOrder,
+            birthYear: persons.birthSortYear,
+          })
+          .from(persons)
+          .where(and(eq(persons.treeId, treeId), inArray(persons.id, current)))
+      )
+        .sort(compareSiblings)
+        .map((p) => p.id);
+      // Not a person-field edit: no version bump, so nobody's open edit form goes stale.
+      for (const [i, id] of childIds.entries()) {
+        await tx
+          .update(persons)
+          .set({ siblingOrder: i + 1 })
+          .where(and(eq(persons.treeId, treeId), eq(persons.id, id)));
+      }
+      await audit(tx, access, {
+        action: 'link.reorder',
+        entityType: 'union',
+        entityId: unionId,
+        personIds: [...partners, ...childIds],
+        before: { childIds: before },
+        after: { childIds },
+      });
+    });
+    return reply.code(204).send();
   });
 };
