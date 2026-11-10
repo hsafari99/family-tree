@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { type FuzzyDate, fuzzyDateSchema, sortYear } from './fuzzy-date.js';
+import { photoSchema, photoUsageSchema } from './photos.js';
 import { NAME_MAX, personSummarySchema, SEXES } from './trees.js';
 
 export const PLACE_MAX = 200;
@@ -223,6 +224,9 @@ const unionHead = z.object({
 export const personViewSchema = z.object({
   person: personDetailSchema,
   residences: z.array(residenceSchema),
+  /** Primary first, then newest. */
+  photos: z.array(photoSchema),
+  photoUsage: photoUsageSchema,
   relations: z.object({
     /** One entry per parent union the person is a child of. */
     parents: z.array(

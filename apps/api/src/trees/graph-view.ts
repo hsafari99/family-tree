@@ -76,6 +76,7 @@ export function buildTreeGraph(rows: GraphRows, access: Access, q: ParsedGraphQu
         hasParents: hasParents.has(p.id),
         hiddenRelatives: hidden.has(p.id),
         canAddRelative: can(access, 'person.add', { kind: 'relation', ends: [p.id] }),
+        photoThumbUrl: null,
       })),
     unions: rows.unions
       .filter((u) => unionIds.has(u.id))

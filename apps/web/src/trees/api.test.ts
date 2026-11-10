@@ -154,6 +154,8 @@ describe('createTreesApi', () => {
         updatedAt: '2026-01-01T00:00:00.000Z',
       },
       residences: [],
+      photos: [],
+      photoUsage: { usedBytes: 0, limitBytes: 1_073_741_824 },
       relations: { parents: [], unions: [], siblings: [] },
       capabilities: { edit: true, addRelative: true, delete: true },
     };

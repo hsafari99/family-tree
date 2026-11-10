@@ -35,6 +35,8 @@ export const graphPersonSchema = personSummarySchema.extend({
   /** A parent, child, partner or sibling is outside this view. */
   hiddenRelatives: z.boolean(),
   canAddRelative: z.boolean(),
+  /** Signed URL of the primary photo's thumbnail (decision 17). */
+  photoThumbUrl: z.string().nullable(),
 });
 export type GraphPerson = z.infer<typeof graphPersonSchema>;
 

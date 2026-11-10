@@ -115,6 +115,8 @@ export async function loadPersonView(
   return {
     person: toPersonDetail(row.p, row.createdByName),
     residences: homes,
+    photos: [],
+    photoUsage: { usedBytes: 0, limitBytes: 0 },
     relations: { parents, unions: own, siblings },
     capabilities: {
       edit: can(access, 'person.edit', { kind: 'person', personId }),

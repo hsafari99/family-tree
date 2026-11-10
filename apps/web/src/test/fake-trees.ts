@@ -102,6 +102,7 @@ export function fakeGraphPerson(
     hasParents: false,
     hiddenRelatives: false,
     canAddRelative: true,
+    photoThumbUrl: null,
     ...partial,
   };
 }
@@ -156,6 +157,8 @@ export function fakePersonView(
       updatedAt: new Date(0).toISOString(),
     },
     residences: [],
+    photos: [],
+    photoUsage: { usedBytes: 0, limitBytes: 1_073_741_824 },
     relations: { parents: [], unions: [], siblings: [] },
     capabilities: { edit: true, addRelative: true, delete: true },
     ...partial,
