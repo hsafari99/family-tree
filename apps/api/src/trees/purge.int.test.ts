@@ -76,7 +76,7 @@ describe('purgeDeletedTrees', () => {
     await db.delete(treeMembers).where(eq(treeMembers.treeId, d.treeId));
     await ago(d.treeId, 31);
 
-    const purged = await purgeDeletedTrees(db);
+    const { ids: purged } = await purgeDeletedTrees(db);
     expect(purged).toContain(a.treeId);
     expect(purged).toContain(d.treeId);
     expect(purged).not.toContain(b.treeId);
@@ -106,7 +106,7 @@ describe('purgeDeletedTrees', () => {
     await ago(a.treeId, 31);
     await ago(b.treeId, 31);
     const [x, y] = await Promise.all([purgeDeletedTrees(db), purgeDeletedTrees(db)]);
-    const all = [...x, ...y];
+    const all = [...x.ids, ...y.ids];
     expect(all).toContain(a.treeId);
     expect(all).toContain(b.treeId);
   });
@@ -122,7 +122,49 @@ describe('startPurgeJob', () => {
       expect(await db.select().from(trees).where(eq(trees.id, a.treeId))).toHaveLength(0);
       expect(log.info).toHaveBeenCalledWith({ count: expect.any(Number) }, expect.any(String));
     });
-    stop();
+    await stop();
+    expect(log.error).not.toHaveBeenCalled();
+  });
+});
+
+describe('purge batching and locking', () => {
+  it('purges more trees than one batch holds', async () => {
+    const rows = await db
+      .insert(trees)
+      .values(
+        Array.from({ length: 120 }, (_, i) => ({
+          name: `old ${i}`,
+          deletedAt: new Date(Date.now() - 40 * 86_400_000),
+        })),
+      )
+      .returning({ id: trees.id });
+    const { ids, busy } = await purgeDeletedTrees(db);
+    expect(busy).toBe(false);
+    for (const r of rows) expect(ids).toContain(r.id);
+  });
+
+  it('reports busy while another purge holds the lock', async () => {
+    let result: Awaited<ReturnType<typeof purgeDeletedTrees>> | undefined;
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended('purge-trees', 0))`);
+      result = await purgeDeletedTrees(db);
+    });
+    expect(result).toEqual({ ids: [], busy: true });
+  });
+
+  it('measures age with the database clock', async () => {
+    const [t] = await db
+      .insert(trees)
+      .values({ name: 'edge', deletedAt: sql`now() - interval '29 days 23 hours'` })
+      .returning({ id: trees.id });
+    const { ids } = await purgeDeletedTrees(db);
+    expect(ids).not.toContain(t!.id);
+  });
+
+  it('awaits an in-flight run when stopped', async () => {
+    const log = { info: vi.fn(), error: vi.fn() };
+    const stop = startPurgeJob(db, log, 60_000);
+    await stop();
     expect(log.error).not.toHaveBeenCalled();
   });
 });

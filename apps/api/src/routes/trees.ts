@@ -231,7 +231,13 @@ export const treesRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
     await db.transaction(async (tx) => {
       await lockUserTrees(tx, userId);
       if ((await ownedLiveTreeCount(tx, userId)) >= config.MAX_TREES_PER_USER) throw quotaError();
-      await tx.update(trees).set({ deletedAt: null }).where(eq(trees.id, access.treeId));
+      const restored = await tx
+        .update(trees)
+        .set({ deletedAt: null })
+        .where(eq(trees.id, access.treeId))
+        .returning({ id: trees.id });
+      // Purged between the check above and now: the tree is gone.
+      if (restored.length === 0) throw notFound();
       await audit(tx, access, {
         action: 'tree.restore',
         entityType: 'tree',

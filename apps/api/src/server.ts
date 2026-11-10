@@ -30,10 +30,10 @@ const stopPurge =
         app.log.child({ module: 'purge' }),
         config.TREE_PURGE_INTERVAL_MINUTES * 60_000,
       )
-    : () => {};
+    : async () => {};
 
 const shutdown = async (signal: string) => {
-  stopPurge();
+  await stopPurge();
   app.log.info({ signal }, 'shutting down');
   await app.close();
   await deps.close();

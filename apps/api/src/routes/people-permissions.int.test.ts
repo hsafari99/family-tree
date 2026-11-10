@@ -13,7 +13,7 @@ import {
 import { buildApp } from '../app.js';
 import { createAuth } from '../auth/auth.js';
 import { loadConfig } from '../config.js';
-import { parentChild } from '../db/schema.js';
+import { parentChild, residences } from '../db/schema.js';
 import { createDeps } from '../deps.js';
 
 const config = loadConfig();
@@ -48,6 +48,10 @@ async function setup() {
   await family(db, treeId, dan!, null, [kim!]);
   const gg = await family(db, treeId, george!, greta!, [ann!]);
   const batch = await softDeleteBatch(db, treeId, owner.userId, [scratch!.id]);
+  const [residence] = await db
+    .insert(residences)
+    .values({ treeId, personId: dan!.id, place: 'Leeds' })
+    .returning();
   const mk = async (name: string, role: 'editor' | 'viewer', twoFa: boolean, grant: boolean) => {
     const u = twoFa ? await userWith2fa(app, name) : await signUp(app, { name });
     await addMember(db, treeId, u.userId, role, owner.userId);
@@ -74,6 +78,7 @@ async function setup() {
     rm,
     gg,
     leoLink: leoLink!,
+    residenceId: residence!.id,
   };
 }
 type Ctx = Awaited<ReturnType<typeof setup>>;
@@ -160,6 +165,55 @@ const ROWS: Row[] = [
   {
     name: 'restore a batch',
     req: (c) => ['POST', `${T(c)}/trash/${c.batchId}/restore`],
+    want: [204, 403, 403, 403, 403, 403],
+  },
+  {
+    name: 'GET person',
+    req: (c) => ['GET', `${T(c)}/persons/${c.p.dan.id}`],
+    want: [200, 200, 200, 200, 200, 200],
+  },
+  {
+    name: 'GET history',
+    req: (c) => ['GET', `${T(c)}/persons/${c.p.dan.id}/history`],
+    want: [200, 200, 200, 200, 200, 200],
+  },
+  {
+    name: 'GET people list',
+    req: (c) => ['GET', `${T(c)}/persons`],
+    want: [200, 200, 200, 200, 200, 200],
+  },
+  {
+    name: 'PATCH residence on Dan',
+    req: (c) => ['PATCH', `${T(c)}/residences/${c.residenceId}`, { place: 'York' }],
+    want: [204, 204, 403, 204, 403, 204],
+  },
+  {
+    name: 'DELETE residence on Dan',
+    req: (c) => ['DELETE', `${T(c)}/residences/${c.residenceId}`],
+    want: [204, 204, 403, 204, 403, 204],
+  },
+  {
+    name: 'PATCH parent-child Leo',
+    req: (c) => ['PATCH', `${T(c)}/parent-child/${c.leoLink.id}`, { kind: 'step' }],
+    want: [204, 204, 403, 204, 403, 204],
+  },
+  {
+    name: 'POST relative: Greta as Dan partner',
+    req: (c) => [
+      'POST',
+      `${T(c)}/persons/${c.p.dan.id}/relatives`,
+      { personId: c.p.greta.id, as: 'partner' },
+    ],
+    want: [204, 204, 403, 204, 403, 204],
+  },
+  {
+    name: 'GET trash batch',
+    req: (c) => ['GET', `${T(c)}/trash/${c.batchId}`],
+    want: [200, 403, 403, 403, 403, 403],
+  },
+  {
+    name: 'DELETE trash batch',
+    req: (c) => ['DELETE', `${T(c)}/trash/${c.batchId}`],
     want: [204, 403, 403, 403, 403, 403],
   },
 ];

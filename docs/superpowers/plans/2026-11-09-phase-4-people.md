@@ -3939,6 +3939,7 @@ export function FuzzyDateField({
   - The person panel moves into the canvas side panel / bottom sheet. Keep `PersonPanel` as the component.
   - Replace the people list. Keep it as an accessible fallback list, or remove it.
 - **Phase 6 (photos, search, relationships):**
+  - **Purge and erase must free photos:** the tree purge (`purgeDeletedTrees` returns the ids, but the rows are already cascaded away by then) and `eraseBatch` both delete rows that will hold photo records. Collect the photos' S3 keys **before** the cascade deletes their rows (inside the same transaction), then delete the objects after it commits. For the purge, do it per batch before the `delete from trees`.
   - **The photos table:** photos belong to a person. A person batch hides them with the person (like residences). Erase must delete their S3 objects **before** the rows go. Use the batch's person ids, before `eraseBatch` deletes persons.
   - **The purge:** `purgeDeletedTrees` returns the purged tree ids. Delete each tree's S3 prefix (for example `trees/<id>/`) after the row is gone. If S3 fails, log it and retry next tick: keep a `purge_pending_objects` list or similar, rather than blocking the DB purge.
   - Photos count towards the per-tree quota. A restored batch brings its photos back into the quota count.
