@@ -8,7 +8,7 @@ import {
   UNION_TYPES,
   updateUnionSchema,
 } from '@family-tree/shared';
-import { type FormEvent, useEffect, useRef, useState } from 'react';
+import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { ConfirmButton } from '../../components/ConfirmButton';
 import {
@@ -62,24 +62,36 @@ export function RelationsTab({
     <Link to={`/trees/${treeId}/people/${p.id}`}>{personName(p)}</Link>
   );
 
-  async function after(res: { ok: boolean; error?: { message: string } }, message?: string) {
-    if (!alive.current) return;
-    if (!res.ok) return setError(res.error?.message ?? null);
-    setError(null);
-    setNotice(message ?? null);
-    await reload();
-    onChanged();
+  const [busy, setBusy] = useState(false);
+
+  /** Runs one change at a time: the controls are disabled until it and the reload finish. */
+  async function run(
+    call: () => Promise<{ ok: boolean; error?: { message: string } }>,
+    message?: string,
+  ) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const res = await call();
+      if (!alive.current) return;
+      if (!res.ok) return setError(res.error?.message ?? null);
+      setError(null);
+      setNotice(message ?? null);
+      await reload();
+      onChanged();
+    } finally {
+      if (alive.current) setBusy(false);
+    }
   }
 
-  async function setKind(linkId: string, kind: ChildKind) {
-    setNotice(null);
-    await after(await api.updateParentChild(treeId, linkId, { kind }));
-  }
+  const setKind = (linkId: string, kind: ChildKind) =>
+    run(() => api.updateParentChild(treeId, linkId, { kind }));
 
   const kindSelect = (linkId: string, kind: ChildKind, label: string) =>
     caps.edit ? (
       <select
         aria-label={`Link kind for ${label}`}
+        disabled={busy}
         value={kind}
         onChange={(e) => void setKind(linkId, e.target.value as ChildKind)}
       >
@@ -98,9 +110,8 @@ export function RelationsTab({
       <ConfirmButton
         label="Remove link"
         confirmLabel="Yes, move to Trash"
-        onConfirm={() =>
-          void (async () => after(await api.deleteParentChild(treeId, linkId), 'Moved to Trash.'))()
-        }
+        pending={busy}
+        onConfirm={() => void run(() => api.deleteParentChild(treeId, linkId), 'Moved to Trash.')}
       />
     );
 
@@ -148,12 +159,15 @@ export function RelationsTab({
           {editingUnion === u.id ? (
             <UnionForm
               union={u}
+              pending={busy}
               onCancel={() => setEditingUnion(null)}
-              onSubmit={async (input) => {
-                const res = await api.updateUnion(treeId, u.id, input);
-                if (res.ok) setEditingUnion(null);
-                await after(res);
-              }}
+              onSubmit={(input) =>
+                run(async () => {
+                  const res = await api.updateUnion(treeId, u.id, input);
+                  if (res.ok) setEditingUnion(null);
+                  return res;
+                })
+              }
             />
           ) : (
             <p className="actions">
@@ -166,10 +180,8 @@ export function RelationsTab({
                 <ConfirmButton
                   label="Remove relationship"
                   confirmLabel="Yes, move to Trash"
-                  onConfirm={() =>
-                    void (async () =>
-                      after(await api.deleteUnion(treeId, u.id), 'Moved to Trash.'))()
-                  }
+                  pending={busy}
+                  onConfirm={() => void run(() => api.deleteUnion(treeId, u.id), 'Moved to Trash.')}
                 />
               )}
             </p>
@@ -257,13 +269,16 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 
 function UnionForm({
   union,
+  pending,
   onSubmit,
   onCancel,
 }: {
   union: Union;
+  pending: boolean;
   onSubmit: (input: Parameters<ReturnType<typeof useTreesApi>['updateUnion']>[2]) => Promise<void>;
   onCancel: () => void;
 }) {
+  const uid = useId();
   const [type, setType] = useState<string>(union.type);
   const [status, setStatus] = useState<string>(union.status);
   const [start, setStart] = useState<FuzzyDraft>(toDraft(union.startDate));
@@ -308,14 +323,14 @@ function UnionForm({
   return (
     <form onSubmit={(e) => void submit(e)}>
       {select(
-        'union-type',
+        `${uid}-type`,
         'Type',
         type,
         setType,
         Object.fromEntries(UNION_TYPES.map((k) => [k, UNION_TYPE_LABEL[k]])),
       )}
       {select(
-        'union-status',
+        `${uid}-status`,
         'Status',
         status,
         setStatus,
@@ -324,7 +339,9 @@ function UnionForm({
       <FuzzyDateField label="Start" value={start} onChange={setStart} error={errors.startDate} />
       <FuzzyDateField label="End" value={end} onChange={setEnd} error={errors.endDate} />
       <p className="actions">
-        <button type="submit">Save relationship</button>
+        <button type="submit" disabled={pending}>
+          Save relationship
+        </button>
         <button type="button" className="secondary" onClick={onCancel}>
           Cancel
         </button>

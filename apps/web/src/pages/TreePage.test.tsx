@@ -182,4 +182,11 @@ describe('TreePage', () => {
     expect(screen.queryByRole('link', { name: 'Add a person' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Trash' })).not.toBeInTheDocument();
   });
+
+  it('refuses the add-person page to a viewer', async () => {
+    const s = setup({ role: 'viewer', detail: { capabilities: viewerCaps } });
+    renderAt(`/trees/${s.id}/people/new`, s);
+    expect(await screen.findByText('You can’t add people to this tree')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add person' })).not.toBeInTheDocument();
+  });
 });

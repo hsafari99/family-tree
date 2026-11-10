@@ -106,7 +106,11 @@ export function TreePage() {
       <div className="tree-layout">
         <PeopleList treeId={treeId} persons={persons} detail={detail} selectedId={personId} />
         <div className="tree-panel">
-          {newPerson ? (
+          {newPerson && !(capabilities.editAnywhere || me.steward.active) ? (
+            <p role="alert" className="error">
+              You can’t add people to this tree
+            </p>
+          ) : newPerson ? (
             <AddPersonForm
               treeId={treeId}
               persons={persons}

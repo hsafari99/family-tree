@@ -102,6 +102,48 @@ describe('PersonPanel', () => {
     expect(screen.getByLabelText('Last name')).toHaveValue('Lovelace');
   });
 
+  it('retries a stale save with only the user’s fields on the latest version', async () => {
+    const s = setup();
+    renderAt(at(s), s);
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit details' }));
+    fireEvent.change(screen.getByLabelText('Last name'), { target: { value: 'Lovelace' } });
+    // Someone else saves meanwhile.
+    const stored = s.trees.trees.get(s.id)!.people.get(ada.id)!;
+    stored.person.version = 2;
+    stored.person.occupation = 'Mathematician';
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Load the latest version' }));
+    await waitFor(() => expect(screen.getByLabelText('Occupation')).toHaveValue('Mathematician'));
+    expect(screen.getByLabelText('Last name')).toHaveValue('Lovelace');
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('Saved')).toBeInTheDocument();
+    const calls = s.trees.callsTo('updatePerson') as { input: Record<string, unknown> }[];
+    expect(calls.at(-1)!.input).toEqual({ version: 2, surname: 'Lovelace' });
+    expect(stored.person.occupation).toBe('Mathematician');
+    expect(stored.person.surname).toBe('Lovelace');
+  });
+
+  it('makes no call when nothing was changed', async () => {
+    const s = setup();
+    renderAt(at(s), s);
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit details' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument(),
+    );
+    expect(s.trees.callsTo('updatePerson')).toEqual([]);
+  });
+
+  it('shows an error when a reload fails even though a view is loaded', async () => {
+    const s = setup();
+    renderAt(at(s, '?tab=places'), s);
+    fireEvent.click(await screen.findByRole('button', { name: 'Add a place' }));
+    fireEvent.change(screen.getByLabelText('Place'), { target: { value: 'Leeds' } });
+    s.trees.failNext('getPerson', { code: 'NOT_FOUND', message: MESSAGES.personNotFound });
+    fireEvent.click(screen.getByRole('button', { name: 'Add place' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(MESSAGES.personNotFound);
+  });
+
   it('shows no edit buttons when the view cannot be edited', async () => {
     const s = setup({ capabilities: { edit: false, addRelative: false, delete: false } }, 'viewer');
     renderAt(at(s), s);

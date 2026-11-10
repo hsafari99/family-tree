@@ -5,7 +5,7 @@ import {
   RELATIVE_ROLES,
   type TreeDetail,
 } from '@family-tree/shared';
-import { type FormEvent, useEffect, useRef, useState } from 'react';
+import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { FormError, validateDeep, type FieldErrors } from '../../components/forms';
 import { personName } from '../../trees/format';
@@ -25,6 +25,7 @@ export function AddPersonForm({
   detail: TreeDetail;
   onCreated: () => void;
 }) {
+  const uid = useId();
   const api = useTreesApi();
   const navigate = useNavigate();
   const alive = useRef(true);
@@ -71,11 +72,11 @@ export function AddPersonForm({
       <FormError>{error}</FormError>
       <QuickPersonFields values={quick} onChange={setQuick} errors={errors} />
       <div className="field">
-        <label htmlFor="add-connect">Connect to</label>
+        <label htmlFor={`${uid}-connect`}>Connect to</label>
         {mustConnect && !errors.connect && (
           <p className="hint">Choose someone in your branch to connect them to.</p>
         )}
-        <select id="add-connect" value={to} onChange={(e) => setTo(e.target.value)}>
+        <select id={`${uid}-connect`} value={to} onChange={(e) => setTo(e.target.value)}>
           <option value="">{mustConnect ? 'Choose…' : 'No one'}</option>
           {persons.map((p) => (
             <option key={p.id} value={p.id}>
@@ -87,8 +88,8 @@ export function AddPersonForm({
       </div>
       {to && (
         <div className="field">
-          <label htmlFor="add-as">as their</label>
-          <select id="add-as" value={as} onChange={(e) => setAs(e.target.value)}>
+          <label htmlFor={`${uid}-as`}>as their</label>
+          <select id={`${uid}-as`} value={as} onChange={(e) => setAs(e.target.value)}>
             {RELATIVE_ROLES.map((r) => (
               <option key={r} value={r}>
                 {ROLE_LABEL[r]}

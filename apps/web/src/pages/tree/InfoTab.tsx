@@ -4,7 +4,7 @@ import {
   SEXES,
   updatePersonSchema,
 } from '@family-tree/shared';
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
 import {
   FuzzyDateField,
   fromDraft,
@@ -74,6 +74,71 @@ export function InfoTab(props: TabProps) {
   );
 }
 
+type Person = PersonView['person'];
+const TEXT_KEYS = [
+  'givenName',
+  'middleName',
+  'surname',
+  'maidenName',
+  'nickname',
+  'causeOfDeath',
+  'occupation',
+  'education',
+  'biography',
+  'notes',
+] as const;
+
+interface Form {
+  givenName: string;
+  middleName: string;
+  surname: string;
+  maidenName: string;
+  nickname: string;
+  causeOfDeath: string;
+  occupation: string;
+  education: string;
+  biography: string;
+  notes: string;
+  sex: string;
+  birth: FuzzyDraft;
+  death: FuzzyDraft;
+  isLiving: boolean;
+}
+type FormKey = keyof Form;
+/** The person field each form field edits. */
+const PERSON_KEY = { birth: 'birthDate', death: 'deathDate' } as const;
+const personKey = (k: FormKey) => (k === 'birth' || k === 'death' ? PERSON_KEY[k] : k);
+
+const toForm = (p: Person): Form => ({
+  givenName: p.givenName,
+  middleName: p.middleName ?? '',
+  surname: p.surname ?? '',
+  maidenName: p.maidenName ?? '',
+  nickname: p.nickname ?? '',
+  causeOfDeath: p.causeOfDeath ?? '',
+  occupation: p.occupation ?? '',
+  education: p.education ?? '',
+  biography: p.biography ?? '',
+  notes: p.notes ?? '',
+  sex: p.sex,
+  birth: toDraft(p.birthDate),
+  death: toDraft(p.deathDate),
+  isLiving: p.isLiving,
+});
+
+/** A comparable form of a field's value (text is compared trimmed, dates as the value sent). */
+function norm(f: Form, k: FormKey): string {
+  const v = f[k];
+  if (k === 'birth' || k === 'death') return JSON.stringify(fromDraft(f[k]));
+  return typeof v === 'string' ? v.trim() : String(v);
+}
+
+/** The fields the user changed compared with `p`. */
+function changedKeys(f: Form, p: Person): FormKey[] {
+  const base = toForm(p);
+  return (Object.keys(f) as FormKey[]).filter((k) => norm(f, k) !== norm(base, k));
+}
+
 function InfoForm({
   view,
   s,
@@ -83,40 +148,51 @@ function InfoForm({
   s: ReturnType<typeof usePersonSave>;
   onClose: () => void;
 }) {
+  const uid = useId();
   const p = view.person;
-  const [text, setText] = useState({
-    givenName: p.givenName,
-    middleName: p.middleName ?? '',
-    surname: p.surname ?? '',
-    maidenName: p.maidenName ?? '',
-    nickname: p.nickname ?? '',
-    causeOfDeath: p.causeOfDeath ?? '',
-    occupation: p.occupation ?? '',
-    education: p.education ?? '',
-    biography: p.biography ?? '',
-    notes: p.notes ?? '',
-  });
-  const [sex, setSex] = useState<string>(p.sex);
-  const [birth, setBirth] = useState<FuzzyDraft>(toDraft(p.birthDate));
-  const [death, setDeath] = useState<FuzzyDraft>(toDraft(p.deathDate));
-  const [isLiving, setIsLiving] = useState(p.isLiving);
+  const [form, setForm] = useState<Form>(() => toForm(p));
+  const base = useRef(p);
   const [errors, setErrors] = useState<FieldErrors>({});
-  const set = (k: keyof typeof text) => (v: string) => setText((t) => ({ ...t, [k]: v }));
+
+  // The person was reloaded (after a stale save): re-base on it and keep only the user's own
+  // changes, so the retry doesn't overwrite what someone else changed.
+  useEffect(() => {
+    if (p.version === base.current.version) return;
+    const mine = changedKeys(form, base.current);
+    const latest = toForm(p);
+    setForm((f) => {
+      const next = { ...latest };
+      for (const k of mine) (next as Record<FormKey, unknown>)[k] = f[k];
+      return next;
+    });
+    base.current = p;
+  }, [p]);
+
+  const set =
+    <K extends FormKey>(k: K) =>
+    (v: Form[K]) =>
+      setForm((f) => ({ ...f, [k]: v }));
+  const sex = form.sex;
+  const birth = form.birth;
+  const death = form.death;
+  const isLiving = form.isLiving;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    const changed = changedKeys(form, p);
+    if (changed.length === 0) return onClose();
     const v = validate(updatePersonSchema, {
       version: p.version,
-      ...text,
-      sex,
-      birthDate: fromDraft(birth),
-      deathDate: fromDraft(death),
-      isLiving,
+      ...Object.fromEntries(TEXT_KEYS.map((k) => [k, form[k]])),
+      sex: form.sex,
+      birthDate: fromDraft(form.birth),
+      deathDate: fromDraft(form.death),
+      isLiving: form.isLiving,
     });
     if (!v.ok) return setErrors(v.errors);
-    const fields = Object.fromEntries(
-      Object.entries(v.data).filter(([k]) => k !== 'version'),
-    ) as Omit<typeof v.data, 'version'>;
+    const data = v.data as Record<string, unknown>;
+    // Only what the user changed: the server merges it into the latest record.
+    const fields = Object.fromEntries(changed.map((k) => [personKey(k), data[personKey(k)]]));
     const consistency = personConsistencyErrors({ ...p, ...fields });
     if (Object.keys(consistency).length > 0) {
       return setErrors(Object.fromEntries(Object.entries(consistency).map(([k, m]) => [k, m[0]])));
@@ -127,19 +203,19 @@ function InfoForm({
 
   const area = (k: 'biography' | 'notes', label: string) => (
     <div className="field">
-      <label htmlFor={`info-${k}`}>{label}</label>
+      <label htmlFor={`${uid}-${k}`}>{label}</label>
       <textarea
-        id={`info-${k}`}
+        id={`${uid}-${k}`}
         rows={5}
-        value={text[k]}
+        value={form[k]}
         onChange={(e) => set(k)(e.target.value)}
         aria-invalid={errors[k] ? true : undefined}
       />
       {errors[k] && <p className="field-error">{errors[k]}</p>}
     </div>
   );
-  const field = (k: keyof typeof text, label: string) => (
-    <Field label={label} name={k} value={text[k]} onChange={set(k)} error={errors[k]} />
+  const field = (k: (typeof TEXT_KEYS)[number], label: string) => (
+    <Field label={label} name={k} value={form[k]} onChange={set(k)} error={errors[k]} />
   );
 
   return (
@@ -159,8 +235,8 @@ function InfoForm({
       {field('maidenName', 'Maiden name')}
       {field('nickname', 'Nickname')}
       <div className="field">
-        <label htmlFor="info-sex">Sex</label>
-        <select id="info-sex" value={sex} onChange={(e) => setSex(e.target.value)}>
+        <label htmlFor={`${uid}-sex`}>Sex</label>
+        <select id={`${uid}-sex`} value={sex} onChange={(e) => set('sex')(e.target.value)}>
           {SEXES.map((x) => (
             <option key={x} value={x}>
               {SEX_LABEL[x]}
@@ -168,14 +244,14 @@ function InfoForm({
           ))}
         </select>
       </div>
-      <FuzzyDateField label="Born" value={birth} onChange={setBirth} error={errors.birthDate} />
-      <FuzzyDateField label="Died" value={death} onChange={setDeath} error={errors.deathDate} />
+      <FuzzyDateField label="Born" value={birth} onChange={set('birth')} error={errors.birthDate} />
+      <FuzzyDateField label="Died" value={death} onChange={set('death')} error={errors.deathDate} />
       <div className="field">
         <label>
           <input
             type="checkbox"
             checked={isLiving}
-            onChange={(e) => setIsLiving(e.target.checked)}
+            onChange={(e) => set('isLiving')(e.target.checked)}
             style={{ width: 'auto' }}
           />{' '}
           Living

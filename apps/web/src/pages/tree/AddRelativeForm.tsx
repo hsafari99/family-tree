@@ -8,7 +8,7 @@ import {
   UNION_STATUSES,
   UNION_TYPES,
 } from '@family-tree/shared';
-import { type FormEvent, useEffect, useRef, useState } from 'react';
+import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
 import { FormError, validateDeep, type FieldErrors } from '../../components/forms';
 import {
   CHILD_KIND_LABEL,
@@ -52,6 +52,7 @@ export function AddRelativeForm({
   onDone: () => void;
   onCancel: () => void;
 }) {
+  const uid = useId();
   const api = useTreesApi();
   const alive = useRef(true);
   useEffect(() => {
@@ -174,9 +175,9 @@ export function AddRelativeForm({
         <QuickPersonFields values={quick} onChange={setQuick} errors={errors} />
       ) : (
         <div className="field">
-          <label htmlFor="rel-existing">Person</label>
+          <label htmlFor={`${uid}-existing`}>Person</label>
           <select
-            id="rel-existing"
+            id={`${uid}-existing`}
             value={existingId}
             onChange={(e) => setExistingId(e.target.value)}
           >
@@ -191,7 +192,7 @@ export function AddRelativeForm({
         </div>
       )}
       {as === 'child' &&
-        select('rel-other-parent', 'Other parent', childUnion, setChildUnion, [
+        select(`${uid}-other-parent`, 'Other parent', childUnion, setChildUnion, [
           ...rel.unions.map((u) => ({
             value: u.id,
             label: u.partner ? `with ${personName(u.partner)}` : 'with an unknown partner',
@@ -200,7 +201,7 @@ export function AddRelativeForm({
         ])}
       {as === 'parent' &&
         joinable.length > 0 &&
-        select('rel-join', 'Which parents', parentUnion, setParentUnion, [
+        select(`${uid}-join`, 'Which parents', parentUnion, setParentUnion, [
           ...joinable.map((p) => ({
             value: p.union.id,
             label: `Join ${names(p.parents, 'an unknown parent')}`,
@@ -210,7 +211,7 @@ export function AddRelativeForm({
       {as === 'sibling' &&
         rel.parents.length > 1 &&
         select(
-          'rel-shared',
+          `${uid}-shared`,
           'Shared parents',
           siblingUnion,
           setSiblingUnion,
@@ -221,7 +222,7 @@ export function AddRelativeForm({
         )}
       {as !== 'partner' &&
         select(
-          'rel-kind',
+          `${uid}-kind`,
           'Kind',
           kind,
           setKind,
@@ -230,14 +231,14 @@ export function AddRelativeForm({
       {as === 'partner' && (
         <>
           {select(
-            'rel-type',
+            `${uid}-type`,
             'Type',
             unionType,
             setUnionType,
             UNION_TYPES.map((k) => ({ value: k, label: UNION_TYPE_LABEL[k] })),
           )}
           {select(
-            'rel-status',
+            `${uid}-status`,
             'Status',
             unionStatus,
             setUnionStatus,

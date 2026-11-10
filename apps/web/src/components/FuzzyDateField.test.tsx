@@ -40,6 +40,17 @@ describe('FuzzyDateField', () => {
   });
 });
 
+describe('FuzzyDateField inputs', () => {
+  it('describes each input by the hint and error and marks them invalid', () => {
+    render(<Harness error="Enter a real date" />);
+    const error = screen.getByText('Enter a real date');
+    const hint = screen.getByText(/Year, year and month/);
+    const input = screen.getByLabelText('Date');
+    expect(input.getAttribute('aria-describedby')).toBe(`${hint.id} ${error.id}`);
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+  });
+});
+
 describe('fromDraft', () => {
   it('gives null for a blank date', () => {
     expect(fromDraft({ qualifier: 'exact', date1: '  ', date2: '' })).toBeNull();

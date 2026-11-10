@@ -130,12 +130,15 @@ function TrashRow({
   const [showing, setShowing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   async function toggle() {
     if (showing) return setShowing(false);
     setError(null);
+    setLoading(true);
     const res = await api.getTrashBatch(treeId, batch.id);
     if (!alive.current) return;
+    setLoading(false);
     if (!res.ok) return setError(res.error.message);
     setDetail(res.data);
     setShowing(true);
@@ -148,7 +151,7 @@ function TrashRow({
       kind === 'restore'
         ? await api.restoreBatch(treeId, batch.id)
         : await api.eraseBatch(treeId, batch.id);
-    if (!alive.current && !res.ok) return;
+    if (!alive.current) return;
     setPending(false);
     if (!res.ok) return setError(res.error.message);
     onGone(batch.id, kind === 'restore' ? 'Restored.' : 'Erased.');
@@ -186,7 +189,12 @@ function TrashRow({
         </div>
       )}
       <p className="actions">
-        <button type="button" className="secondary" onClick={() => void toggle()}>
+        <button
+          type="button"
+          className="secondary"
+          disabled={loading}
+          onClick={() => void toggle()}
+        >
           {showing ? 'Hide details' : 'Show details'}
         </button>
         <button type="button" disabled={pending} onClick={() => void act('restore')}>

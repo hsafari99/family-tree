@@ -26,7 +26,14 @@ export function PlacesTab(props: TabProps) {
   const [deathPlace, setDeathPlace] = useState('');
   const [errors, setErrors] = useState<FieldErrors>({});
 
+  // What the form was opened from: only fields the user changed are saved.
+  const opened = useRef({ birth: '', death: '' });
+
   function open() {
+    opened.current = {
+      birth: (view.person.birthPlace ?? '').trim(),
+      death: (view.person.deathPlace ?? '').trim(),
+    };
     setBirthPlace(view.person.birthPlace ?? '');
     setDeathPlace(view.person.deathPlace ?? '');
     setErrors({});
@@ -42,9 +49,12 @@ export function PlacesTab(props: TabProps) {
     });
     if (!v.ok) return setErrors(v.errors);
     setErrors({});
-    if (await s.save({ birthPlace: v.data.birthPlace, deathPlace: v.data.deathPlace })) {
-      setEditing(false);
-    }
+    const fields = {
+      ...(birthPlace.trim() !== opened.current.birth ? { birthPlace: v.data.birthPlace } : {}),
+      ...(deathPlace.trim() !== opened.current.death ? { deathPlace: v.data.deathPlace } : {}),
+    };
+    if (Object.keys(fields).length === 0) return setEditing(false);
+    if (await s.save(fields)) setEditing(false);
   }
 
   return (
@@ -132,12 +142,20 @@ function ResidenceRow({ treeId, view, reload, residence }: TabProps & { residenc
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [removing, setRemoving] = useState(false);
+
   async function remove() {
+    if (removing) return;
     setError(null);
+    setRemoving(true);
     const res = await api.deleteResidence(treeId, residence.id);
     if (!alive.current) return;
-    if (!res.ok) return setError(res.error.message);
+    if (!res.ok) {
+      setRemoving(false);
+      return setError(res.error.message);
+    }
     await reload();
+    if (alive.current) setRemoving(false);
   }
 
   return (
@@ -167,6 +185,7 @@ function ResidenceRow({ treeId, view, reload, residence }: TabProps & { residenc
               </button>
               <ConfirmButton
                 label="Remove"
+                pending={removing}
                 confirmLabel="Yes, remove"
                 onConfirm={() => void remove()}
               />

@@ -1,4 +1,5 @@
 import { SEXES } from '@family-tree/shared';
+import { useId } from 'react';
 import { Field, type FieldErrors } from '../../components/forms';
 import { SEX_LABEL } from '../../trees/format';
 
@@ -36,6 +37,7 @@ export function QuickPersonFields({
   onChange: (v: QuickValues) => void;
   errors: FieldErrors;
 }) {
+  const uid = useId();
   const set = (k: keyof QuickValues) => (value: string) => onChange({ ...values, [k]: value });
   return (
     <>
@@ -54,8 +56,8 @@ export function QuickPersonFields({
         error={errors['person.surname']}
       />
       <div className="field">
-        <label htmlFor="quick-sex">Sex</label>
-        <select id="quick-sex" value={values.sex} onChange={(e) => set('sex')(e.target.value)}>
+        <label htmlFor={`${uid}-sex`}>Sex</label>
+        <select id={`${uid}-sex`} value={values.sex} onChange={(e) => set('sex')(e.target.value)}>
           {SEXES.map((x) => (
             <option key={x} value={x}>
               {SEX_LABEL[x]}

@@ -34,6 +34,7 @@ export function FuzzyDateField({
   error?: string | undefined;
 }) {
   const id = useId();
+  const describedBy = error ? `${id}-hint ${id}-error` : `${id}-hint`;
   const between = value.qualifier === 'between';
   return (
     <fieldset className="field fuzzy-date" aria-describedby={error ? `${id}-error` : `${id}-hint`}>
@@ -56,6 +57,8 @@ export function FuzzyDateField({
       <label htmlFor={`${id}-1`}>{between ? 'From' : 'Date'}</label>
       <input
         id={`${id}-1`}
+        aria-describedby={describedBy}
+        aria-invalid={error ? true : undefined}
         inputMode="numeric"
         value={value.date1}
         onChange={(e) => onChange({ ...value, date1: e.target.value })}
@@ -65,6 +68,8 @@ export function FuzzyDateField({
           <label htmlFor={`${id}-2`}>and</label>
           <input
             id={`${id}-2`}
+            aria-describedby={describedBy}
+            aria-invalid={error ? true : undefined}
             inputMode="numeric"
             value={value.date2}
             onChange={(e) => onChange({ ...value, date2: e.target.value })}

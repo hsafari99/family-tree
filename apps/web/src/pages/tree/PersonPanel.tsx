@@ -76,6 +76,7 @@ export function PersonPanel({
 
   return (
     <div className="person-panel">
+      {error && <FormError>{error}</FormError>}
       <h2>
         {personName(p)}
         {years && ` ${years}`}

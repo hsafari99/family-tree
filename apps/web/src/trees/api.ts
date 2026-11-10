@@ -208,6 +208,9 @@ export function createTreesApi({ baseUrl }: { baseUrl: string }): TreesApi {
     return res.ok ? { ok: true, data: f(res.data) } : res;
   };
 
+  // FORBIDDEN on a delete call always means "outside your branch / not allowed to delete": the
+  // server only answers 403 there when the actor's scope or role is too small, so one fixed
+  // message (deleteNotAllowed) fits every delete call below.
   return {
     listTrees: () => request('GET', '/trees', undefined, treeListSchema),
     createTree: (input) => map(request('POST', '/trees', input, createdTreeSchema), (d) => d.tree),
