@@ -291,11 +291,12 @@ textarea {
   padding: 0.4rem 0.5rem;
   border: 2px solid #4a6fa5;
   border-radius: 10px;
-  background: #fff;
+  background: Canvas;
+  color: CanvasText;
 }
 .person-card.is-deceased {
   border-color: #9a9a9a;
-  background: #f4f4f4;
+  background: var(--surface);
 }
 .person-card.is-focus {
   box-shadow: 0 0 0 3px #f0b429;
@@ -311,8 +312,8 @@ textarea {
   border-radius: 50%;
   display: grid;
   place-items: center;
-  background: #dfe6ee;
-  color: #34495e;
+  background: color-mix(in srgb, #4a6fa5 22%, Canvas);
+  color: CanvasText;
   font-weight: 700;
 }
 .card-open {
@@ -332,15 +333,15 @@ textarea {
 .card-years,
 .card-you {
   font-size: 0.8rem;
-  color: #555;
+  color: var(--muted);
 }
 .card-more {
   position: absolute;
   right: 6px;
   bottom: 2px;
-  color: #777;
+  color: var(--muted);
 }
-.card-add {
+.person-card .card-add {
   position: absolute;
   width: 24px;
   height: 24px;
@@ -358,9 +359,15 @@ textarea {
 }
 /* Touch screens have no hover: always show the "+" buttons there. */
 @media (hover: none) {
-  .card-add {
+  .person-card .card-add {
     opacity: 1;
   }
+}
+/* "Add a sibling" without parents stays dimmed when the buttons show. */
+.person-card:hover .card-add:disabled,
+.person-card:focus-within .card-add:disabled,
+.person-card.is-selected .card-add:disabled {
+  opacity: 0.45;
 }
 .card-add-top {
   top: -13px;
@@ -414,7 +421,7 @@ textarea {
   box-sizing: border-box;
 }
 .union-dot.is-ended::before {
-  background: #fff;
+  background: Canvas;
   border: 2px dashed #9a9a9a;
 }
 .union-dot:focus-visible {
@@ -485,20 +492,31 @@ textarea {
 .disconnected-list {
   position: absolute;
   z-index: 10;
-  background: #fff;
-  border: 1px solid #ccd;
+  background: Canvas;
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.5rem 1rem;
   min-width: 240px;
   max-height: 50vh;
   overflow: auto;
 }
+.branch-picker {
+  position: relative;
+}
 .branch-matches {
+  /* Floats over the canvas instead of pushing the toolbar down. */
+  position: absolute;
+  z-index: 10;
+  left: 0;
+  right: 0;
   list-style: none;
   margin: 0.25rem 0;
-  padding: 0;
+  padding: 0.25rem;
   max-height: 40vh;
   overflow: auto;
+  background: Canvas;
+  border: 1px solid var(--border);
+  border-radius: 8px;
 }
 .people-fallback {
   margin-top: 1rem;
@@ -518,7 +536,7 @@ textarea {
     bottom: 0;
     z-index: 20;
     max-height: 65vh;
-    background: #fff;
+    background: Canvas;
     border-top-left-radius: 14px;
     border-top-right-radius: 14px;
     box-shadow: 0 -4px 16px rgb(0 0 0 / 20%);

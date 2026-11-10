@@ -1,5 +1,5 @@
 import type { ElkNode } from 'elkjs/lib/elk-api.js';
-import type { CanvasNode, Flow } from './graph-to-flow';
+import { CARD_WIDTH, type CanvasNode, type Flow, UNION_SIZE } from './graph-to-flow';
 
 /** ELK layered, top to bottom, generations as partitions (decision 13). */
 export const ELK_LAYOUT_OPTIONS: Record<string, string> = {
@@ -51,6 +51,18 @@ export function toElkGraph(flow: Flow, generations: ReadonlyMap<string, number> 
  */
 export function applyElkLayout(nodes: CanvasNode[], laidOut: ElkNode): CanvasNode[] {
   const pos = new Map((laidOut.children ?? []).map((c) => [c.id, { x: c.x ?? 0, y: c.y ?? 0 }]));
+  // ELK puts a union dot anywhere in its row; centre it between two shown partners so the
+  // couple reads as a pair (it keeps ELK's y, the row between partners and children).
+  for (const n of nodes) {
+    if (n.type !== 'union') continue;
+    const dot = pos.get(n.id);
+    const partners = [n.data.union.partnerAId, n.data.union.partnerBId]
+      .map((id) => (id ? pos.get(`p:${id}`) : undefined))
+      .filter((p) => p !== undefined);
+    if (!dot || partners.length !== 2) continue;
+    const mid = (partners[0]!.x + partners[1]!.x + CARD_WIDTH) / 2;
+    pos.set(n.id, { x: mid - UNION_SIZE / 2, y: dot.y });
+  }
   return nodes
     .map((n) => {
       const p = pos.get(n.id);

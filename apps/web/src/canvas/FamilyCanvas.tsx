@@ -134,6 +134,7 @@ function CanvasInner({
             nodes={shown}
             edges={edges}
             nodeTypes={NODE_TYPES}
+            colorMode="system"
             onNodesChange={onNodesChange}
             onNodeDragStop={onNodeDragStop}
             nodesDraggable={false}

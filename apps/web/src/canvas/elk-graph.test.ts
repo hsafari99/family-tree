@@ -66,3 +66,19 @@ describe('applyElkLayout', () => {
     expect(toElkGraph(f, null).children!.map((c) => c.id)).toEqual(before);
   });
 });
+
+describe('applyElkLayout union dots', () => {
+  it('centres a union dot horizontally between its two shown partners', () => {
+    const f = flow();
+    const union = f.nodes.find((n) => n.id === 'u:u-rm')!;
+    if (union.type !== 'union') throw new Error('fixture');
+    const [a, b] = [union.data.union.partnerAId, union.data.union.partnerBId].map(
+      (id) => `p:${id}`,
+    );
+    const laid = { id: 'root', children: f.nodes.map((n) => ({ id: n.id, x: 50, y: 0 })) };
+    laid.children.find((c) => c.id === a)!.x = 0;
+    laid.children.find((c) => c.id === b)!.x = 400;
+    const dot = applyElkLayout(f.nodes, laid).find((n) => n.id === 'u:u-rm')!;
+    expect(dot.position.x + 12).toBe((CARD_WIDTH / 2 + 400 + CARD_WIDTH / 2) / 2);
+  });
+});
