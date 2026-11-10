@@ -63,4 +63,21 @@ describe('ObjectStore against SeaweedFS', () => {
     await store.delete(k); // already gone: still fine
     expect((await fetch(await store.signedUrl(k))).status).toBe(404);
   });
+
+  it('gets an object back, and null for a missing key', async () => {
+    const k = key();
+    await store.put(k, bytes, 'image/webp');
+    expect(await store.get(k)).toEqual(bytes);
+    expect(await store.get(`test/${randomUUID()}/missing.webp`)).toBeNull();
+  });
+
+  it('lists objects under a prefix with their modification time', async () => {
+    const prefix = `test/${randomUUID()}/`;
+    await store.put(`${prefix}a.webp`, bytes, 'image/webp');
+    await store.put(`${prefix}b/c.webp`, bytes, 'image/webp');
+    const listed = [];
+    for await (const o of store.list(prefix)) listed.push(o);
+    expect(listed.map((o) => o.key).sort()).toEqual([`${prefix}a.webp`, `${prefix}b/c.webp`]);
+    for (const o of listed) expect(Date.now() - o.lastModified.getTime()).toBeLessThan(60_000);
+  });
 });

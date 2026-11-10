@@ -111,6 +111,7 @@ const routes = (t: string, ids: Ids): Route[] => [
   ['GET', `/api/v1/trees/${t}/search?q=Anchor`],
   ['GET', `/api/v1/trees/${t}/search?q=x&branch=${ids.person}`],
   ['GET', `/api/v1/trees/${t}/relationship?from=${ids.person}&to=${ids.person2}`],
+  ['GET', `/api/v1/trees/${t}/export`],
   // A JSON body: the outsider is refused in onRequest, before the body is parsed.
   ['POST', `/api/v1/trees/${t}/persons/${ids.person}/photos`, { x: 1 }],
   ['POST', `/api/v1/trees/${t}/photos/${ids.photo}/primary`],

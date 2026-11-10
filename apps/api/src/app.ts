@@ -20,6 +20,7 @@ import { trashRoutes } from './routes/trash.js';
 import type { limiter } from './photos/limiter.js';
 import { graphRoutes } from './routes/graph.js';
 import { searchRoutes } from './routes/search.js';
+import { exportRoutes } from './routes/export.js';
 import { deletionRoutes } from './routes/deletion.js';
 import { passwordResetRoutes } from './routes/password-reset.js';
 import { treesRoutes } from './routes/trees.js';
@@ -41,6 +42,10 @@ export type AppOptions = AuthOptions & {
   logStream?: { write(line: string): void };
   /** Photo processing slots; tests inject a full one to check the busy answer. */
   photoJobs?: ReturnType<typeof limiter>;
+  /** Exports at once (default 2); tests pass 0 to check the busy answer. */
+  exportConcurrency?: number;
+  /** Per-export time limit (default 10 minutes). */
+  exportTimeoutMs?: number;
 };
 
 /**
@@ -62,6 +67,8 @@ export function buildApp({
   rateLimitMax = 300,
   logStream,
   photoJobs,
+  exportConcurrency,
+  exportTimeoutMs,
 }: AppOptions) {
   const app = Fastify({
     trustProxy: trustHops(config.TRUST_PROXY),
@@ -86,6 +93,8 @@ export function buildApp({
     origin: [config.WEB_ORIGIN],
     credentials: true,
     methods: ['GET', 'HEAD', 'POST', 'PATCH', 'DELETE'],
+    // The web app is on another origin: without this it can't read the export's file name.
+    exposedHeaders: ['Content-Disposition'],
   });
   // Every route must be registered inside a plugin (app.register) after this line; routes added
   // directly on `app`, or before this plugin, are not rate-limited.
@@ -122,6 +131,14 @@ export function buildApp({
     app.register(trashRoutes, { auth, db, config, storage: store! });
     app.register(graphRoutes, { auth, db, config, storage: store! });
     app.register(searchRoutes, { auth, db, config, storage: store! });
+    app.register(exportRoutes, {
+      auth,
+      db,
+      config,
+      storage: store!,
+      ...(exportConcurrency !== undefined ? { exportConcurrency } : {}),
+      ...(exportTimeoutMs !== undefined ? { exportTimeoutMs } : {}),
+    });
   }
 
   app.setNotFoundHandler((_req, reply) => {
