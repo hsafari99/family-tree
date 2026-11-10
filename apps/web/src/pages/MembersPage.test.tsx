@@ -245,6 +245,23 @@ describe('MembersPage', () => {
     await waitFor(() => expect(screen.queryByText(/looks after Cy Hale/)).not.toBeInTheDocument());
   });
 
+  it('hides the steward form and says why when nobody could be made a steward', async () => {
+    const s = setup();
+    // Only the owner is a member: there is nobody else to make a steward.
+    s.trees.trees.get(s.id)!.members = [s.mine];
+    renderAt(`/trees/${s.id}/members`, s);
+    await screen.findByRole('heading', { name: 'Branch stewards' });
+    expect(
+      screen.queryByRole('heading', { name: 'Make someone a steward' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Make steward' })).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Invite someone and have them join first; then you can make them a steward.',
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('uses a neutral message when a member, grant or invite no longer exists', async () => {
     const s = setup();
     renderAt(`/trees/${s.id}/members`, s);
