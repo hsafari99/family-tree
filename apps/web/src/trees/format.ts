@@ -129,6 +129,9 @@ export const ACTION_LABEL: Record<AuditAction, string> = {
   'residence.create': 'Place of residence added',
   'residence.update': 'Place of residence changed',
   'residence.delete': 'Place of residence removed',
+  'photo.create': 'Photo added',
+  'photo.primary': 'Main photo changed',
+  'photo.delete': 'Photo removed',
   'trash.restore': 'Restored from Trash',
   'trash.erase': 'Erased permanently',
   'member.join': 'Joined the tree',
@@ -152,4 +155,17 @@ export function formatValue(v: unknown): string {
 export function initials(p: NameParts): string {
   const first = (s: string | null) => (s ? ([...s.trim()][0] ?? '') : '');
   return (first(p.givenName) + first(p.surname)).toLocaleUpperCase();
+}
+
+/** 950 B, 12.3 KB, 4.5 MB, 1 GB: decimal units, one decimal below 100. */
+export function formatBytes(n: number): string {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let v = n;
+  let i = 0;
+  while (v >= 1000 && i < units.length - 1) {
+    v /= 1000;
+    i++;
+  }
+  const digits = i === 0 || v >= 100 || Number.isInteger(v) ? 0 : 1;
+  return `${v.toFixed(digits)} ${units[i]}`;
 }

@@ -12,6 +12,7 @@ export const HISTORY_ACTION_PREFIXES = [
   'union.',
   'link.',
   'residence.',
+  'photo.',
   'trash.',
 ] as const;
 
@@ -292,6 +293,9 @@ export const AUDIT_ACTIONS = [
   'residence.create',
   'residence.update',
   'residence.delete',
+  'photo.create',
+  'photo.primary',
+  'photo.delete',
   'trash.restore',
   'trash.erase',
   'member.join',
@@ -310,6 +314,7 @@ export const AUDIT_ENTITIES = [
   'union',
   'link',
   'residence',
+  'photo',
   'batch',
   'member',
   'grant',
