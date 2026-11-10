@@ -20,7 +20,7 @@
   - `export/gedcom.ts`: a pure GEDCOM 5.5.1 writer. It covers fuzzy dates (`ABT`/`BEF`/`AFT`/`BET … AND …`), names with maiden names and nicknames, `SEX`, `BIRT`/`DEAT` with `CAUS`, `OCCU`, `EDUC` and `RESI`. Unions become `FAM` records with `MARR`, partnership and separation `EVEN`s, and `DIV`. Child kinds become `PEDI`. `CHIL` lines follow `sibling_order`, and photos become `OBJE` records. Long text uses `CONT`/`CONC`, and `@` is written `@@`.
   - `export/load.ts`: one `REPEATABLE READ`, read-only snapshot of the live tree.
   - `export/write.ts`: streams the photos one at a time from `ObjectStore.get`, then writes the GEDCOM and the JSON.
-  - `routes/export.ts`: `GET /trees/:id/export`. Only the owner may call it (`tree.export`). It is limited to 5 per hour per user and 2 at once per process.
+  - `routes/export.ts`: `GET /trees/:id/export`. Only the owner may call it (`tree.export`). It is limited to 5 per hour per user, 2 at once per process and 1 at once per user, with a 10-minute wall-clock limit.
 - **API, operations:**
   - `db/migrate-cli.ts` and `MIGRATE_ON_START`: production migrates in a one-shot service, as the owner role.
   - `AUTH_RATE_LIMIT_ENABLED`: turned off only for the E2E dev stack. Production refuses it.
@@ -67,7 +67,7 @@
   - Never run `wrangler`, never call the Cloudflare, Hetzner or R2 APIs, never change DNS, and never `docker push` or `docker login`.
   - The GHCR workflow is `workflow_dispatch` only. It must not have `push:` or `schedule:` triggers.
 - **Dependencies:**
-  - The only new ones are in Task 1: `@playwright/test` 1.64.1 with exact pins. Every new lockfile package must be at least 14 days old. Check with `node /tmp/claude-1000/-home-hsafari99-Documents-hosseinRepos/6cfbb749-c0ee-4dd2-8a46-7c605b6d051b/scratchpad/check-ages.mjs pnpm-lock.yaml` (called `<check-ages>` below). It compares against `HEAD` by default, or against a base commit given as the second argument.
+  - The only new ones are in Task 1: `@playwright/test` 1.64.1 with exact pins. Every new lockfile package must be at least 14 days old. Task 1 Step 4 writes the Phase 5 age-check script, verbatim, to `<scratchpad>/check-ages.mjs`, outside the repo (called `<check-ages>` below), so nothing depends on an earlier session. Run it as `node <check-ages> pnpm-lock.yaml`. It compares against `HEAD` by default, or against a base commit given as the second argument.
   - **Never** add `minimumReleaseAge` or `minimumReleaseAgeExclude`, and never pass them on the command line.
   - Never upgrade existing dependencies. **Vite stays at 8.3.6.**
   - **The dev CPU (Xeon E5-1650 v2, Ivy Bridge) has no AVX2.** The Playwright browser is the only new native binary. Task 1 checks it first, with a **STOP and report BLOCKED** rule. No other native tooling is added. Caddy, rclone and age are Go binaries for baseline x86-64.
@@ -136,7 +136,8 @@
    - **The file format:**
      - `1 CHAR UTF-8`, with a UTF-8 BOM (GEDCOM 5.5.5 recommends it, and Gramps, RootsMagic, Ancestry and MyHeritage accept it).
      - CRLF line endings.
-     - Each line has at most 255 bytes, because values are cut at 200 UTF-8 bytes.
+     - Each line has at most 255 bytes: text and names are split into chunks of at most 200 UTF-8 bytes with `CONC`, including the `NAME`, `GIVN`, `SURN` and `NICK` lines (review fix I4).
+    - C0 control characters and DEL are stripped from every value.
      - `@` in values is written `@@`.
      - Multi-line text (biography, notes) uses `CONT` for line breaks and `CONC` for long lines. A split never lands next to a space, inside a code point or inside `@@`.
      - Single-line values (places, occupation, cause of death) collapse whitespace and are cut at 240 bytes with `…`. `tree.json` keeps the full text.
@@ -174,7 +175,9 @@
    - **Entry names** must match `[A-Za-z0-9._\-/]`, with no leading `/` and no `.` or `..` segments, so no zip-slip is possible.
 8. **Export limits (spec §8, "heavy endpoints"):**
    - **5 exports per hour per user** (`extraLimit`, `by: 'user'`). Over that is `429 RATE_LIMITED`.
-   - **2 concurrent exports per API process.** Over that is `503 RATE_LIMITED` with `Retry-After: 30`.
+   - **2 concurrent exports per API process, and 1 per user.** Over that is `503 RATE_LIMITED` with `Retry-After: 30`.
+   - **A 10-minute wall-clock limit** (`exportTimeoutMs`) aborts the stream and frees the slot, even if storage hangs.
+   - CORS exposes `Content-Disposition` (`exposedHeaders`), so the cross-origin web app can read the file name.
    - The response is `Content-Type: application/zip`, with `Content-Disposition: attachment; filename="family-tree-YYYY-MM-DD.zip"` (ASCII only) and `Cache-Control: no-store`.
    - **Failures:**
      - If the client goes away, the writer stops at the next photo.
@@ -241,7 +244,8 @@
     - **Photos:** `rclone sync photos:<bucket> <BACKUP_ROOT>/photos/current --backup-dir <BACKUP_ROOT>/photos/deleted/<timestamp>`. Deleted or changed objects are kept for 14 runs.
       - The photo mirror is **not** age-encrypted. It is a second private bucket inside the same trust boundary as the live, unencrypted photo bucket.
       - The database dump is encrypted because it holds password hashes and every person's details in one file.
-    - **The private age key** is never on the server. It is kept offline by the author and mounted only for a restore.
+    - **Tokens:** the photo mirror reads with a separate read-only R2 token (`BACKUP_PHOTOS_*`, falling back to the app token). Only `restore.sh` writes to the photo bucket, through the `photosrw` remote with the app token. The docs recommend R2 bucket lock rules on `family-backups`.
+  - **The private age key** is never on the server. It is kept offline by the author and mounted only for a restore.
     - **Restore** (`restore.sh`), with the API stopped:
       1. Fetch and decrypt the dump.
       2. Check it with `pg_restore --list`.
@@ -274,6 +278,7 @@
 17. **The orphan sweep (the Phase 6 carry-forward; the README promised it for phase 7):**
     - It lists `trees/` in the bucket, and deletes objects older than **24 hours** that no `photos` row and no `storage_deletions` row knows.
     - It warns (`stored objects keep failing to delete`) when outbox rows have 10 or more attempts.
+    - **Guards, so it can never delete real photos** (review fix C1): it never runs on the first purge tick after startup; it refuses when the database has no `photos` rows but the bucket has objects; and it refuses, deleting nothing, when the candidates are over 20% of the objects scanned or over 500 in one run. A refusal logs `orphan sweep refused`.
     - **When it runs:**
       - The purge job runs it at most once every 24 h (on by default from `server.ts`, off by default in `startPurgeJob` for tests).
       - `purge-cli --sweep` runs it on demand.
@@ -285,7 +290,7 @@
       - runs `pnpm test:e2e`;
       - uploads the report on failure.
       It can't be run locally, and its first real run is the author's next push, which is outside this phase. Task 15 checks the YAML.
-    - **`release-api.yml`:** `workflow_dispatch` with a `tag` input. It builds `apps/api/Dockerfile` and pushes `ghcr.io/<owner>/family-tree-api:<tag>`. It has no other triggers. This replaces spec §10 step 1's "CI pushes", so nothing is published until the author clicks Run.
+    - **`release-api.yml`:** `workflow_dispatch` with a `tag` input, validated as `YYYY.M.N` before use. The actions are pinned to commit SHAs. It builds `apps/api/Dockerfile` and pushes `ghcr.io/<owner>/family-tree-api:<tag>`. It has no other triggers. This replaces spec §10 step 1's "CI pushes", so nothing is published until the author clicks Run.
 19. **Not in this phase (carry-forward):**
     - Moving 2FA to a new device (spec §5; the README said "planned for phase 7"). It is not in §11's Phase 7 list, so the README now says "not available yet", and the item is carried forward with its design note.
     - The message catalog (spec §6).
@@ -358,7 +363,7 @@ README.md                                export, production, E2E, limitations
 
 **Files:**
 - Create: `e2e/package.json`, `e2e/tsconfig.json`, `e2e/scripts/browser-check.mjs`
-- Modify: `pnpm-workspace.yaml`, `package.json`, `pnpm-lock.yaml`, `.gitignore`, `.dockerignore`, `.prettierignore`, `eslint.config.js`
+- Modify: `pnpm-workspace.yaml`, `package.json`, `pnpm-lock.yaml`, `.gitignore`, `.dockerignore`, `.prettierignore`, `eslint.config.js`, `compose.yml`, `docker/dev.Dockerfile`
 
 - [ ] **Step 1: Re-check the publish dates and install scripts** (read-only network):
 
@@ -462,6 +467,11 @@ packages:
   },
 ```
 
+  **The dev containers install the new package too** (review fix I5):
+  - In `compose.yml`, add `- nm_e2e:/app/e2e/node_modules` to the `&app-volumes` list, and `nm_e2e:` under the top-level `volumes:`.
+  - In the `install` service's command, add `e2e/package.json` to `files=`, and add `&& [ -e e2e/node_modules/@playwright/test ]` to the up-to-date check.
+  - In `docker/dev.Dockerfile`, add `/app/e2e/node_modules` to the `mkdir -p` list, which is then `chown`ed with the others.
+
 - [ ] **Step 3: Install.** Run `pnpm install`.
 
   Expected:
@@ -469,7 +479,34 @@ packages:
   - `@better-auth/utils`, `sharp`, `@types/node` and `typescript` reuse the locked versions.
   - `git diff pnpm-workspace.yaml` shows only the `- e2e` line. If pnpm wrote `minimumReleaseAgeExclude` or `allowBuilds`, or changed any existing version, run `git checkout pnpm-workspace.yaml pnpm-lock.yaml package.json` and `rm -rf e2e/node_modules`, then stop and ask.
 
-- [ ] **Step 4: Check the ages.** Run `node <check-ages> pnpm-lock.yaml`.
+- [ ] **Step 4: Check the ages.** Write the Phase 5 age-check script, verbatim, to `<scratchpad>/check-ages.mjs`, outside the repo. It is copied here so nothing depends on an earlier session:
+
+```js
+// Usage: node check-ages.mjs <repo>/pnpm-lock.yaml [base-ref]  — new packages and their publish dates.
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+const lock = readFileSync(process.argv[2], 'utf8');
+const base = process.argv[3] ?? 'HEAD'; // the commit to compare against
+const before = execFileSync('git', ['show', `${base}:pnpm-lock.yaml`], { encoding: 'utf8' });
+const keys = (s) => new Set([...s.matchAll(/^  '?(@?[^@\s']+)@([^:'(\s]+)'?:$/gm)].map((m) => `${m[1]}@${m[2]}`));
+const old = keys(before);
+const cutoff = Date.now() - 14 * 86_400_000;
+let bad = 0;
+for (const k of keys(lock)) {
+  if (old.has(k)) continue;
+  const at = k.lastIndexOf('@');
+  const [name, version] = [k.slice(0, at), k.slice(at + 1)];
+  const time = JSON.parse(execFileSync('pnpm', ['view', name, 'time', '--json'], { encoding: 'utf8' }))[version];
+  const scripts = execFileSync('pnpm', ['view', `${name}@${version}`, 'scripts', '--json'], { encoding: 'utf8' }) || '{}';
+  const install = /"(pre|post)?install"/.test(scripts);
+  const tooNew = Date.parse(time) > cutoff;
+  if (tooNew || install) bad++;
+  console.log(`${tooNew || install ? 'BAD ' : 'ok  '} ${k} ${time}${install ? ' (install script)' : ''}`);
+}
+process.exit(bad ? 1 : 0);
+```
+
+  Then run `node <check-ages> pnpm-lock.yaml`.
   - Expected: every line starts with `ok`, including the three Playwright packages (2026-10-14).
   - Any `BAD` line: stop and ask.
 
@@ -516,12 +553,14 @@ try {
 }
 ```
 
+  First record the CPU: run `grep -c avx2 /proc/cpuinfo` and put the result in the report. It should print `0`.
+
   Run: `pnpm --filter @family-tree/e2e exec node scripts/browser-check.mjs; echo "exit $?"`
 
   Expected: `{"version":"156.0.8078.4","png":true,"wasm":true,"worker":42,"sum":2}` and `exit 0`. (`sum` is the rounded sum of `sin(i)` for i below one million, so it can differ by a unit between engines. Only `png`, `wasm` and `worker` gate.)
 
   **STOP and report BLOCKED** (don't commit, and don't try workarounds) if any of these happen:
-  - the output or `dmesg` shows `Illegal instruction`, `SIGILL` or `exit 132`;
+  - the output shows `Illegal instruction` or `SIGILL`, or the exit code is 132. Don't rely on `dmesg`, which may need sudo;
   - the launch fails with "Target page, context or browser has been closed";
   - the output differs in `png`, `wasm` or `worker`.
 
@@ -530,13 +569,14 @@ try {
   - an older Playwright;
   - running E2E only in CI.
 
-- [ ] **Step 7: The rest still builds:** `pnpm typecheck && pnpm lint && pnpm test && pnpm build`. Then `pnpm --filter @family-tree/web exec vite --version` prints `vite/8.3.6`.
+- [ ] **Step 7: The rest still builds:** `pnpm typecheck && pnpm lint && pnpm test && pnpm build`. Then `pnpm down && docker compose run --rm install` installs once, and a second `docker compose run --rm install` prints `deps up to date`. Then `pnpm --filter @family-tree/web exec vite --version` prints `vite/8.3.6`.
 
 - [ ] **Step 8: Commit**
 
 ```bash
 git add pnpm-workspace.yaml package.json pnpm-lock.yaml e2e/package.json e2e/tsconfig.json \
-  e2e/scripts/browser-check.mjs .gitignore .dockerignore .prettierignore eslint.config.js
+  e2e/scripts/browser-check.mjs .gitignore .dockerignore .prettierignore eslint.config.js \
+  compose.yml docker/dev.Dockerfile
 git commit -m "build(e2e): add the e2e package with @playwright/test 1.64.1 and a browser CPU check"
 ```
 
@@ -1104,7 +1144,7 @@ git commit -m "feat(api): a streaming ZIP writer with backpressure and safe name
 - [ ] **Step 1: Write the failing `gedcom.test.ts`:**
 
 ```ts
-import type { ExportData, ExportPerson, FuzzyDate } from '@family-tree/shared';
+import { type ExportData, type ExportPerson, type FuzzyDate, NAME_MAX } from '@family-tree/shared';
 import { describe, expect, it } from 'vitest';
 import { buildGedcom, gedcomDate, personXrefs, photoFileName } from './gedcom.js';
 
@@ -1452,6 +1492,45 @@ describe('buildGedcom', () => {
     expect(lines).toContain('1 DIV Y');
   });
 
+  it('splits CJK names at NAME_MAX over CONC lines of at most 255 bytes', () => {
+    const data = sample();
+    const given = '張'.repeat(NAME_MAX);
+    const surname = '欧阳'.repeat(NAME_MAX / 2);
+    data.persons[0] = {
+      ...data.persons[0]!,
+      givenName: given,
+      middleName: null,
+      surname,
+      maidenName: null,
+      nickname: '小'.repeat(NAME_MAX),
+    };
+    const lines = linesOf(buildGedcom(data, opts));
+    for (const l of lines) expect(Buffer.byteLength(l, 'utf8')).toBeLessThanOrEqual(255);
+    const at = lines.indexOf('0 @I1@ INDI') + 1;
+    expect(lines[at]!.startsWith('1 NAME ')).toBe(true);
+    let value = lines[at]!.slice('1 NAME '.length);
+    for (let i = at + 1; lines[i]?.startsWith('2 CONC '); i++) value += lines[i]!.slice('2 CONC '.length);
+    expect(value).toBe(`${given} /${surname}/`);
+    expect(lines.some((l) => l.startsWith('3 CONC '))).toBe(true); // GIVN, SURN and NICK continue too
+  });
+
+  it('strips C0 control characters from every value', () => {
+    const data = sample();
+    data.persons[0] = {
+      ...data.persons[0]!,
+      givenName: 'Ol\u0000ive\u001b',
+      birthPlace: 'Tor\u0007onto',
+      biography: 'a\u0001b\nc\td',
+    };
+    const ged = buildGedcom(data, opts);
+    expect(ged).not.toMatch(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/);
+    const lines = linesOf(ged);
+    expect(lines).toContain('1 NAME Olive Ann /Owner/');
+    expect(lines).toContain('2 PLAC Toronto');
+    expect(lines).toContain('1 NOTE ab');
+    expect(lines).toContain('2 CONT c d');
+  });
+
   it('names photo files after the person xref', () => {
     const xrefs = personXrefs(sample().persons);
     expect(xrefs.get(id(2))).toBe('@I2@');
@@ -1536,13 +1615,18 @@ export const photoFileName = (personXref: string, n: number) =>
 
 const bytes = (s: string) => Buffer.byteLength(s, 'utf8');
 
+/** C0 control characters and DEL never reach the file; tab and line breaks are handled apart. */
+const stripControls = (s: string) => s.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
+
 function line(level: number, tag: string, value?: string, xref?: string): string {
   return `${level}${xref ? ` ${xref}` : ''} ${tag}${value ? ` ${value}` : ''}`;
 }
 
 /** One line of text, whitespace collapsed, "@" escaped, cut at VALUE_BYTES with "…". */
 function oneLine(value: string): string {
-  const atoms = Array.from(value.replace(/\s+/g, ' ').trim(), (c) => (c === '@' ? '@@' : c));
+  const atoms = Array.from(stripControls(value).replace(/\s+/g, ' ').trim(), (c) =>
+    c === '@' ? '@@' : c,
+  );
   const total = atoms.reduce((n, a) => n + bytes(a), 0);
   if (total <= VALUE_BYTES) return atoms.join('');
   let out = '';
@@ -1555,7 +1639,9 @@ function oneLine(value: string): string {
   return `${out}…`;
 }
 
-const namePart = (s: string) => oneLine(s.replaceAll('/', ' '));
+/** A name part: no controls, no slashes (they delimit the surname), single spaces. Not escaped. */
+const namePart = (s: string) =>
+  stripControls(s).replaceAll('/', ' ').replace(/\s+/g, ' ').trim();
 
 /**
  * Splits one paragraph into chunks of at most CHUNK_BYTES. Each escaped "@@" is one atom, so it
@@ -1584,11 +1670,17 @@ function chunks(paragraph: string): string[] {
   return out.length > 0 ? out : [''];
 }
 
+/** A one-line value that may be long (names, review fix I4): CONC keeps each line ≤ 255 bytes. */
+function longLine(level: number, tag: string, value: string): string[] {
+  return chunks(value).map((c, j) => (j === 0 ? line(level, tag, c) : line(level + 1, 'CONC', c)));
+}
+
 /** A text value over several lines: line breaks become CONT, long lines continue with CONC. */
 function textLines(level: number, tag: string, text: string): string[] {
   const out: string[] = [];
-  text
+  stripControls(text)
     .replace(/\r\n?/g, '\n')
+    .replace(/\t/g, ' ')
     .split('\n')
     .forEach((paragraph, i) => {
       chunks(paragraph).forEach((c, j) => {
@@ -1679,9 +1771,10 @@ export function buildGedcom(data: ExportData, { exporterName, now }: GedcomOptio
     if (cause) add(2, 'CAUS', oneLine(cause));
   };
   const name = (given: string, surname: string | null) => {
-    add(1, 'NAME', surname ? `${given} /${namePart(surname)}/` : given);
-    add(2, 'GIVN', given);
-    if (surname) add(2, 'SURN', namePart(surname));
+    const sur = surname ? namePart(surname) : '';
+    out.push(...longLine(1, 'NAME', sur ? `${given} /${sur}/` : given));
+    out.push(...longLine(2, 'GIVN', given));
+    if (sur) out.push(...longLine(2, 'SURN', sur));
   };
 
   // Individuals (5.5.1 order: NAME, SEX, events, attributes, FAMC, FAMS, OBJE, NOTE).
@@ -1692,7 +1785,7 @@ export function buildGedcom(data: ExportData, { exporterName, now }: GedcomOptio
       .map(namePart)
       .join(' ');
     name(given, p.surname);
-    if (p.nickname) add(2, 'NICK', oneLine(p.nickname));
+    if (p.nickname) out.push(...longLine(2, 'NICK', namePart(p.nickname)));
     if (p.maidenName) {
       name(given, p.maidenName);
       add(2, 'TYPE', 'maiden');
@@ -1774,7 +1867,7 @@ export function buildGedcom(data: ExportData, { exporterName, now }: GedcomOptio
   - **The space rule:** only a run of spaces longer than a chunk has no split point away from a space; then the code falls back to the byte limit. None of the five sample strings has such a run.
 
 - [ ] **Step 4: Run it to make sure it passes.**
-  - Expected: 15 tests pass (7 `gedcomDate` cases and 8 `buildGedcom`/xref tests).
+  - Expected: 18 tests pass (7 `gedcomDate` cases and 11 `buildGedcom`/xref tests).
   - If the exact sample differs, fix the code, not `EXPECTED`. Each line of `EXPECTED` follows decision 6. The one exception: if you find a real 5.5.1 rule the sample breaks, fix both and say so in the commit.
 
 - [ ] **Step 5: Commit**
@@ -1938,6 +2031,8 @@ describe('GET export', () => {
       /^attachment; filename="family-tree-\d{4}-\d{2}-\d{2}\.zip"$/,
     );
     expect(res.headers['cache-control']).toBe('no-store');
+    // The web app is on another origin: it can only read the file name if CORS exposes it.
+    expect(res.headers['access-control-expose-headers']).toMatch(/content-disposition/i);
     expect([...files.keys()].sort()).toEqual(['photos/I1-1.webp', 'tree.ged', 'tree.json']);
 
     expect(ged.startsWith('﻿0 HEAD\r\n')).toBe(true);
@@ -2028,6 +2123,55 @@ describe('GET export', () => {
     expect(res.json().error.code).toBe('RATE_LIMITED');
     const outsider = await signUp(app, { name: 'Out' });
     expect((await call(app, 'GET', url(treeId), { jar: outsider.jar })).statusCode).toBe(404);
+  });
+
+  it('allows one export at a time per user, while another owner can still export', async () => {
+    const gate = Promise.withResolvers<void>();
+    const entered = Promise.withResolvers<void>();
+    let calls = 0;
+    const storage = {
+      ...deps.storage,
+      async get(key: string) {
+        if (calls++ === 0) {
+          entered.resolve();
+          await gate.promise; // the first photo fetch hangs until released
+        }
+        return deps.storage.get(key);
+      },
+    };
+    await app.close();
+    app = buildApp({ config, checks: deps.checks, auth, db, storage });
+    const a = await ownerWithTree(app, 'A');
+    await addPhotoRow(db, a.treeId, await rootOf(a.treeId));
+    const b = await ownerWithTree(app, 'B');
+    const first = call(app, 'GET', url(a.treeId), { jar: a.owner.jar });
+    await entered.promise;
+    const again = await call(app, 'GET', url(a.treeId), { jar: a.owner.jar });
+    expect(again.statusCode).toBe(503);
+    expect(again.json().error.code).toBe('RATE_LIMITED');
+    expect((await call(app, 'GET', url(b.treeId), { jar: b.owner.jar })).statusCode).toBe(200);
+    gate.resolve();
+    expect((await first).statusCode).toBe(200);
+    expect((await call(app, 'GET', url(a.treeId), { jar: a.owner.jar })).statusCode).toBe(200);
+  });
+
+  it('aborts an export that runs past the time limit, and frees its slot', async () => {
+    const never = new Promise<never>(() => {});
+    let calls = 0;
+    const storage = {
+      ...deps.storage,
+      async get(key: string) {
+        if (calls++ === 0) await never; // storage hangs for the first photo
+        return deps.storage.get(key);
+      },
+    };
+    await app.close();
+    app = buildApp({ config, checks: deps.checks, auth, db, storage, exportTimeoutMs: 200 });
+    const { owner, treeId } = await ownerWithTree(app);
+    await addPhotoRow(db, treeId, await rootOf(treeId));
+    const first = await call(app, 'GET', url(treeId), { jar: owner.jar }).catch(() => null);
+    if (first) expect(() => readZip(first.rawPayload)).toThrow(); // never a valid archive
+    expect((await call(app, 'GET', url(treeId), { jar: owner.jar })).statusCode).toBe(200);
   });
 });
 ```
@@ -2248,8 +2392,10 @@ import { extraLimit } from '../security/limits.js';
 import { authorize, loadAccess } from '../trees/access.js';
 import type { TreeRouteOptions } from './trees.js';
 
-/** Exports streaming at once in one API process (decision 8). */
+/** Exports streaming at once in one API process, and per user (decision 8). */
 export const EXPORT_CONCURRENCY = 2;
+/** Wall-clock limit per export: frees the slot even if storage hangs (review fix I6). */
+export const EXPORT_TIMEOUT_MS = 10 * 60_000;
 
 const busy = () => new AppError('RATE_LIMITED', 503, 'Exports are busy, try again in a minute');
 const tooLarge = () =>
@@ -2258,10 +2404,21 @@ const tooLarge = () =>
   });
 
 export const exportRoutes: FastifyPluginAsync<
-  TreeRouteOptions & { exportConcurrency?: number }
-> = async (app, { auth, db, storage, exportConcurrency = EXPORT_CONCURRENCY }) => {
+  TreeRouteOptions & { exportConcurrency?: number; exportTimeoutMs?: number }
+> = async (
+  app,
+  {
+    auth,
+    db,
+    storage,
+    exportConcurrency = EXPORT_CONCURRENCY,
+    exportTimeoutMs = EXPORT_TIMEOUT_MS,
+  },
+) => {
   app.addHook('preHandler', requireSession(auth));
   let active = 0;
+  /** Users with an export running: one each. */
+  const exporting = new Set<string>();
 
   /** Spec §7: one ZIP with tree.ged (GEDCOM 5.5.1), tree.json and photos/ (decisions 2–8). */
   app.get(
@@ -2271,24 +2428,27 @@ export const exportRoutes: FastifyPluginAsync<
     },
     async (req, reply) => {
       const treeId = idParam(req.params, 'treeId');
+      const userId = req.user!.id;
       const now = new Date();
       let held = false;
       const release = () => {
         if (held) {
           held = false;
           active--;
+          exporting.delete(userId);
         }
       };
       try {
         const loaded = await db.transaction(
           async (tx) => {
-            const access = await loadAccess(tx, treeId, req.user!.id);
+            const access = await loadAccess(tx, treeId, userId);
             authorize(access, 'tree.export', TREE);
-            if (active >= exportConcurrency) {
+            if (active >= exportConcurrency || exporting.has(userId)) {
               void reply.header('retry-after', '30');
               throw busy();
             }
             active++;
+            exporting.add(userId);
             held = true;
             return loadExport(tx, access.treeId, now);
           },
@@ -2297,7 +2457,14 @@ export const exportRoutes: FastifyPluginAsync<
         if (loaded.photoBytes > EXPORT_MAX_PHOTO_BYTES) throw tooLarge();
 
         const zip = new ZipWriter(now);
-        zip.stream.once('close', release);
+        const timer = setTimeout(() => {
+          req.log.warn({ treeId }, 'export timed out');
+          zip.abort(new Error('export timed out'));
+        }, exportTimeoutMs);
+        zip.stream.once('close', () => {
+          clearTimeout(timer);
+          release();
+        });
         void writeExport(zip, loaded, storage, { exporterName: req.user!.name, now })
           .then(({ photos, missing }) =>
             req.log.info(
@@ -2327,8 +2494,9 @@ export const exportRoutes: FastifyPluginAsync<
 
 - [ ] **Step 7: Wire it in `app.ts`:**
   - Import `exportRoutes`.
-  - Add to `AppOptions`: `/** Exports at once (default 2); tests pass 0 to check the busy answer. */ exportConcurrency?: number;`.
-  - Destructure it in `buildApp`.
+  - Add to `AppOptions`: `/** Exports at once (default 2); tests pass 0 to check the busy answer. */ exportConcurrency?: number;` and `/** Per-export time limit (default 10 minutes). */ exportTimeoutMs?: number;`.
+  - Destructure both in `buildApp`.
+  - In the `cors` registration, add `exposedHeaders: ['Content-Disposition'],` (review fix I3): the web app is on another origin, and without it `res.headers.get('content-disposition')` is `null` there and the file name falls back.
   - Register it after `searchRoutes`:
 
 ```ts
@@ -2338,6 +2506,7 @@ export const exportRoutes: FastifyPluginAsync<
       config,
       storage: store!,
       ...(exportConcurrency !== undefined ? { exportConcurrency } : {}),
+      ...(exportTimeoutMs !== undefined ? { exportTimeoutMs } : {}),
     });
 ```
 
@@ -2351,7 +2520,7 @@ rtk proxy pnpm --filter @family-tree/api exec vitest run --config vitest.int.con
 pnpm --filter @family-tree/api test && pnpm test:int && pnpm --filter @family-tree/api typecheck
 ```
 
-  Expected: everything passes, including 5 new export tests and 2 new store tests. If the isolation test's export call returns 429 in the "deleted tree" case, check the per-user counter: each user calls the route at most twice there, so it shouldn't. Don't raise the limit.
+  Expected: everything passes, including 7 new export tests and 2 new store tests. If the isolation test's export call returns 429 in the "deleted tree" case, check the per-user counter: each user calls the route at most twice there, so it shouldn't. Don't raise the limit.
 
 - [ ] **Step 10: Check the archive with independent readers** (a scratch check, not committed).
   1. Temporarily add one line to the first export test, after `exportOf`: `if (process.env.EXPORT_ZIP_OUT) writeFileSync(process.env.EXPORT_ZIP_OUT, res.rawPayload);` (import `writeFileSync` from `node:fs`).
@@ -2707,10 +2876,17 @@ git commit -m "feat(web): owner-only Export in tree settings"
     expect(config.AUTH_RATE_LIMIT_ENABLED).toBe(true);
   });
 
-  it('lets development turn the auth rate limits off (for E2E)', () => {
+  it('lets a local or .test stack turn the auth rate limits off (for E2E), and nothing else', () => {
     expect(loadConfig({ ...devEnv, AUTH_RATE_LIMIT_ENABLED: 'false' }).AUTH_RATE_LIMIT_ENABLED).toBe(
       false,
     );
+    expect(() =>
+      loadConfig({
+        ...devEnv,
+        AUTH_BASE_URL: 'https://api.example.com',
+        AUTH_RATE_LIMIT_ENABLED: 'false',
+      }),
+    ).toThrowError(/AUTH_RATE_LIMIT_ENABLED/);
   });
 
   it('refuses auth rate limits off in production, and accepts MIGRATE_ON_START=false', () => {
@@ -2733,7 +2909,23 @@ git commit -m "feat(web): owner-only Export in tree settings"
     AUTH_RATE_LIMIT_ENABLED: bool.default(true),
 ```
 
-  In `superRefine`, next to the `S3_CREATE_BUCKET` check:
+  At the top of `superRefine`, **before** the `if (config.NODE_ENV !== 'production') return;` line:
+
+```ts
+    // E2E only (decision 15): the auth limits may be off only for a local or .test stack.
+    if (!config.AUTH_RATE_LIMIT_ENABLED && URL.canParse(config.AUTH_BASE_URL)) {
+      const host = new URL(config.AUTH_BASE_URL).hostname.toLowerCase();
+      if (!isLocalHost(host) && !host.endsWith('.test')) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['AUTH_RATE_LIMIT_ENABLED'],
+          message: 'May be false only for a local or .test AUTH_BASE_URL',
+        });
+      }
+    }
+```
+
+  And in the production part, next to the `S3_CREATE_BUCKET` check:
 
 ```ts
     if (!config.AUTH_RATE_LIMIT_ENABLED) {
@@ -2852,17 +3044,25 @@ git commit -m "feat(api): migrate CLI, MIGRATE_ON_START and a dev-only auth rate
 
 ---
 
-## Task 8: API — the orphan sweep
+## Task 8: API — the orphan sweep, with guards
 
 **Files:**
 - Create: `apps/api/src/storage/sweep.ts`, `apps/api/src/storage/sweep.int.test.ts`
-- Modify: `apps/api/src/trees/purge.ts`, `apps/api/src/trees/purge-cli.ts`, `apps/api/src/server.ts`
+- Modify: `apps/api/src/trees/purge.ts`, `apps/api/src/trees/purge.int.test.ts`, `apps/api/src/trees/purge-cli.ts`, `apps/api/src/server.ts`
+
+The sweep deletes objects. It must never be able to delete real photos, for example after a restore to an empty or wrong database, a misconfigured `DATABASE_URL`, or a bucket shared by mistake. So it has four guards (review fix C1):
+1. **It never runs on the first purge tick after startup.** The first sweep comes one `sweepEveryMs` after the start, so a crash loop or a just-restored database is never swept.
+2. **It refuses to run when the database has no `photos` rows but the bucket has objects.** The result is `refused: 'noPhotoRows'`.
+3. **It refuses (deletes nothing) when the candidates are more than 20% of the objects scanned.** The result is `refused: 'tooMany'`.
+4. **It refuses when the candidates are more than a fixed cap per run:** `maxDeletes`, 500 by default. The result is also `refused: 'tooMany'`.
+
+Candidates are collected first and deleted only after every guard passes. A refusal logs a warning (`orphan sweep refused`, with counts only) and deletes nothing.
 
 - [ ] **Step 1: Write the failing `sweep.int.test.ts`:**
 
 ```ts
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { addPhotoRow, objectExists } from '../../test/photo-helpers.js';
 import { loadConfig } from '../config.js';
@@ -2879,38 +3079,95 @@ afterAll(async () => {
 });
 
 const DAY = 86_400_000;
+const LATER = () => Date.now() + 2 * DAY;
 const bytes = new Uint8Array([1, 2, 3]);
 
-async function setup() {
+/** A tree with `photos` known photos (2 objects each), `orphans` unknown objects and 1 queued. */
+async function setup({ photos = 4, orphans = 1 } = {}) {
   const [tree] = await db.insert(trees).values({ name: 'Sweep test' }).returning();
-  const [p] = await db.insert(persons).values({ treeId: tree!.id, givenName: 'P' }).returning();
   const prefix = `trees/${tree!.id}/`;
-  const kept = await addPhotoRow(db, tree!.id, p!.id);
-  for (const k of [kept.storageKeyFull, kept.storageKeyThumb]) {
-    await storage.put(k, bytes, 'image/webp');
+  const kept = [];
+  for (let i = 0; i < photos; i++) {
+    const [p] = await db.insert(persons).values({ treeId: tree!.id, givenName: `P${i}` }).returning();
+    const row = await addPhotoRow(db, tree!.id, p!.id);
+    for (const k of [row.storageKeyFull, row.storageKeyThumb]) await storage.put(k, bytes, 'image/webp');
+    kept.push(row);
   }
-  const orphan = `${prefix}photos/${randomUUID()}/full.webp`;
-  await storage.put(orphan, bytes, 'image/webp');
+  const orphanKeys = [];
+  for (let i = 0; i < orphans; i++) {
+    const k = `${prefix}photos/${randomUUID()}/full.webp`;
+    await storage.put(k, bytes, 'image/webp');
+    orphanKeys.push(k);
+  }
   const queued = `${prefix}photos/${randomUUID()}/thumb.webp`;
   await storage.put(queued, bytes, 'image/webp');
   await queueObjectDeletes(db, [queued]);
-  return { prefix, kept, orphan, queued };
+  return { prefix, kept, orphanKeys, queued, total: photos * 2 + orphans + 1 };
 }
 
 describe('sweepOrphans', () => {
   it('deletes only objects older than a day that no row knows', async () => {
-    const s = await setup();
+    const s = await setup(); // 8 known + 1 orphan + 1 queued: 10% candidates
     // Fresh objects are never orphans: an upload writes them before its row (Phase 6 decision 6).
     expect(await sweepOrphans(db, storage, { prefix: s.prefix })).toMatchObject({
-      scanned: 4,
+      scanned: s.total,
       deleted: 0,
+      refused: null,
     });
-    const later = await sweepOrphans(db, storage, { prefix: s.prefix, now: Date.now() + 2 * DAY });
-    expect(later).toMatchObject({ scanned: 4, deleted: 1 });
-    expect(await objectExists(deps, s.orphan)).toBe(false);
-    expect(await objectExists(deps, s.kept.storageKeyFull)).toBe(true);
-    expect(await objectExists(deps, s.kept.storageKeyThumb)).toBe(true);
+    expect(await sweepOrphans(db, storage, { prefix: s.prefix, now: LATER() })).toMatchObject({
+      scanned: s.total,
+      deleted: 1,
+      refused: null,
+    });
+    expect(await objectExists(deps, s.orphanKeys[0]!)).toBe(false);
+    for (const row of s.kept) {
+      expect(await objectExists(deps, row.storageKeyFull)).toBe(true);
+      expect(await objectExists(deps, row.storageKeyThumb)).toBe(true);
+    }
     expect(await objectExists(deps, s.queued)).toBe(true); // the outbox owns it
+  });
+
+  it('refuses, deleting nothing, when candidates are over 20% of the objects scanned', async () => {
+    const s = await setup({ photos: 2, orphans: 3 }); // 3 of 8 = 37.5%
+    const log = { warn: vi.fn() };
+    const r = await sweepOrphans(db, storage, { prefix: s.prefix, now: LATER(), log });
+    expect(r).toMatchObject({ deleted: 0, refused: 'tooMany', candidates: 3 });
+    for (const k of s.orphanKeys) expect(await objectExists(deps, k)).toBe(true);
+    expect(log.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'tooMany', candidates: 3, scanned: 8 }),
+      'orphan sweep refused',
+    );
+  });
+
+  it('refuses when candidates exceed the per-run cap', async () => {
+    const s = await setup({ photos: 10, orphans: 2 }); // 2 of 23: under 20%
+    const r = await sweepOrphans(db, storage, { prefix: s.prefix, now: LATER(), maxDeletes: 1 });
+    expect(r).toMatchObject({ deleted: 0, refused: 'tooMany', candidates: 2 });
+    for (const k of s.orphanKeys) expect(await objectExists(deps, k)).toBe(true);
+  });
+
+  it('refuses when the database has no photo rows but the bucket has objects', async () => {
+    const s = await setup();
+    const log = { warn: vi.fn() };
+    // An empty photos table (as after a restore to the wrong database), inside a transaction that
+    // is rolled back, so the other tests' rows come back.
+    const rollback = new Error('rollback');
+    let r: Awaited<ReturnType<typeof sweepOrphans>> | undefined;
+    await db
+      .transaction(async (tx) => {
+        await tx.execute(sql`delete from photos`);
+        r = await sweepOrphans(tx, storage, { prefix: s.prefix, now: LATER(), log });
+        throw rollback;
+      })
+      .catch((err: unknown) => {
+        if (err !== rollback) throw err;
+      });
+    expect(r).toMatchObject({ deleted: 0, refused: 'noPhotoRows' });
+    for (const row of s.kept) expect(await objectExists(deps, row.storageKeyFull)).toBe(true);
+    expect(log.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'noPhotoRows' }),
+      'orphan sweep refused',
+    );
   });
 
   it('warns about queued deletions that keep failing', async () => {
@@ -2937,34 +3194,57 @@ describe('sweepOrphans', () => {
 
 ```ts
 import { sql } from 'drizzle-orm';
-import type { Db } from '../db/client.js';
+import type { Queryable } from '../db/client.js';
 import type { ObjectStore } from './objects.js';
 
 /** Younger objects may belong to an upload whose row isn't committed yet (decision 17). */
 export const ORPHAN_MIN_AGE_MS = 24 * 3_600_000;
 /** Outbox rows with this many failed attempts are reported. */
 export const STUCK_ATTEMPTS = 10;
+/** Guards (review fix C1): never delete more than this share of what was scanned... */
+export const ORPHAN_MAX_FRACTION = 0.2;
+/** ...or more than this many objects in one run. */
+export const ORPHAN_MAX_DELETES = 500;
+
+export type SweepRefusal = 'noPhotoRows' | 'tooMany';
 
 /**
  * Deletes stored objects under `prefix` that are older than `minAgeMs` and known to no photos
- * row and no storage_deletions row (the outbox deletes those itself). Covers a crash between
- * upload and insert, and a database restored to before some uploads. Reports stuck outbox rows.
+ * row and no storage_deletions row (the outbox deletes those itself). This covers a crash between
+ * upload and insert, and a database restored to before some uploads.
+ *
+ * Candidates are collected first. Nothing is deleted when the database has no photo rows at all
+ * while the bucket has objects, or when the candidates are over ORPHAN_MAX_FRACTION of the scan
+ * or over `maxDeletes`: those look like a wrong or empty database, not like orphans.
+ * Also reports stuck outbox rows.
  */
 export async function sweepOrphans(
-  db: Db,
+  db: Queryable,
   store: ObjectStore,
   {
     prefix = 'trees/',
     now = Date.now(),
     minAgeMs = ORPHAN_MIN_AGE_MS,
+    maxDeletes = ORPHAN_MAX_DELETES,
     log,
   }: {
     prefix?: string;
     now?: number;
     minAgeMs?: number;
+    maxDeletes?: number;
     log?: { warn?(obj: object, msg: string): void };
   } = {},
-): Promise<{ scanned: number; deleted: number; stuck: number }> {
+): Promise<{
+  scanned: number;
+  candidates: number;
+  deleted: number;
+  stuck: number;
+  refused: SweepRefusal | null;
+}> {
+  const [counted] = (await db.execute(
+    sql`select count(*)::int as n from photos`,
+  )) as unknown as { n: number }[];
+  const photoRows = counted?.n ?? 0;
   const known = new Set(
     (
       (await db.execute(sql`
@@ -2974,34 +3254,77 @@ export async function sweepOrphans(
     ).map((r) => r.k),
   );
   let scanned = 0;
-  let deleted = 0;
+  const candidates: string[] = [];
   for await (const o of store.list(prefix)) {
     scanned++;
-    if (known.has(o.key) || now - o.lastModified.getTime() < minAgeMs) continue;
-    await store.delete(o.key);
-    deleted++;
+    if (!known.has(o.key) && now - o.lastModified.getTime() >= minAgeMs) candidates.push(o.key);
   }
+
+  let refused: SweepRefusal | null = null;
+  if (photoRows === 0 && scanned > 0) refused = 'noPhotoRows';
+  else if (candidates.length > maxDeletes || candidates.length > scanned * ORPHAN_MAX_FRACTION) {
+    refused = 'tooMany';
+  }
+  let deleted = 0;
+  if (refused) {
+    log?.warn?.(
+      { reason: refused, scanned, candidates: candidates.length, photoRows },
+      'orphan sweep refused',
+    );
+  } else {
+    for (const key of candidates) {
+      await store.delete(key);
+      deleted++;
+    }
+  }
+
   const [row] = (await db.execute(
     sql`select count(*)::int as n from storage_deletions where attempts >= ${STUCK_ATTEMPTS}`,
   )) as unknown as { n: number }[];
   const stuck = row?.n ?? 0;
   if (stuck > 0) log?.warn?.({ count: stuck }, 'stored objects keep failing to delete');
-  return { scanned, deleted, stuck };
+  return { scanned, candidates: candidates.length, deleted, stuck, refused };
 }
 ```
 
-  Run the sweep test: it passes.
+  Run the sweep test: 5 tests pass.
+  - The `noPhotoRows` test deletes every `photos` row inside a transaction that is rolled back. Integration test files run one at a time (`fileParallelism: false`), so no other test sees the empty table.
 
-- [ ] **Step 3: Run it from the purge job (at most once a day) and from the CLI.**
+- [ ] **Step 3: Write the failing purge-job test.** Append to `trees/purge.int.test.ts` (import `vi` if it isn't already):
+
+```ts
+  it('never sweeps on the first tick after startup, then sweeps once per period', async () => {
+    const list = vi.fn(async function* () {});
+    const store = { ...deps.storage, list };
+    const log = { info: vi.fn(), error: vi.fn(), warn: vi.fn() };
+    const stop = startPurgeJob(db, log, 20, store, { sweepEveryMs: 300 });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(list).not.toHaveBeenCalled(); // several ticks, none of them a sweep yet
+    await new Promise((r) => setTimeout(r, 300));
+    await stop();
+    expect(list).toHaveBeenCalledTimes(1);
+    expect(log.error).not.toHaveBeenCalled();
+  });
+```
+
+  Run it. Expected: FAIL, because `startPurgeJob` takes no options yet and never calls `list`.
+
+- [ ] **Step 4: Run the sweep from the purge job (never at startup, at most once per period) and from the CLI.**
 
   In `purge.ts`:
   - Add `warn?(obj: object, msg: string): void;` to `JobLog`.
   - Change the signature to `startPurgeJob(db, log, intervalMs, store?, { sweepEveryMs = 0 }: { sweepEveryMs?: number } = {})`.
-  - Add `let lastSweep = 0;` before `tick`.
+  - Before `tick`, add:
+
+```ts
+  // Guard 1 (review fix C1): the first sweep comes one full period after startup, never on the
+  // first tick, so a crash loop or a just-restored database is never swept.
+  let lastSweep = Date.now();
+```
+
   - Inside the `.then` after the drain loop, add:
 
 ```ts
-        // The orphan sweep lists the whole bucket, so it runs at most once per sweepEveryMs.
         if (sweepEveryMs > 0 && Date.now() - lastSweep >= sweepEveryMs) {
           lastSweep = Date.now();
           const { deleted } = await sweepOrphans(db, store, { log });
@@ -3021,15 +3344,19 @@ export async function sweepOrphans(
       log: { warn: (obj, msg) => console.warn(msg, obj) },
     });
     console.log(
-      `Checked ${r.scanned} stored object(s); removed ${r.deleted} orphan(s).` +
-        (r.stuck > 0 ? ` ${r.stuck} queued deletion(s) keep failing.` : ''),
+      r.refused
+        ? `Orphan sweep refused (${r.refused}): ${r.candidates} candidate(s) of ${r.scanned} object(s); nothing deleted.`
+        : `Checked ${r.scanned} stored object(s); removed ${r.deleted} orphan(s).`,
     );
+    if (r.stuck > 0) console.log(`${r.stuck} queued deletion(s) keep failing.`);
   }
 ```
 
   Update its header comment to `Dev: pnpm purge-trees [--sweep]. Production: node dist/trees/purge-cli.js [--sweep]`.
 
-- [ ] **Step 4: Run the checks.**
+  Run the purge test from Step 3: it passes.
+
+- [ ] **Step 5: Run the checks.**
 
 ```bash
 pnpm --filter @family-tree/api typecheck && pnpm test:int
@@ -3039,14 +3366,17 @@ pnpm purge-trees --sweep
 
   Expected:
   - All integration tests pass.
-  - The CLI prints `Purged …`, `Deleted …`, then `Checked N stored object(s); removed 0 orphan(s).`. N is the dev bucket's object count, and an old orphan would also be removed.
+  - The CLI prints `Purged …`, `Deleted …`, then one of two lines:
+    - `Checked N stored object(s); removed 0 orphan(s).`
+    - a `refused` line, if the dev bucket's leftover test objects trip a guard. That is the guard working: report it, and don't loosen the guard.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add apps/api/src/storage/sweep.ts apps/api/src/storage/sweep.int.test.ts \
-  apps/api/src/trees/purge.ts apps/api/src/trees/purge-cli.ts apps/api/src/server.ts
-git commit -m "feat(api): daily sweep of orphaned photo objects, and a stuck-outbox warning"
+  apps/api/src/trees/purge.ts apps/api/src/trees/purge.int.test.ts \
+  apps/api/src/trees/purge-cli.ts apps/api/src/server.ts
+git commit -m "feat(api): guarded daily sweep of orphaned photo objects, and a stuck-outbox warning"
 ```
 
 ---
@@ -3277,14 +3607,14 @@ test ! -e apps/web/dist/_headers && echo "no headers: ok"
 VITE_API_BASE_URL=https://api.family.test:8443 VITE_PHOTO_ORIGIN=https://s3.family.test:8443 \
   WEB_HEADERS_CADDY=1 pnpm --filter @family-tree/web build
 head -3 apps/web/dist/_headers && head -2 apps/web/dist/_headers.caddy
-grep -c '<script>' apps/web/dist/index.html                                 # 0
+grep -o '<script[^>]*>' apps/web/dist/index.html | grep -vc ' src='        # 0: every script tag has a src
 ls apps/web/dist/assets | grep -iE 'worker|elk'                             # the worker chunk
 CF_PAGES=1 pnpm --filter @family-tree/web build; echo "exit $?"             # non-zero, the message
 ```
 
   Expected:
   - `_headers` starts with `/*` and `  Content-Security-Policy: default-src 'none'; …`, and `_headers.caddy` starts with `header {`.
-  - `index.html` has no inline `<script>`.
+  - Every `<script` tag in `index.html` (including `type="module"`) has a `src`, so there are no inline scripts.
   - The ELK worker is a file under `assets/`.
   - The `CF_PAGES=1` build fails.
 
@@ -3489,8 +3819,15 @@ services:
       RCLONE_CONFIG_PHOTOS_TYPE: s3
       RCLONE_CONFIG_PHOTOS_PROVIDER: ${RCLONE_S3_PROVIDER:-Cloudflare}
       RCLONE_CONFIG_PHOTOS_ENDPOINT: ${S3_ENDPOINT}
-      RCLONE_CONFIG_PHOTOS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
-      RCLONE_CONFIG_PHOTOS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+      # Read-only token for the nightly mirror (recommended); falls back to the app token.
+      RCLONE_CONFIG_PHOTOS_ACCESS_KEY_ID: ${BACKUP_PHOTOS_ACCESS_KEY_ID:-${S3_ACCESS_KEY_ID}}
+      RCLONE_CONFIG_PHOTOS_SECRET_ACCESS_KEY: ${BACKUP_PHOTOS_SECRET_ACCESS_KEY:-${S3_SECRET_ACCESS_KEY}}
+      # Read-write, used only by restore.sh to copy photos back.
+      RCLONE_CONFIG_PHOTOSRW_TYPE: s3
+      RCLONE_CONFIG_PHOTOSRW_PROVIDER: ${RCLONE_S3_PROVIDER:-Cloudflare}
+      RCLONE_CONFIG_PHOTOSRW_ENDPOINT: ${S3_ENDPOINT}
+      RCLONE_CONFIG_PHOTOSRW_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      RCLONE_CONFIG_PHOTOSRW_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
       RCLONE_CONFIG_BACKUP_TYPE: s3
       RCLONE_CONFIG_BACKUP_PROVIDER: ${RCLONE_S3_PROVIDER:-Cloudflare}
       RCLONE_CONFIG_BACKUP_ENDPOINT: ${BACKUP_S3_ENDPOINT:-}
@@ -3560,6 +3897,10 @@ S3_FORCE_PATH_STYLE=false
 # --- Backups (docker/backup; docs/self-hosting.md "Backups") -----------------------------------
 # age public key (age1…). The private key stays offline, never on this server.
 AGE_RECIPIENT=
+# Recommended: a read-only R2 token for family-photos, used by the nightly mirror. When empty,
+# the mirror uses the app token above.
+BACKUP_PHOTOS_ACCESS_KEY_ID=
+BACKUP_PHOTOS_SECRET_ACCESS_KEY=
 # A second private bucket, with its own token scoped to it.
 BACKUP_S3_ENDPOINT=
 BACKUP_S3_ACCESS_KEY_ID=
@@ -3690,9 +4031,11 @@ services:
   api:
     environment:
       # Trust Caddy's local CA for https://s3.family.test:8443 (the stand-in for R2).
-      NODE_EXTRA_CA_CERTS: /caddy-data/caddy/pki/authorities/local/root.crt
+      NODE_EXTRA_CA_CERTS: /etc/family-tree-ca/root.crt
     volumes:
-      - caddy_data:/caddy-data:ro
+      # The world-readable copy made by prod-local.sh. Caddy's own file under /data is 0600 in
+      # 0700 directories, which the API's `node` user can't read (review fix I2).
+      - ./.prod-local/ca:/etc/family-tree-ca:ro
     depends_on:
       caddy: { condition: service_healthy }
 
@@ -3724,7 +4067,7 @@ export LOCAL_UID LOCAL_GID
 LOCAL_UID="$(id -u)"
 LOCAL_GID="$(id -g)"
 COMPOSE=(docker compose --env-file "$DIR/env" -p "$PROJECT" -f compose.prod.yml -f compose.prod.local.yml)
-CURL=(curl -fsS --cacert "$DIR/caddy-root.crt"
+CURL=(curl -fsS --cacert "$DIR/ca/root.crt"
   --resolve family.test:8443:127.0.0.1 --resolve api.family.test:8443:127.0.0.1
   --resolve s3.family.test:8443:127.0.0.1)
 
@@ -3802,7 +4145,12 @@ edge_up() { # postgres, the stand-in for R2, and Caddy with its CA
   "${COMPOSE[@]}" up -d postgres s3 caddy
   buckets
   wait_for "Caddy's local CA" "${COMPOSE[@]}" exec -T caddy test -f /data/caddy/pki/authorities/local/root.crt
-  "${COMPOSE[@]}" cp caddy:/data/caddy/pki/authorities/local/root.crt "$DIR/caddy-root.crt" >/dev/null
+  # A world-readable copy for curl, the API and the backup container (it's a public certificate).
+  # A directory mount, so a new CA after `reset` shows up without recreating containers.
+  mkdir -p "$DIR/ca"
+  chmod 755 "$DIR/ca"
+  "${COMPOSE[@]}" cp caddy:/data/caddy/pki/authorities/local/root.crt "$DIR/ca/root.crt" >/dev/null
+  chmod 644 "$DIR/ca/root.crt"
   wait_for "Postgres" "${COMPOSE[@]}" exec -T postgres pg_isready -U family_owner -d family
 }
 
@@ -3846,7 +4194,7 @@ esac
   - If the API exits, read `compose logs api`: a config error names the variable.
   - If storage is `error`, the bucket or the CA trust is wrong. Check `compose exec -T api node -e "fetch('https://s3.family.test:8443').then(r=>console.log(r.status))"`.
 
-- [ ] **Step 5: Verify the stack.** Use `C=(curl -sS --cacert .prod-local/caddy-root.crt --resolve family.test:8443:127.0.0.1 --resolve api.family.test:8443:127.0.0.1)` and `P="scripts/prod-local.sh compose"`. Record each result.
+- [ ] **Step 5: Verify the stack.** Use `C=(curl -sS --cacert .prod-local/ca/root.crt --resolve family.test:8443:127.0.0.1 --resolve api.family.test:8443:127.0.0.1)` and `P="scripts/prod-local.sh compose"`. Record each result.
 
   1. **Services.**
      - Run `$P ps -a --format '{{.Service}} {{.State}} {{.Health}}'`. Postgres, s3, caddy and api are `running healthy`, and migrate is `exited`.
@@ -3995,7 +4343,7 @@ pg_restore --no-owner --no-privileges --exit-on-error --single-transaction -d "$
 psql -v ON_ERROR_STOP=1 -q -d "$db" -f /grants/20-app-grants.sql
 
 echo "restore: copying photos back"
-rclone copy "${BACKUP_ROOT}/photos/current" "photos:${S3_BUCKET}"
+rclone copy "${BACKUP_ROOT}/photos/current" "photosrw:${S3_BUCKET}"
 echo "restore: done (${want}). Start the stack again."
 ```
 
@@ -4044,11 +4392,11 @@ WantedBy=timers.target
     # Runs as the host user so it can write .prod-local/backups and read the local age key.
     user: '${LOCAL_UID:-1000}:${LOCAL_GID:-1000}'
     environment:
-      RCLONE_CA_CERT: /caddy-data/caddy/pki/authorities/local/root.crt
+      RCLONE_CA_CERT: /etc/family-tree-ca/root.crt
       # A local folder instead of a second bucket; it survives `prod-local.sh reset`.
       RCLONE_CONFIG_BACKUP_TYPE: local
     volumes:
-      - caddy_data:/caddy-data:ro
+      - ./.prod-local/ca:/etc/family-tree-ca:ro
       - ./.prod-local/backups:/backups
       # Local test only. In production the private key is never on the server (decision 14).
       - ./.prod-local/age/identity.txt:/run/age/identity.txt:ro
@@ -4436,25 +4784,54 @@ export interface Fixture {
   viewer: Account;
 }
 
+/**
+ * The local production stack: Node can't resolve *.family.test (`--host-resolver-rules` only
+ * applies to the browser), so curl checks it with --resolve and Caddy's local root (review fix I2).
+ */
+function healthyViaCurl(): boolean {
+  const url = new URL(API);
+  try {
+    execFileSync(
+      'curl',
+      [
+        '-fsS',
+        '-o',
+        '/dev/null',
+        '--resolve',
+        `${url.hostname}:${url.port || 443}:127.0.0.1`,
+        '--cacert',
+        `${REPO_ROOT}.prod-local/ca/root.crt`,
+        `${API}/api/v1/health`,
+      ],
+      { stdio: 'ignore' },
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function waitForHealth() {
-  const ctx = await apiContext();
+  const ctx = PROD_LOCAL ? null : await apiContext();
   try {
     for (let i = 0; i < 60; i++) {
-      const res = await ctx.get('/api/v1/health').catch(() => null);
-      if (res?.ok()) return;
+      const healthy = ctx
+        ? (await ctx.get('/api/v1/health').catch(() => null))?.ok()
+        : healthyViaCurl();
+      if (healthy) return;
       await new Promise((r) => setTimeout(r, 2000));
     }
     throw new Error(`The API at ${API} isn't healthy. Start the stack first (README, "End-to-end tests").`);
   } finally {
-    await ctx.dispose();
+    await ctx?.dispose();
   }
 }
 
 /** Fresh accounts every run (decision 15): an owner of the seeded sample family, and a viewer. */
 export default async function globalSetup() {
   mkdirSync(STATE, { recursive: true });
-  await waitForHealth();
   await writeFixtures();
+  await waitForHealth(); // curl for the local production stack, Node for dev
   if (PROD_LOCAL) return; // the smoke test signs up itself; production refuses seed data
 
   const ownerCtx = await apiContext();
@@ -4905,7 +5282,8 @@ test('@smoke the production stack: TLS, CSP, 2FA sign-up, a photo, export', asyn
 
   const download = page.waitForEvent('download');
   await page.getByRole('region', { name: 'Export' }).getByRole('button', { name: 'Download export' }).click();
-  expect((await download).suggestedFilename()).toMatch(/^family-tree-.*\.zip$/);
+  // The date-based name proves CORS exposes Content-Disposition; the fallback name would not match.
+  expect((await download).suggestedFilename()).toMatch(/^family-tree-\d{4}-\d{2}-\d{2}\.zip$/);
 
   expect(await csp.violations()).toEqual([]);
 });
@@ -4982,13 +5360,22 @@ jobs:
   image:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: docker/login-action@v3
+      # The tag reaches the shell only through env, and only in this shape.
+      - name: Check the tag
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          [[ "$TAG" =~ ^[0-9]{4}\.[0-9]{1,2}\.[0-9]+$ ]] || { echo "Use a tag like 2026.11.1" >&2; exit 1; }
+      # Actions pinned to commit SHAs (tags can move).
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: apps/api/Dockerfile
@@ -5033,7 +5420,7 @@ Write plain, numbered steps with exact commands. Use the repo's real file names.
      - `scripts/prod-local.sh up`, `down`, `reset` and `backup-test`, and what each stands in for (decision 16).
      - **For a browser:**
        - add `127.0.0.1 family.test api.family.test s3.family.test` to `/etc/hosts` (manual, sudo);
-       - import `.prod-local/caddy-root.crt` into the browser's certificate authorities. For Chrome on Linux: `certutil -d sql:$HOME/.pki/nssdb -A -t "C,," -n family-tree-local -i .prod-local/caddy-root.crt`, removed later with `-D -n family-tree-local`;
+       - import `.prod-local/ca/root.crt` into the browser's certificate authorities. For Chrome on Linux: `certutil -d sql:$HOME/.pki/nssdb -A -t "C,," -n family-tree-local -i .prod-local/ca/root.crt`, removed later with `-D -n family-tree-local`;
        - open `https://family.test:8443`.
      - `pnpm test:e2e:prod-local` runs the smoke test without any of that.
   3. **Before you start:**
@@ -5044,7 +5431,11 @@ Write plain, numbered steps with exact commands. Use the repo's real file names.
      - choose names: `family.<domain>` for the web, `api.family.<domain>` for the API. The two must share a registrable domain, for the `SameSite=Lax` cookies (spec §8).
   4. **Cloudflare R2:**
      - Create the private `family-photos` bucket and a `family-backups` bucket, with no public access and no custom domain. Presigned URLs only work on the S3 API endpoint.
-     - Create two API tokens, each with Object Read & Write and scoped to one bucket.
+     - Create three API tokens:
+       - Object Read & Write on `family-photos`, for the app;
+       - Object Read & Write on `family-backups`, for the backups;
+       - **Object Read only** on `family-photos`, for the nightly mirror (`BACKUP_PHOTOS_*`). This is recommended: a stolen backup token then can't change the live photos.
+     - On `family-backups`, add an **R2 bucket lock rule** keeping objects for at least 15 days, so a compromised server can't delete the backups. R2 has no object versioning; on another provider, turn versioning on.
      - Note the endpoint `https://<account-id>.r2.cloudflarestorage.com`.
      - No CORS is needed (Phase 6 carry-forward).
      - **Check in a staging bucket first** (the Phase 6 carry-forward):
@@ -5149,7 +5540,7 @@ git commit -m "docs: self-hosting and the deployment runbook"
 ## Task 17: Verification, README, browser walkthrough and the manual checklist
 
 - [ ] **Step 1: README.**
-  - Change the status line to `> Status: v1 feature-complete (phase 7). Not deployed yet.`
+  - Change the status line to `> Status: all seven planned phases are built. Two spec items are still open: moving 2FA to a new device (spec §5) and the single message catalog (spec §6). Not deployed yet.`
   - **Add "Export (dev)":**
     - the owner's **Tree settings → Export → Download export**;
     - what is in the ZIP (`tree.ged` GEDCOM 5.5.1 UTF-8, `tree.json`, `photos/`);
@@ -5206,7 +5597,7 @@ pnpm --filter @family-tree/e2e exec node scripts/browser-check.mjs
   5. **Dark mode** (emulate `prefers-color-scheme: dark` in DevTools): the Export section is readable, with no hard-coded light colours.
   6. **Mobile (390 × 844):** the Export section and its button fit the width.
   7. **Console:** no errors. **Network:** no 500s. The export request is a single `GET …/export` with `200 application/zip`.
-  8. **Optional, the local production stack in a browser.** Only if the user has added the hosts line and imported `.prod-local/caddy-root.crt` (docs/self-hosting.md, "Try it locally first"):
+  8. **Optional, the local production stack in a browser.** Only if the user has added the hosts line and imported `.prod-local/ca/root.crt` (docs/self-hosting.md, "Try it locally first"):
      - open https://family.test:8443, sign up, upload a photo and export;
      - DevTools shows no CSP violations;
      - the response headers of `/` include the CSP.
@@ -5219,7 +5610,7 @@ pnpm --filter @family-tree/e2e exec node scripts/browser-check.mjs
 3. Import `tree.ged` into a GEDCOM program you trust (for example Gramps: Family Trees → Import). The people, their parents and partners, their dates (including "about" and "between"), the places, the cause of death and the photos appear. Accents in names look right.
 4. Sign in as a viewer or editor in a private window. There is no Export.
 5. Run `scripts/prod-local.sh up`. It ends with `{"status":"ok",…}`.
-6. Optional: add `127.0.0.1 family.test api.family.test s3.family.test` to `/etc/hosts` and import `.prod-local/caddy-root.crt` into your browser. Open https://family.test:8443, sign up, start a tree with 2FA, add a photo and export. Remove the hosts line and the certificate afterwards.
+6. Optional: add `127.0.0.1 family.test api.family.test s3.family.test` to `/etc/hosts` and import `.prod-local/ca/root.crt` into your browser. Open https://family.test:8443, sign up, start a tree with 2FA, add a photo and export. Remove the hosts line and the certificate afterwards.
 7. Run `pnpm test:e2e:prod-local`: `1 passed`.
 8. Run `scripts/prod-local.sh backup-test`: it ends with `PASS: backup, wipe, restore and retention`. Check that `.prod-local/backups/db/` holds `.dump.age` files, and that `head -c 30` of one shows `age-encryption.org/v1`.
 9. Run `scripts/prod-local.sh down`.
