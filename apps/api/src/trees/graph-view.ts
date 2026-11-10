@@ -12,9 +12,9 @@ import {
 } from '@family-tree/shared';
 import { notFound } from '../errors.js';
 import { can } from '../permissions/can.js';
-import type { Access } from './access.js';
 import { signThumbs } from '../photos/photos.js';
 import type { ObjectStore } from '../storage/objects.js';
+import type { Access } from './access.js';
 import type { GraphRows } from './graph-rows.js';
 
 /** Picks the people for the requested view and adds the per-item can() flags (decisions 1–5). */

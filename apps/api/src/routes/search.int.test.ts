@@ -285,4 +285,17 @@ describe('duplicate check on trigrams', () => {
     // The seed's own Anna Price is a second true match; the 300th Anna must not be cut off.
     expect(list.slice(0, 2).map((p) => p.id)).toContain(ids[299]);
   });
+
+  it('matches words under 3 characters as prefixes only', async () => {
+    const { owner, treeId } = await setup();
+    await addPerson(db, treeId, 'Hannah', { surname: 'Zed' });
+    await addPerson(db, treeId, 'Anya', { surname: 'Zed' });
+    await addPerson(db, treeId, 'Mary', { surname: 'Ann' });
+    const found = await names(owner.jar, treeId, 'q=an');
+    expect(found).toEqual(expect.arrayContaining(['Anna', 'Anya', 'Mary']));
+    expect(found).not.toContain('Hannah');
+    expect(found).not.toContain('Susan');
+    // Three letters and more still match inside a word.
+    expect(await names(owner.jar, treeId, 'q=nna')).toContain('Hannah');
+  });
 });

@@ -51,6 +51,9 @@ export async function cropToBlob(
     canvas.height = side;
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('canvas unavailable');
+    // JPEG has no alpha: without this a transparent PNG or WebP would turn black.
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, side, side);
     ctx.drawImage(bitmap, box.x, box.y, box.size, box.size, 0, 0, side, side);
     return await new Promise<Blob>((resolve, reject) =>
       canvas.toBlob(

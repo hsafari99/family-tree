@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { type CropBox, initialCrop, moveCrop, type Size, ZOOM_MAX, zoomCrop } from './crop';
 
+/** The widest the preview gets; on a narrower panel CSS shrinks it and we measure the result. */
 const VIEW = 320;
 const KEYS: Record<string, [number, number]> = {
   ArrowLeft: [-1, 0],
@@ -33,14 +34,29 @@ export function PhotoCropper({
   const [box, setBox] = useState<CropBox | null>(null);
   const [zoom, setZoom] = useState(1);
   const drag = useRef<{ x: number; y: number } | null>(null);
+  const view = useRef<HTMLDivElement>(null);
   const scale = img ? VIEW / Math.max(img.width, img.height) : 1;
+  /** Screen pixels per photo pixel right now: measured, since the panel may be narrower than VIEW. */
+  const pxPerPhotoPx = () => {
+    const w = view.current?.getBoundingClientRect().width;
+    return img && w ? w / img.width : scale;
+  };
+  const endDrag = () => {
+    drag.current = null;
+  };
+  const pct = (v: number, of: number) => `${(v / of) * 100}%`;
 
   return (
     <div className="cropper">
       <p>Choose the part to keep, or use the whole photo.</p>
       <div
         className="crop-view"
-        style={img ? { width: img.width * scale, height: img.height * scale } : undefined}
+        ref={view}
+        style={
+          img
+            ? { width: img.width * scale, aspectRatio: `${img.width} / ${img.height}` }
+            : undefined
+        }
       >
         {url && (
           <img
@@ -63,10 +79,10 @@ export function PhotoCropper({
             tabIndex={0}
             aria-label="Crop area. Use the arrow keys to move it."
             style={{
-              left: box.x * scale,
-              top: box.y * scale,
-              width: box.size * scale,
-              height: box.size * scale,
+              left: pct(box.x, img.width),
+              top: pct(box.y, img.height),
+              width: pct(box.size, img.width),
+              height: pct(box.size, img.height),
             }}
             onKeyDown={(e) => {
               const d = KEYS[e.key];
@@ -82,14 +98,13 @@ export function PhotoCropper({
             onPointerMove={(e) => {
               const d = drag.current;
               if (!d) return;
-              setBox(
-                (b) => b && moveCrop(b, img, (e.clientX - d.x) / scale, (e.clientY - d.y) / scale),
-              );
+              const k = pxPerPhotoPx();
+              setBox((b) => b && moveCrop(b, img, (e.clientX - d.x) / k, (e.clientY - d.y) / k));
               drag.current = { x: e.clientX, y: e.clientY };
             }}
-            onPointerUp={() => {
-              drag.current = null;
-            }}
+            onPointerUp={endDrag}
+            onPointerCancel={endDrag}
+            onLostPointerCapture={endDrag}
           />
         )}
       </div>

@@ -9,6 +9,8 @@ import { summaryColumns } from './people.js';
 /** word_similarity thresholds (decisions 18, 19), set per query with set_config(…, true). */
 const SEARCH_THRESHOLD = 0.4;
 const SIMILAR_THRESHOLD = 0.3;
+/** Words shorter than this are matched as prefixes, never as trigrams or substrings. */
+const SHORT_WORD = 3;
 /** Trigram candidates handed to findSimilar (decision 19). */
 export const SIMILAR_CANDIDATES = 200;
 
@@ -27,8 +29,12 @@ export function searchPersons(db: Db, treeId: string, q: ParsedSearchQuery) {
   const words = searchWords(q.q);
   const conds: (SQL | undefined)[] = [eq(persons.treeId, treeId), isNull(persons.deletedAt)];
   for (const w of words) {
+    // One or two letters match trigrams of almost everything: only the start of the name or of a
+    // word counts, so "an" finds Anna and Mary Ann but not Hannah.
     conds.push(
-      sql`(${norm(w)} <% ${persons.searchName} or ${persons.searchName} like '%' || ${norm(likeEscape(w))} || '%')`,
+      w.length < SHORT_WORD
+        ? sql`(${persons.searchName} like ${norm(likeEscape(w))} || '%' or ${persons.searchName} like '% ' || ${norm(likeEscape(w))} || '%')`
+        : sql`(${norm(w)} <% ${persons.searchName} or ${persons.searchName} like '%' || ${norm(likeEscape(w))} || '%')`,
     );
   }
   if (q.bornFrom !== undefined) conds.push(gte(persons.birthSortYear, q.bornFrom));

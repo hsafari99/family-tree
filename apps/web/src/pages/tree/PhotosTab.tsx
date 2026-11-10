@@ -141,7 +141,7 @@ export function PhotosTab({ treeId, view, reload, onChanged }: TabProps) {
             </span>
           </p>
         ))}
-      {busy && <p role="status">Working…</p>}
+      <p role="status">{busy ? 'Working…' : ''}</p>
     </div>
   );
 }

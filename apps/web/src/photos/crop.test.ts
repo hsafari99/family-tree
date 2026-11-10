@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cropToBlob, initialCrop, moveCrop, zoomCrop } from './crop';
 
 const img = { width: 400, height: 200 };
@@ -33,5 +33,31 @@ describe('square crop (decision 5)', () => {
   it('sends the file unchanged without a crop', async () => {
     const f = new Blob(['x'], { type: 'image/png' });
     expect(await cropToBlob(f, null)).toBe(f);
+  });
+});
+
+describe('cropToBlob transparency', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('paints white before drawing, so a transparent PNG does not turn black as JPEG', async () => {
+    const calls: string[] = [];
+    const ctx = {
+      set fillStyle(v: string) {
+        calls.push(`fillStyle:${v}`);
+      },
+      fillRect: () => calls.push('fillRect'),
+      drawImage: () => calls.push('drawImage'),
+    };
+    vi.stubGlobal('createImageBitmap', async () => ({ close: () => {} }));
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: () => ctx,
+      toBlob: (cb: (b: Blob) => void) => cb(new Blob(['j'])),
+    };
+    vi.spyOn(document, 'createElement').mockReturnValue(canvas as unknown as HTMLElement);
+    await cropToBlob(new Blob(['x']), { x: 0, y: 0, size: 100 });
+    expect(calls).toEqual(['fillStyle:#fff', 'fillRect', 'drawImage']);
+    vi.unstubAllGlobals();
   });
 });
