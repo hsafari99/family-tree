@@ -8,3 +8,4 @@ export * from './branch-fixtures.js';
 export * from './people.js';
 export * from './family-graph.js';
 export * from './graph.js';
+export * from './graph-view.js';
