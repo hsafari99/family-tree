@@ -83,7 +83,7 @@ wait_for() { # wait_for <what> <command…>: up to 3 minutes
 build_web() {
   echo "Building the web app for $WEB"
   VITE_API_BASE_URL="$API" VITE_PHOTO_ORIGIN="$S3" WEB_HEADERS_CADDY=1 \
-    pnpm --filter @family-tree/web build
+    pnpm --filter "@family-tree/web..." build
 }
 
 buckets() {

@@ -1,3 +1,4 @@
+import './zod-browser.js';
 export * from './api.js';
 export * from './auth.js';
 export * from './fuzzy-date.js';

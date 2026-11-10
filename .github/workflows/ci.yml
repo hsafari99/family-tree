@@ -43,3 +43,34 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - run: docker build -f apps/api/Dockerfile -t family-tree-api:ci .
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @family-tree/e2e exec playwright install --with-deps --only-shell chromium
+      # The dev stack in Docker, with Better Auth's limits off for E2E only (decision 15).
+      - run: docker compose up -d --build --wait postgres s3
+      - run: docker compose up -d --build api web
+        env:
+          AUTH_RATE_LIMIT_ENABLED: 'false'
+      - run: pnpm test:e2e
+        env:
+          CI: 'true'
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+          retention-days: 7
+      - if: always()
+        run: docker compose logs --tail 200 api; docker compose down -v
