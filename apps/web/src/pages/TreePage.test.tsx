@@ -1,5 +1,5 @@
 import { fireEvent, screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { MESSAGES } from '../auth/api';
 import { FakeAuthApi } from '../test/fake-auth';
 import { FakeTreesApi, fakePerson } from '../test/fake-trees';
@@ -188,5 +188,44 @@ describe('TreePage', () => {
     renderAt(`/trees/${s.id}/people/new`, s);
     expect(await screen.findByText('You can’t add people to this tree')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Add person' })).not.toBeInTheDocument();
+  });
+
+  it('lets the owner download the export', async () => {
+    const s = setup();
+    const hrefs: string[] = [];
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      hrefs.push(this.href);
+    });
+    renderAt(`/trees/${s.id}`, s);
+    const section = await screen.findByRole('region', { name: 'Export' });
+    expect(section).toHaveTextContent('living relatives');
+    s.trees.hold('exportTree');
+    fireEvent.click(within(section).getByRole('button', { name: 'Download export' }));
+    expect(
+      await within(section).findByRole('button', { name: 'Preparing export…' }),
+    ).toBeDisabled();
+    s.trees.release();
+    expect(await within(section).findByText('Your export is downloading.')).toBeInTheDocument();
+    expect(s.trees.callsTo('exportTree')).toEqual([s.id]);
+    expect(hrefs).toEqual([`https://api.example.com/api/v1/trees/${s.id}/export?ticket=fake`]);
+    click.mockRestore();
+  });
+
+  it('shows a fixed message when the export is refused', async () => {
+    const s = setup();
+    s.trees.failNext('exportTree', { code: 'RATE_LIMITED', message: MESSAGES.exportLimited });
+    renderAt(`/trees/${s.id}`, s);
+    const section = await screen.findByRole('region', { name: 'Export' });
+    fireEvent.click(within(section).getByRole('button', { name: 'Download export' }));
+    expect(await within(section).findByText(MESSAGES.exportLimited)).toBeInTheDocument();
+  });
+
+  it('has no Export for viewers and editors', async () => {
+    const s = setup({ role: 'viewer', detail: { capabilities: viewerCaps } });
+    renderAt(`/trees/${s.id}`, s);
+    expect(await screen.findByText('You are a viewer of this tree.')).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Export' })).not.toBeInTheDocument();
   });
 });

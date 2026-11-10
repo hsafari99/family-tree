@@ -87,7 +87,13 @@ export const invitesRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, {
     {
       preHandler: [
         session,
-        extraLimit(app, { name: 'invite-create', max: 30, timeWindow: '1 hour', by: 'user' }),
+        extraLimit(app, {
+          name: 'invite-create',
+          max: 30,
+          timeWindow: '1 hour',
+          by: 'user',
+          devSwitch: true,
+        }),
       ],
     },
     async (req, reply) => {
@@ -171,7 +177,14 @@ export const invitesRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, {
   // Public: the landing page shows what the invite is for before sign-up. The token is the secret.
   app.post(
     '/api/v1/invites/preview',
-    { preHandler: extraLimit(app, { name: 'invite-preview', max: 30, timeWindow: '15 minutes' }) },
+    {
+      preHandler: extraLimit(app, {
+        name: 'invite-preview',
+        max: 30,
+        timeWindow: '15 minutes',
+        devSwitch: true,
+      }),
+    },
     async (req) => {
       const { token } = parseBody(inviteTokenSchema, req.body);
       const [row] = await db
@@ -206,7 +219,12 @@ export const invitesRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, {
     '/api/v1/invites/accept',
     {
       preHandler: [
-        extraLimit(app, { name: 'invite-accept', max: 10, timeWindow: '15 minutes' }),
+        extraLimit(app, {
+          name: 'invite-accept',
+          max: 10,
+          timeWindow: '15 minutes',
+          devSwitch: true,
+        }),
         session,
       ],
     },

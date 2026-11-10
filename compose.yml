@@ -42,10 +42,10 @@ services:
     # Only reinstall when the lockfile, any package.json or the workspace config changed
     # since the last successful install (or a package node_modules volume is empty).
     command: >-
-      sh -c 'files="pnpm-lock.yaml pnpm-workspace.yaml package.json apps/*/package.json packages/*/package.json";
+      sh -c 'files="pnpm-lock.yaml pnpm-workspace.yaml package.json apps/*/package.json packages/*/package.json e2e/package.json";
       if sha256sum -c --status node_modules/.lock-stamp 2>/dev/null
       && [ -e apps/api/node_modules/fastify ] && [ -e apps/web/node_modules/react ]
-      && [ -e packages/shared/node_modules/zod ];
+      && [ -e packages/shared/node_modules/zod ] && [ -e e2e/node_modules/@playwright/test ];
       then echo "deps up to date";
       else pnpm install --frozen-lockfile && sha256sum $$files > node_modules/.lock-stamp; fi'
     volumes: &app-volumes
@@ -54,6 +54,7 @@ services:
       - nm_api:/app/apps/api/node_modules
       - nm_web:/app/apps/web/node_modules
       - nm_shared:/app/packages/shared/node_modules
+      - nm_e2e:/app/e2e/node_modules
       - pnpm_store:/pnpm-store
 
   api:
@@ -63,6 +64,8 @@ services:
     environment:
       DATABASE_URL: postgres://family:dev-only-pw@postgres:5432/family
       S3_ENDPOINT: http://s3:8333
+      # E2E only: `AUTH_RATE_LIMIT_ENABLED=false pnpm dev` (Phase 7 decision 15).
+      AUTH_RATE_LIMIT_ENABLED: ${AUTH_RATE_LIMIT_ENABLED:-true}
     ports: ['127.0.0.1:3000:3000']
     volumes: *app-volumes
     depends_on:
@@ -88,4 +91,5 @@ volumes:
   nm_api:
   nm_web:
   nm_shared:
+  nm_e2e:
   pnpm_store:

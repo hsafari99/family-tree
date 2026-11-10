@@ -10,3 +10,9 @@ coverage/
 /graft/
 .claude/settings.local.json
 .vitest/
+
+# Phase 7: local production stack and E2E output
+/.prod-local/
+/e2e/.state/
+/e2e/test-results/
+/e2e/playwright-report/

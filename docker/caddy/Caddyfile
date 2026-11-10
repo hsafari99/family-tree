@@ -1,0 +1,9 @@
+# Production (compose.prod.yml): Caddy terminates TLS for the API with a Let's Encrypt
+# certificate. The web app is on Cloudflare Pages, not here (spec §2).
+{
+	email {$ACME_EMAIL}
+}
+
+{$API_DOMAIN} {
+	import /etc/caddy/api.caddy
+}

@@ -96,7 +96,12 @@ export function StewardsSection({
           ))}
         </ul>
       )}
-      {detail.capabilities.grantStewardship && (
+      {detail.capabilities.grantStewardship && candidates.length === 0 && (
+        <p className="hint">
+          Invite someone and have them join first; then you can make them a steward.
+        </p>
+      )}
+      {detail.capabilities.grantStewardship && candidates.length > 0 && (
         <form onSubmit={grant}>
           <h3>Make someone a steward</h3>
           <div className="field">

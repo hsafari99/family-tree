@@ -1,0 +1,29 @@
+# Local test of the production stack only (compose.prod.local.yml, decision 16). Certificates come
+# from Caddy's own local CA; nothing is requested from Let's Encrypt. Inside Docker the same names
+# and ports work, because Caddy has the names as network aliases and listens on 8080/8443.
+{
+	local_certs
+	skip_install_trust
+	http_port 8080
+	https_port 8443
+}
+
+api.family.test {
+	import /etc/caddy/api.caddy
+}
+
+# Stands in for Cloudflare Pages: the built web app, with the headers it would get there.
+family.test {
+	root * /srv/web
+	import /srv/web/_headers.caddy
+	try_files {path} /index.html
+	file_server
+}
+
+# Stands in for R2: SeaweedFS behind TLS, so the API's production config (https, not local) holds.
+s3.family.test {
+	request_body {
+		max_size 12MB
+	}
+	reverse_proxy s3:8333
+}

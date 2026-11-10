@@ -1,0 +1,10 @@
+# The API site, shared by Caddyfile (production) and Caddyfile.local. No `log` directive: Caddy
+# keeps no access log, so client IPs and paths are never written (spec §8, decision 11).
+request_body {
+	max_size 12MB
+}
+header {
+	-Server
+	-Via
+}
+reverse_proxy api:3000

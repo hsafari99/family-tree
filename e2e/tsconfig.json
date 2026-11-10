@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "allowJs": true
+  },
+  "include": ["**/*.ts", "**/*.mjs"],
+  "exclude": ["node_modules", "test-results", "playwright-report"]
+}

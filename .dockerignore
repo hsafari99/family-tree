@@ -10,3 +10,5 @@ graft
 docs
 **/*.test.ts
 **/*.int.test.ts
+.prod-local
+e2e

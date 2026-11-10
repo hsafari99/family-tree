@@ -16,6 +16,9 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "test:int": "pnpm --filter @family-tree/api test:int",
+    "test:e2e": "pnpm --filter @family-tree/e2e e2e",
+    "test:e2e:prod-local": "pnpm --filter @family-tree/e2e e2e:prod-local",
+    "prod-local": "scripts/prod-local.sh",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

@@ -49,6 +49,8 @@ export function FamilyCanvas(props: FamilyCanvasProps) {
   );
 }
 
+const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
 function CanvasInner({
   nodes,
   edges,
@@ -70,8 +72,14 @@ function CanvasInner({
   // After every new layout: fit, then (focus view) centre on the focus person.
   useEffect(() => {
     if (nodes.length === 0) return;
+    let cancelled = false;
     void (async () => {
-      await flow.fitView({ padding: 0.15, maxZoom: 1.1, duration: 0 });
+      // Let React Flow take the new nodes and measure them first (two frames): fitting earlier
+      // used the previous layout's bounds and could crop the top row.
+      await nextFrame();
+      await nextFrame();
+      if (cancelled) return;
+      await flow.fitView({ padding: 0.2, maxZoom: 1.1, duration: 0 });
       const focus = focusId ? nodes.find((n) => n.id === personNodeId(focusId)) : undefined;
       if (focus) {
         await flow.setCenter(
@@ -84,6 +92,9 @@ function CanvasInner({
         );
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [flow, nodes, focusId]);
 
   const onNodeDragStop = useCallback(

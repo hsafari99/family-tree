@@ -1,7 +1,9 @@
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
+  S3ServiceException,
   type S3Client,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
@@ -22,6 +24,10 @@ export interface ObjectStore {
   delete(key: string): Promise<void>;
   /** A GET URL for the browser, valid PHOTO_URL_TTL_SECONDS from the start of `now`'s window. */
   signedUrl(key: string, now?: number): Promise<string>;
+  /** The object's bytes, or null when the key doesn't exist. For the export (one at a time). */
+  get(key: string, signal?: AbortSignal): Promise<Uint8Array | null>;
+  /** Every object under `prefix`, page by page (1,000 per request). For the orphan sweep. */
+  list(prefix: string): AsyncGenerator<{ key: string; lastModified: Date }>;
   close(): void;
 }
 
@@ -65,6 +71,34 @@ export function createObjectStore(config: Config, shared?: S3Client): ObjectStor
       if (cache.size >= CACHE_MAX) cache.clear();
       cache.set(key, { window, url });
       return url;
+    },
+    async get(key, signal) {
+      try {
+        const res = await s3.send(new GetObjectCommand({ Bucket, Key: key }), {
+          abortSignal: signal,
+        });
+        return res.Body ? await res.Body.transformToByteArray() : new Uint8Array();
+      } catch (err) {
+        if (
+          err instanceof S3ServiceException &&
+          (err.name === 'NoSuchKey' || err.$metadata.httpStatusCode === 404)
+        ) {
+          return null;
+        }
+        throw err;
+      }
+    },
+    async *list(prefix) {
+      let token: string | undefined;
+      do {
+        const page = await s3.send(
+          new ListObjectsV2Command({ Bucket, Prefix: prefix, ContinuationToken: token }),
+        );
+        for (const o of page.Contents ?? []) {
+          if (o.Key) yield { key: o.Key, lastModified: o.LastModified ?? new Date(0) };
+        }
+        token = page.IsTruncated ? page.NextContinuationToken : undefined;
+      } while (token);
     },
     close() {
       signer.destroy();

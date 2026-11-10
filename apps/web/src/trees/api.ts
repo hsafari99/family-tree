@@ -56,7 +56,7 @@ import {
   type UpdateUnionInput,
   updatedPersonSchema,
 } from '@family-tree/shared';
-import { type CallKind, MESSAGES, type Result, toAuthError } from '../auth/api';
+import { type AuthError, type CallKind, MESSAGES, type Result, toAuthError } from '../auth/api';
 
 /** Everything the tree pages need. Tests use FakeTreesApi (test/fake-trees.ts). */
 export interface TreesApi {
@@ -130,6 +130,7 @@ export interface TreesApi {
   deletePhoto(treeId: string, photoId: string): Promise<Result<void>>;
   search(treeId: string, query: SearchQuery, signal?: AbortSignal): Promise<Result<SearchResult[]>>;
   relationship(treeId: string, from: string, to: string): Promise<Result<Relationship>>;
+  exportTree(treeId: string): Promise<Result<{ url: string }>>;
 }
 
 /** Every TreesApi method; the Record type makes the compiler flag a missing one. */
@@ -181,6 +182,7 @@ export const TREES_API_METHODS = Object.keys({
   deletePhoto: true,
   search: true,
   relationship: true,
+  exportTree: true,
 } satisfies Record<keyof TreesApi, true>) as (keyof TreesApi)[];
 
 /** The part of a Zod schema `request` uses (keeps zod out of this package's dependencies). */
@@ -202,6 +204,27 @@ export function createTreesApi({ baseUrl }: { baseUrl: string }): TreesApi {
   const origin = baseUrl.replace(/\/+$/, '');
   const enc = encodeURIComponent;
   const t = (treeId: string) => `/trees/${enc(treeId)}`;
+
+  /** An API error response as a fixed message (codes and reasons map to MESSAGES). */
+  async function errorFrom(
+    res: Response,
+    kind: CallKind,
+    codes?: Partial<Record<string, string>>,
+    reasons?: Partial<Record<string, string>>,
+  ): Promise<AuthError> {
+    const parsed = apiErrorSchema.safeParse(await res.json().catch(() => null));
+    const error = toAuthError(
+      res.status,
+      parsed.success ? parsed.data.error.code : undefined,
+      kind,
+    );
+    const reason = parsed.success
+      ? (parsed.data.error.details as { reason?: unknown } | undefined)?.reason
+      : undefined;
+    const override =
+      (typeof reason === 'string' ? reasons?.[reason] : undefined) ?? codes?.[error.code];
+    return override ? { ...error, message: override } : error;
+  }
 
   async function request<T>(
     method: Method,
@@ -229,20 +252,7 @@ export function createTreesApi({ baseUrl }: { baseUrl: string }): TreesApi {
     } catch {
       return { ok: false, error: { code: 'NETWORK', message: MESSAGES.network } };
     }
-    if (!res.ok) {
-      const parsed = apiErrorSchema.safeParse(await res.json().catch(() => null));
-      const error = toAuthError(
-        res.status,
-        parsed.success ? parsed.data.error.code : undefined,
-        kind,
-      );
-      const reason = parsed.success
-        ? (parsed.data.error.details as { reason?: unknown } | undefined)?.reason
-        : undefined;
-      const override =
-        (typeof reason === 'string' ? reasons?.[reason] : undefined) ?? codes?.[error.code];
-      return { ok: false, error: override ? { ...error, message: override } : error };
-    }
+    if (!res.ok) return { ok: false, error: await errorFrom(res, kind, codes, reasons) };
     if (!parser) return { ok: true, data: undefined as T };
     const parsed = parser.safeParse(await res.json().catch(() => null));
     return parsed.success
@@ -406,6 +416,37 @@ export function createTreesApi({ baseUrl }: { baseUrl: string }): TreesApi {
         ),
         (d) => d.results,
       ),
+    // The preflight (?check=1) does the access, busy, size and rate-limit checks and returns a
+    // one-time ticket; the download itself is a browser navigation, not a fetch (review fix I1).
+    exportTree: async (treeId) => {
+      const base = `${origin}/api/v1${t(treeId)}/export`;
+      let res: Response;
+      try {
+        res = await fetch(`${base}?check=1`, { credentials: 'include' });
+      } catch {
+        return { ok: false, error: { code: 'NETWORK', message: MESSAGES.network } };
+      }
+      if (!res.ok) {
+        return {
+          ok: false,
+          error: await errorFrom(
+            res,
+            'session',
+            { RATE_LIMITED: MESSAGES.exportLimited },
+            { tooLarge: MESSAGES.exportTooLarge },
+          ),
+        };
+      }
+      try {
+        const body: unknown = await res.json();
+        const ticket = (body as { ticket?: unknown } | null)?.ticket;
+        if (typeof ticket !== 'string' || !/^[A-Za-z0-9_-]+$/.test(ticket))
+          throw new Error('shape');
+        return { ok: true, data: { url: `${base}?ticket=${ticket}` } };
+      } catch {
+        return { ok: false, error: { code: 'NETWORK', message: MESSAGES.network } };
+      }
+    },
     relationship: (id, from, to) =>
       request('GET', `${t(id)}/relationship${qs({ from, to })}`, undefined, relationshipSchema),
   };

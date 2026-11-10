@@ -230,3 +230,38 @@ describe('photo objects of purged trees', () => {
     for (const k of t.keys) expect(await objectExists(deps, k)).toBe(true);
   });
 });
+
+describe('the orphan sweep in the purge job', () => {
+  it('never sweeps on the first tick after startup, then sweeps once per period', async () => {
+    const list = vi.fn(async function* () {});
+    const store = { ...deps.storage, list };
+    const log = { info: vi.fn(), error: vi.fn(), warn: vi.fn() };
+    let clock = 1_000_000; // an injected clock: no dependence on wall-clock timing
+    const stop = startPurgeJob(db, log, 10, store, { sweepEveryMs: 300, now: () => clock });
+    clock += 299; // just under one period, however many ticks happen
+    await new Promise((r) => setTimeout(r, 80));
+    expect(list).not.toHaveBeenCalled();
+    clock += 1; // one full period since startup
+    await vi.waitFor(() => expect(list).toHaveBeenCalledTimes(1));
+    await new Promise((r) => setTimeout(r, 80));
+    expect(list).toHaveBeenCalledTimes(1); // the clock hasn't moved: not again
+    await stop();
+    expect(log.error).not.toHaveBeenCalled();
+  });
+
+  it('logs a failed sweep as a sweep failure, not a purge failure', async () => {
+    const list = vi.fn(async function* () {
+      yield* [];
+      throw new Error('bucket unreachable');
+    });
+    const store = { ...deps.storage, list };
+    const log = { info: vi.fn(), error: vi.fn(), warn: vi.fn() };
+    let clock = 0;
+    const stop = startPurgeJob(db, log, 10, store, { sweepEveryMs: 100, now: () => clock });
+    clock = 100;
+    await vi.waitFor(() => expect(log.error).toHaveBeenCalled());
+    await stop();
+    expect(log.error.mock.calls[0]?.[1]).toBe('orphan sweep failed');
+    expect(log.error.mock.calls.some((c) => c[1] === 'tree purge failed')).toBe(false);
+  });
+});

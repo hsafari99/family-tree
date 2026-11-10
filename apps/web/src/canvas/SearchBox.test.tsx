@@ -38,6 +38,31 @@ beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
 afterEach(() => vi.useRealTimers());
 
 describe('SearchBox', () => {
+  it('closes the results on a click outside, and on tabbing out, but not on a click inside', async () => {
+    const s = setup();
+    renderAt(`/trees/${s.id}`, s);
+    const input = await box();
+    type(input, 'margaret');
+    await settle();
+    const list = await screen.findByRole('list', { name: 'Search results' });
+    fireEvent.pointerDown(list); // inside: stays open
+    expect(screen.getByRole('list', { name: 'Search results' })).toBeInTheDocument();
+    fireEvent.pointerDown(document.body);
+    await waitFor(() =>
+      expect(screen.queryByRole('list', { name: 'Search results' })).not.toBeInTheDocument(),
+    );
+    type(input, 'margaret');
+    await settle();
+    await screen.findByRole('list', { name: 'Search results' });
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    fireEvent.blur(input, { relatedTarget: outside });
+    await waitFor(() =>
+      expect(screen.queryByRole('list', { name: 'Search results' })).not.toBeInTheDocument(),
+    );
+    outside.remove();
+  });
+
   it('searches once after the debounce and shows the relation to you', async () => {
     const s = setup();
     renderAt(`/trees/${s.id}`, s);

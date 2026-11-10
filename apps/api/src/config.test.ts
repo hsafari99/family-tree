@@ -116,6 +116,19 @@ describe('loadConfig', () => {
     );
   });
 
+  it('uses path-style S3 URLs in production and refuses virtual-hosted ones', () => {
+    // R2's virtual-hosted host (<bucket>.<account>.r2...) is not in the web app's CSP img-src.
+    expect(loadConfig(prodEnv).S3_FORCE_PATH_STYLE).toBe(true);
+    expect(loadConfig({ ...prodEnv, S3_FORCE_PATH_STYLE: 'true' }).S3_FORCE_PATH_STYLE).toBe(true);
+    expect(() => loadConfig({ ...prodEnv, S3_FORCE_PATH_STYLE: 'false' })).toThrowError(
+      /S3_FORCE_PATH_STYLE/,
+    );
+    expect(loadConfig(devEnv).S3_FORCE_PATH_STYLE).toBe(true);
+    const env: Record<string, string | undefined> = { ...devEnv };
+    delete env.S3_FORCE_PATH_STYLE;
+    expect(loadConfig(env).S3_FORCE_PATH_STYLE).toBe(false);
+  });
+
   it('requires AUTH_BASE_URL', () => {
     const env: Record<string, string | undefined> = { ...devEnv };
     delete env.AUTH_BASE_URL;
@@ -206,5 +219,31 @@ describe('loadConfig', () => {
           .S3_PUBLIC_ENDPOINT,
       ).toBe('https://acc.r2.cloudflarestorage.com');
     });
+  });
+
+  it('migrates on start and keeps the auth rate limits on by default', () => {
+    const config = loadConfig(devEnv);
+    expect(config.MIGRATE_ON_START).toBe(true);
+    expect(config.AUTH_RATE_LIMIT_ENABLED).toBe(true);
+  });
+
+  it('lets a local or .test stack turn the auth rate limits off (for E2E), and nothing else', () => {
+    expect(
+      loadConfig({ ...devEnv, AUTH_RATE_LIMIT_ENABLED: 'false' }).AUTH_RATE_LIMIT_ENABLED,
+    ).toBe(false);
+    expect(() =>
+      loadConfig({
+        ...devEnv,
+        AUTH_BASE_URL: 'https://api.example.com',
+        AUTH_RATE_LIMIT_ENABLED: 'false',
+      }),
+    ).toThrowError(/AUTH_RATE_LIMIT_ENABLED/);
+  });
+
+  it('refuses auth rate limits off in production, and accepts MIGRATE_ON_START=false', () => {
+    expect(() => loadConfig({ ...prodEnv, AUTH_RATE_LIMIT_ENABLED: 'false' })).toThrowError(
+      /AUTH_RATE_LIMIT_ENABLED/,
+    );
+    expect(loadConfig({ ...prodEnv, MIGRATE_ON_START: 'false' }).MIGRATE_ON_START).toBe(false);
   });
 });

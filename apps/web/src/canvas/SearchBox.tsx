@@ -126,9 +126,26 @@ export function SearchBox({
     setError(null);
   };
 
+  // A pointer press anywhere outside the search area dismisses the popup.
+  const area = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onDown = (e: PointerEvent) => {
+      if (area.current && !area.current.contains(e.target as Node)) close();
+    };
+    document.addEventListener('pointerdown', onDown);
+    return () => document.removeEventListener('pointerdown', onDown);
+  });
+
   return (
     <div
       className="search-box"
+      ref={area}
+      // Keyboard focus leaving the area (not a click on a non-focusable spot, where relatedTarget
+      // is null and a result button may be about to receive its click) closes it too.
+      onBlur={(e) => {
+        const to = e.relatedTarget as Node | null;
+        if (to && !e.currentTarget.contains(to)) close();
+      }}
       onKeyDown={(e) => {
         if (e.key !== 'Escape') return;
         // Handled here: the workspace's Escape listener must not also close the side panel.

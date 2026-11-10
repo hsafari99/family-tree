@@ -5,6 +5,7 @@ import { ConfirmButton } from '../components/ConfirmButton';
 import { FormError } from '../components/forms';
 import { Page } from '../components/Page';
 import { TreeWorkspace } from './tree/TreeWorkspace';
+import { startDownload } from '../trees/download';
 import { personName } from '../trees/format';
 import { useTreesApi } from '../trees/TreesApiContext';
 
@@ -208,6 +209,7 @@ function Settings({
           Save starting person
         </button>
       </form>
+      <ExportSection treeId={treeId} />
       <h3>Delete this tree</h3>
       <p>Deleting hides the tree from everyone. You can restore it from Your trees for 30 days.</p>
       <div className="field">
@@ -222,6 +224,45 @@ function Settings({
         pending={pending}
         onConfirm={() => void remove()}
       />
+    </section>
+  );
+}
+
+/** Owner only (spec §4): the whole tree as one ZIP (decisions 2, 5, 9). */
+function ExportSection({ treeId }: { treeId: string }) {
+  const api = useTreesApi();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  async function run() {
+    setError(null);
+    setDone(false);
+    setPending(true);
+    const res = await api.exportTree(treeId);
+    setPending(false);
+    if (!res.ok) return setError(res.error.message);
+    startDownload(res.data.url);
+    setDone(true);
+  }
+
+  return (
+    <section aria-labelledby="export-heading">
+      <h3 id="export-heading">Export</h3>
+      <p>
+        Download everything in this tree as one ZIP file: <code>tree.ged</code> (GEDCOM, which most
+        family-tree programs can open), the photos, and <code>tree.json</code> (a complete copy of
+        the data). It includes details of living relatives, so keep it private.
+      </p>
+      <FormError>{error}</FormError>
+      {done && (
+        <p role="status" className="success">
+          Your export is downloading.
+        </p>
+      )}
+      <button type="button" disabled={pending} onClick={() => void run()}>
+        {pending ? 'Preparing export…' : 'Download export'}
+      </button>
     </section>
   );
 }

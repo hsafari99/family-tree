@@ -5,3 +5,6 @@ LICENSE
 docs/superpowers
 graft/
 .claude
+.prod-local
+e2e/test-results
+e2e/playwright-report

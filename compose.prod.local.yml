@@ -1,0 +1,63 @@
+# Local-only overrides for testing compose.prod.yml on this machine (decision 16). Never use on a
+# server. Use it through scripts/prod-local.sh, which writes the secrets into .prod-local/.
+services:
+  # Stands in for R2.
+  s3:
+    image: chrislusf/seaweedfs:4.00
+    command: server -s3 -s3.config=/etc/seaweedfs/s3.json -dir=/data -volume.max=100 -master.volumeSizeLimitMB=64
+    volumes:
+      - s3data:/data
+      - ./.prod-local/s3.json:/etc/seaweedfs/s3.json:ro
+    networks: [edge]
+    healthcheck:
+      test: ['CMD-SHELL', 'nc -z 127.0.0.1 8333']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+
+  caddy:
+    # Loopback only, and Caddy's local CA (docker/caddy/Caddyfile.local).
+    ports: !override ['127.0.0.1:8080:8080', '127.0.0.1:8443:8443']
+    volumes:
+      - ./docker/caddy/Caddyfile.local:/etc/caddy/Caddyfile:ro
+      - ./apps/web/dist:/srv/web:ro
+    networks:
+      edge:
+        aliases: [family.test, api.family.test, s3.family.test]
+    depends_on:
+      s3: { condition: service_healthy }
+    healthcheck:
+      test: ['CMD', 'test', '-f', '/data/caddy/pki/authorities/local/root.crt']
+      interval: 2s
+      timeout: 2s
+      retries: 60
+
+  api:
+    environment:
+      # Trust Caddy's local CA for https://s3.family.test:8443 (the stand-in for R2).
+      NODE_EXTRA_CA_CERTS: /etc/family-tree-ca/root.crt
+    volumes:
+      # The world-readable copy made by prod-local.sh. Caddy's own file under /data is 0600 in
+      # 0700 directories, which the API's `node` user can't read (review fix I2).
+      - ./.prod-local/ca:/etc/family-tree-ca:ro
+    depends_on:
+      caddy: { condition: service_healthy }
+
+  backup:
+    &local-backup # Runs as the host user so it can write .prod-local/backups and read the local age key.
+    user: '${LOCAL_UID:-1000}:${LOCAL_GID:-1000}'
+    environment:
+      RCLONE_CA_CERT: /etc/family-tree-ca/root.crt
+      # A local folder instead of a second bucket; it survives `prod-local.sh reset`.
+      RCLONE_CONFIG_BACKUP_TYPE: local
+    volumes:
+      - ./.prod-local/ca:/etc/family-tree-ca:ro
+      - ./.prod-local/backups:/backups
+      # Local test only. In production the private key is never on the server (decision 14).
+      - ./.prod-local/age/identity.txt:/run/age/identity.txt:ro
+
+  restore: *local-backup
+
+volumes:
+  s3data:

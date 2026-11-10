@@ -1,0 +1,12 @@
+# Nightly backup (docs/self-hosting.md "Backups"). Install on the server:
+#   sudo cp docker/backup/systemd/family-tree-backup.* /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now family-tree-backup.timer
+[Unit]
+Description=Family Tree backup (database dump and photo mirror)
+Wants=network-online.target
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/family-tree
+ExecStart=/usr/bin/docker compose --env-file .env.production -f compose.prod.yml run --rm backup

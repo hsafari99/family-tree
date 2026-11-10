@@ -2,6 +2,7 @@ import { buildApp } from './app.js';
 import { ConfigError, loadConfig, type Config } from './config.js';
 import { runMigrations } from './db/migrate.js';
 import { createDeps } from './deps.js';
+import { assertServerTarget } from './target-guard.js';
 import { ensureBucket } from './storage/s3.js';
 import { startPurgeJob } from './trees/purge.js';
 
@@ -16,8 +17,10 @@ try {
   throw err;
 }
 
+assertServerTarget(config);
 const deps = createDeps(config);
-await runMigrations(deps.db);
+// Production migrates in the one-shot `migrate` service as the owner role (decision 12).
+if (config.MIGRATE_ON_START) await runMigrations(deps.db);
 if (config.S3_CREATE_BUCKET) await ensureBucket(deps.s3, config.S3_BUCKET);
 
 const app = buildApp({
@@ -36,6 +39,7 @@ const stopPurge =
         app.log.child({ module: 'purge' }),
         config.TREE_PURGE_INTERVAL_MINUTES * 60_000,
         deps.storage,
+        { sweepEveryMs: 86_400_000 },
       )
     : async () => {};
 

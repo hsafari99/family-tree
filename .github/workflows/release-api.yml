@@ -1,0 +1,49 @@
+name: Release API image
+
+# Manual only: nothing is published until the author runs this from the Actions tab.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Image tag (for example 2026.11.1)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      # The tag reaches the shell only through env, and only in this shape.
+      - name: Check the tag
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          [[ "$TAG" =~ ^[0-9]{4}\.[0-9]{1,2}\.[0-9]+$ ]] || { echo "Use a tag like 2026.11.1" >&2; exit 1; }
+      # Actions pinned to commit SHAs (tags can move).
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # GHCR names must be lowercase, and the owner may not be.
+      - name: Image name
+        id: image
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: echo "name=ghcr.io/${OWNER,,}/family-tree-api" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          tags: ${{ steps.image.outputs.name }}:${{ inputs.tag }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
