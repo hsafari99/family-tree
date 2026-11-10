@@ -147,3 +147,9 @@ export function formatValue(v: unknown): string {
   if (typeof v === 'object' && 'qualifier' in v) return formatFuzzyDate(v as FuzzyDate);
   return String(v);
 }
+
+/** "AL" for Ada Lovelace; the silhouette's initials until photos arrive (phase 6). */
+export function initials(p: NameParts): string {
+  const first = (s: string | null) => (s ? ([...s.trim()][0] ?? '') : '');
+  return (first(p.givenName) + first(p.surname)).toLocaleUpperCase();
+}
