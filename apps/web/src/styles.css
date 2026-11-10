@@ -547,3 +547,77 @@ textarea {
 .react-flow__node.is-reorderable .person-card {
   cursor: grab;
 }
+
+/* Photos. Colours come from the theme tokens only (the app is `color-scheme: light dark`). */
+.panel-photo {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  object-fit: cover;
+  float: right;
+  display: grid;
+  place-items: center;
+  background: var(--surface);
+  color: CanvasText;
+  border: 1px solid var(--border);
+  font-weight: 600;
+}
+.photo-grid {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 0.75rem;
+}
+.photo-thumb {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: var(--surface);
+  color: CanvasText;
+  border: 1px solid var(--border);
+}
+.photo.is-primary .photo-thumb {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+.badge {
+  display: inline-block;
+  font-size: 0.8rem;
+  background: color-mix(in srgb, var(--accent) 18%, Canvas);
+  color: CanvasText;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, Canvas);
+  border-radius: 999px;
+  padding: 0 0.5rem;
+}
+.photo-actions {
+  margin: 0.25rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+.cropper .crop-view {
+  position: relative;
+  max-width: 100%;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+}
+.cropper .crop-view img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+/* The dimmed surround is over the photo itself, so a translucent Canvas works in both themes. */
+.crop-box {
+  position: absolute;
+  box-shadow: 0 0 0 9999px color-mix(in srgb, Canvas 55%, transparent);
+  outline: 2px solid CanvasText;
+  cursor: move;
+}
+.crop-box:focus-visible {
+  outline: 3px solid var(--accent);
+}

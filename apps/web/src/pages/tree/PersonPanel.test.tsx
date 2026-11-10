@@ -202,7 +202,7 @@ describe('PersonPanel', () => {
     expect(await screen.findByText('Places lived')).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Places' })).toHaveAttribute('aria-selected', 'true');
     fireEvent.click(screen.getByRole('tab', { name: 'Photos' }));
-    expect(screen.getByText('Photos arrive in a later version.')).toBeInTheDocument();
+    expect(screen.getByText('No photos yet.')).toBeInTheDocument();
   });
 
   it('shows the not-found message for an unknown person', async () => {
@@ -405,5 +405,29 @@ describe('PersonPanel reorder children', () => {
     renderAt(at(s, '?tab=relations'), s);
     await screen.findByRole('heading', { name: /Ada King/ });
     expect(screen.queryByRole('button', { name: /^Move / })).toBeNull();
+  });
+
+  it('shows the main photo in the header', async () => {
+    const s = setup({
+      photos: [
+        {
+          id: 'ph-1',
+          width: 1,
+          height: 1,
+          bytes: 1,
+          isPrimary: true,
+          createdAt: new Date().toISOString(),
+          uploadedByName: null,
+          thumbUrl: 'https://photos.test/1/thumb',
+          fullUrl: 'https://photos.test/1/full',
+        },
+      ],
+    });
+    const { container } = renderAt(at(s), s);
+    await screen.findByRole('heading', { name: /Ada King/ });
+    expect(container.querySelector('img.panel-photo')).toHaveAttribute(
+      'src',
+      'https://photos.test/1/thumb',
+    );
   });
 });
