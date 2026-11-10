@@ -71,6 +71,20 @@ pnpm test:int         # integration tests (needs `pnpm dev` or `docker compose u
 - Trees deleted more than 30 days ago are purged hourly by the API (`TREE_PURGE_INTERVAL_MINUTES`,
   0 turns it off), or at once with `pnpm purge-trees`.
 
+## The family canvas (dev)
+
+- A tree opens in **Focus** view on the starting person: parents, siblings, partners and children.
+  **Generations** (1–3) widens it. **Full** shows the whole tree, or one branch for trees above
+  2,000 people.
+- Click a card to open the person's panel; the view re-centres on them. Click a ● dot to edit a
+  relationship.
+- The **+** buttons on a card add a parent, sibling, partner or child. Every add first checks for
+  likely duplicates ("Is this the existing person …?").
+- Layout is automatic. The only drag is reordering siblings (or **Move earlier/later** in
+  Relations).
+- **Disconnected people (N)** lists anyone not connected to the starting person.
+- `pnpm seed -- you@example.com --large 2500` adds "Large family (seed)" to try large trees.
+
 ## Known limitations
 
 - **Sign-up reveals registered emails.** Sign-up is open, and signing up with an email that
@@ -85,8 +99,10 @@ pnpm test:int         # integration tests (needs `pnpm dev` or `docker compose u
   meant to run as a single instance; a second one would need a shared store first.
 - **Moving 2FA to a new device** isn't possible yet (planned for phase 7). An owner who loses
   their phone signs in with a recovery code.
-- **No tree canvas or duplicate check when adding people yet** (phase 5), and disconnected people
-  are not listed separately yet (phase 5).
+- **Duplicate check is a simple name and birth-year match** until search arrives (phase 6). Cards
+  show initials until photos arrive, and there is no search box or "How are we related?" yet
+  (phase 6).
+- **Sibling order is per person:** a child of two unions has one position.
 - **No photos yet** (phase 6).
 
 ## License

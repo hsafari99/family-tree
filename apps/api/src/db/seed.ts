@@ -1,5 +1,5 @@
 import { type FuzzyDate, sortYear } from '@family-tree/shared';
-import { eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import type { Db } from './client.js';
 import { parentChild, persons, residences, treeMembers, trees, unions } from './schema.js';
 
@@ -174,5 +174,87 @@ export async function seedSampleFamily(
         .values({ treeId, userId: ownerUserId, role: 'owner', personId: leo.id });
     }
     return { treeId, rootPersonId: leo.id };
+  });
+}
+
+export const LARGE_SEED_TREE_NAME = 'Large family (seed)';
+const GIVEN = [
+  'Ada',
+  'Ben',
+  'Cara',
+  'Dev',
+  'Eli',
+  'Fay',
+  'Gus',
+  'Hana',
+  'Ivo',
+  'Jun',
+  'Kai',
+  'Lea',
+];
+const SURNAMES = ['Hale', 'Moss', 'Reyes', 'Okafor', 'Novak', 'Sato', 'Lund', 'Price'];
+
+/**
+ * A deterministic family of `people` persons for performance checks (decision 19): one founding
+ * couple, then each person in turn gets a partner (a new person) and 2–3 children, breadth
+ * first, until the count is reached.
+ */
+export async function seedLargeFamily(
+  db: Db,
+  { ownerUserId, people }: { ownerUserId?: string; people: number },
+): Promise<{ treeId: string; rootPersonId: string }> {
+  return db.transaction(async (tx) => {
+    // Replace only this user's earlier large seed (or, without an owner, an ownerless one),
+    // never someone else's tree that happens to have the same name.
+    const mine = ownerUserId
+      ? sql`${trees.id} in (select tree_id from tree_members where user_id = ${ownerUserId} and role = 'owner')`
+      : sql`not exists (select 1 from tree_members m where m.tree_id = ${trees.id})`;
+    await tx.delete(trees).where(and(eq(trees.name, LARGE_SEED_TREE_NAME), mine));
+    const [tree] = await tx.insert(trees).values({ name: LARGE_SEED_TREE_NAME }).returning();
+    const treeId = tree!.id;
+    const ps: (typeof persons.$inferInsert)[] = [];
+    const us: (typeof unions.$inferInsert)[] = [];
+    const pcs: (typeof parentChild.$inferInsert)[] = [];
+    const add = (gen: number, surname: string) => {
+      const i = ps.length;
+      const birth = { qualifier: 'exact' as const, date1: String(1850 + gen * 28 + (i % 7)) };
+      ps.push({
+        id: crypto.randomUUID(),
+        treeId,
+        givenName: GIVEN[i % GIVEN.length]!,
+        surname,
+        birthDate: birth,
+        birthSortYear: sortYear(birth),
+        isLiving: gen > 3,
+        ...(ownerUserId ? { createdBy: ownerUserId } : {}),
+      });
+      return { id: ps[i]!.id!, gen, surname };
+    };
+    const first = add(0, SURNAMES[0]!);
+    const queue = [first];
+    while (ps.length < people && queue.length > 0) {
+      const p = queue.shift()!;
+      const partner = add(p.gen, SURNAMES[ps.length % SURNAMES.length]!);
+      const unionId = crypto.randomUUID();
+      us.push({ id: unionId, treeId, partnerAId: p.id, partnerBId: partner.id });
+      for (let k = 0; k < 2 + (ps.length % 2) && ps.length < people; k++) {
+        const child = add(p.gen + 1, p.surname);
+        pcs.push({ treeId, unionId, childId: child.id });
+        queue.push(child);
+      }
+    }
+    // Chunks keep each INSERT well under Postgres's 65,535-parameter limit.
+    for (let i = 0; i < ps.length; i += 1000)
+      await tx.insert(persons).values(ps.slice(i, i + 1000));
+    for (let i = 0; i < us.length; i += 1000) await tx.insert(unions).values(us.slice(i, i + 1000));
+    for (let i = 0; i < pcs.length; i += 1000)
+      await tx.insert(parentChild).values(pcs.slice(i, i + 1000));
+    await tx.update(trees).set({ rootPersonId: first.id }).where(eq(trees.id, treeId));
+    if (ownerUserId) {
+      await tx
+        .insert(treeMembers)
+        .values({ treeId, userId: ownerUserId, role: 'owner', personId: first.id });
+    }
+    return { treeId, rootPersonId: first.id };
   });
 }

@@ -255,18 +255,6 @@ a {
 }
 
 /* People list and person panel */
-.tree-layout {
-  display: grid;
-  grid-template-columns: 280px 1fr;
-  gap: 1.5rem;
-  align-items: start;
-}
-.tree-layout ul {
-  padding-left: 1.1rem;
-}
-.tree-layout a[aria-current='page'] {
-  font-weight: 700;
-}
 .prose {
   white-space: pre-line;
   margin: 0;
@@ -291,11 +279,271 @@ textarea {
   background: Canvas;
   color: CanvasText;
 }
+
+.person-card {
+  position: relative;
+  box-sizing: border-box;
+  width: 184px;
+  height: 88px;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  border: 2px solid #4a6fa5;
+  border-radius: 10px;
+  background: Canvas;
+  color: CanvasText;
+}
+.person-card.is-deceased {
+  border-color: #9a9a9a;
+  background: var(--surface);
+}
+.person-card.is-focus {
+  box-shadow: 0 0 0 3px #f0b429;
+}
+.person-card:focus-within {
+  outline: 3px solid #1d4ed8;
+  outline-offset: 2px;
+}
+.card-photo {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, #4a6fa5 22%, Canvas);
+  color: CanvasText;
+  font-weight: 700;
+}
+.card-open {
+  all: unset;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.card-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.card-years,
+.card-you {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.card-more {
+  position: absolute;
+  right: 6px;
+  bottom: 2px;
+  color: var(--muted);
+}
+.person-card .card-add {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 14px;
+  line-height: 22px;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.person-card:hover .card-add,
+.person-card:focus-within .card-add,
+.person-card.is-selected .card-add {
+  opacity: 1;
+}
+/* Touch screens have no hover: always show the "+" buttons there. */
+@media (hover: none) {
+  .person-card .card-add {
+    opacity: 1;
+  }
+}
+/* "Add a sibling" without parents stays dimmed when the buttons show. */
+.person-card:hover .card-add:disabled,
+.person-card:focus-within .card-add:disabled,
+.person-card.is-selected .card-add:disabled {
+  opacity: 0.45;
+}
+.card-add-top {
+  top: -13px;
+  left: calc(50% - 12px);
+}
+.card-add-bottom {
+  bottom: -13px;
+  left: calc(50% - 12px);
+}
+.card-add-left {
+  left: -13px;
+  top: calc(50% - 12px);
+}
+.card-add-right {
+  right: -13px;
+  top: calc(50% - 12px);
+}
+.person-card-compact {
+  height: 88px;
+}
+.person-card-dot {
+  width: 184px;
+  height: 88px;
+  border-radius: 50%;
+  padding: 0;
+}
+.person-card-dot .card-open {
+  width: 100%;
+  height: 100%;
+}
+.card-handle {
+  opacity: 0;
+  pointer-events: none;
+}
+.union-dot {
+  /* A 24px target (WCAG 2.5.8) around a 12px visible dot. */
+  all: unset;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.union-dot::before {
+  content: '';
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #4a6fa5;
+  box-sizing: border-box;
+}
+.union-dot.is-ended::before {
+  background: Canvas;
+  border: 2px dashed #9a9a9a;
+}
+.union-dot:focus-visible {
+  outline: 3px solid #1d4ed8;
+  outline-offset: 2px;
+}
+.react-flow__edge.edge-adoptive path {
+  stroke-dasharray: 6 4;
+}
+.react-flow__edge.edge-step path,
+.react-flow__edge.edge-foster path {
+  stroke-dasharray: 1 4;
+  stroke-linecap: round;
+}
+.react-flow__edge.edge-ended path {
+  stroke: #9a9a9a;
+  stroke-dasharray: 8 6;
+}
+
+.people-fallback a[aria-current='page'] {
+  font-weight: 700;
+}
+.card-full {
+  max-width: none;
+  width: 100%;
+}
+.canvas-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: center;
+  margin: 0.5rem 0;
+}
+.canvas-toolbar [aria-pressed='true'] {
+  background: #1d4ed8;
+  color: #fff;
+}
+.tree-workspace {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+.tree-workspace.has-panel {
+  grid-template-columns: 1fr 400px;
+}
+.canvas-area {
+  position: relative;
+  min-height: 480px;
+  height: calc(100vh - 260px);
+  border: 1px solid #ccd;
+  border-radius: 8px;
+}
+.family-canvas {
+  width: 100%;
+  height: 100%;
+}
+.tree-panel {
+  max-height: calc(100vh - 260px);
+  overflow: auto;
+}
+.panel-close {
+  text-align: right;
+  margin: 0;
+}
+.disconnected {
+  position: relative;
+}
+.disconnected-list {
+  position: absolute;
+  z-index: 10;
+  background: Canvas;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  min-width: 240px;
+  max-height: 50vh;
+  overflow: auto;
+}
+.branch-picker {
+  position: relative;
+}
+.branch-matches {
+  /* Floats over the canvas instead of pushing the toolbar down. */
+  position: absolute;
+  z-index: 10;
+  left: 0;
+  right: 0;
+  list-style: none;
+  margin: 0.25rem 0;
+  padding: 0.25rem;
+  max-height: 40vh;
+  overflow: auto;
+  background: Canvas;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.people-fallback {
+  margin-top: 1rem;
+}
 @media (max-width: 720px) {
-  .tree-layout {
+  .tree-workspace.has-panel {
     grid-template-columns: 1fr;
   }
-  .tree-panel {
-    order: -1;
+  .canvas-area {
+    height: 70vh;
   }
+  /* The side panel becomes a bottom sheet (spec §6). */
+  .tree-panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 20;
+    max-height: 65vh;
+    background: Canvas;
+    border-top-left-radius: 14px;
+    border-top-right-radius: 14px;
+    box-shadow: 0 -4px 16px rgb(0 0 0 / 20%);
+    padding: 0.5rem 1rem 1rem;
+  }
+}
+
+.react-flow__node.is-reorderable .person-card {
+  cursor: grab;
 }

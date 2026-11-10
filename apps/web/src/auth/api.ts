@@ -71,6 +71,8 @@ export const MESSAGES = {
   personNotFound: 'This person doesn’t exist or has been deleted',
   deleteNotAllowed: 'This includes people outside your branch. Ask the owner to delete it.',
   itemChanged: 'That changed in the meantime. Reload and try again.',
+  layoutFailed: 'The tree couldn’t be drawn. Try the focus view, or reload the page.',
+  layoutTooSlow: 'Layout is taking too long — try a smaller view.',
 } as const;
 
 /** The error code AuthProvider reacts to by re-reading the session. */

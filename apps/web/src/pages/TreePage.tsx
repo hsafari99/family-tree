@@ -4,9 +4,7 @@ import { Link, useLocation, useMatch, useNavigate, useParams } from 'react-route
 import { ConfirmButton } from '../components/ConfirmButton';
 import { FormError } from '../components/forms';
 import { Page } from '../components/Page';
-import { AddPersonForm } from './tree/AddPersonForm';
-import { PeopleList } from './tree/PeopleList';
-import { PersonPanel } from './tree/PersonPanel';
+import { TreeWorkspace } from './tree/TreeWorkspace';
 import { personName } from '../trees/format';
 import { useTreesApi } from '../trees/TreesApiContext';
 
@@ -17,7 +15,7 @@ const ROLE_LINE = {
 } as const;
 
 export function TreePage() {
-  const { treeId = '', personId } = useParams();
+  const { treeId = '' } = useParams();
   const newPerson = useMatch('/trees/:treeId/people/new') !== null;
   const api = useTreesApi();
   const location = useLocation();
@@ -85,7 +83,7 @@ export function TreePage() {
   const anchors = me.steward.grants.map((g) => nameOf(g.anchorPersonId) ?? 'someone').join(', ');
 
   return (
-    <Page title={tree.name} wide>
+    <Page title={tree.name} full>
       {notice && (
         <p role="status" className="success">
           {notice}
@@ -103,39 +101,17 @@ export function TreePage() {
         ))}
       {rootName && <p>Starting person: {rootName}</p>}
 
-      <div className="tree-layout">
-        <PeopleList treeId={treeId} persons={persons} detail={detail} selectedId={personId} />
-        <div className="tree-panel">
-          {newPerson && !(capabilities.editAnywhere || me.steward.active) ? (
-            <p role="alert" className="error">
-              You can’t add people to this tree
-            </p>
-          ) : newPerson ? (
-            <AddPersonForm
-              treeId={treeId}
-              persons={persons}
-              detail={detail}
-              onCreated={() => void refreshPersons()}
-            />
-          ) : personId ? (
-            <PersonPanel
-              key={personId}
-              treeId={treeId}
-              personId={personId}
-              persons={persons}
-              onChanged={() => void refreshPersons()}
-            />
-          ) : (
-            <p className="hint">Choose someone from the list to see their details.</p>
-          )}
-        </div>
-      </div>
-
-      <p className="actions">
-        <Link to={`/trees/${treeId}/members`}>Members and invites</Link>
-        {capabilities.manageTree && <Link to={`/trees/${treeId}/trash`}>Trash</Link>}
-        <Link to="/">Your trees</Link>
-      </p>
+      {newPerson && !(capabilities.editAnywhere || me.steward.active) && (
+        <p role="alert" className="error">
+          You can’t add people to this tree
+        </p>
+      )}
+      <TreeWorkspace
+        treeId={treeId}
+        detail={detail}
+        persons={persons}
+        onPersonsChanged={() => void refreshPersons()}
+      />
 
       {capabilities.manageTree && (
         <Settings
@@ -170,7 +146,12 @@ function Settings({
   const [pending, setPending] = useState(false);
 
   // Keep the field in step if the loaded name changes (e.g. after a save).
-  useEffect(() => setName(detail.tree.name), [detail.tree.name]);
+  // (Derived during render: a mount effect could run after the user's first keystroke and undo it.)
+  const [seenName, setSeenName] = useState(detail.tree.name);
+  if (seenName !== detail.tree.name) {
+    setSeenName(detail.tree.name);
+    setName(detail.tree.name);
+  }
 
   async function save(e: FormEvent, input: { name: string } | { rootPersonId: string }) {
     e.preventDefault();

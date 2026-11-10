@@ -288,6 +288,7 @@ export const AUDIT_ACTIONS = [
   'link.create',
   'link.update',
   'link.delete',
+  'link.reorder',
   'residence.create',
   'residence.update',
   'residence.delete',

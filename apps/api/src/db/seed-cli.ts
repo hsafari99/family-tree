@@ -4,7 +4,7 @@ import { ConfigError, type Config, loadConfig } from '../config.js';
 import { createDb } from './client.js';
 import { runMigrations } from './migrate.js';
 import { users } from './schema.js';
-import { SEED_TREE_NAME, seedSampleFamily } from './seed.js';
+import { LARGE_SEED_TREE_NAME, SEED_TREE_NAME, seedLargeFamily, seedSampleFamily } from './seed.js';
 
 let config: Config;
 try {
@@ -21,20 +21,33 @@ if (config.NODE_ENV === 'production') {
   process.exit(1);
 }
 
-const args = process.argv.slice(2).filter((a) => a !== '--');
-if (args.length > 1) {
-  console.error('Usage: pnpm seed [you@example.com]');
+const USAGE = `Usage: pnpm seed [you@example.com] [--large N]
+  --large N  also create "${LARGE_SEED_TREE_NAME}" with N people (100–10000); replaces only
+             a tree of that name owned by you (or an ownerless one without an email)`;
+const usage = (): never => {
+  console.error(USAGE);
   process.exit(1);
+};
+
+const args = process.argv.slice(2).filter((a) => a !== '--');
+let largeCount: number | undefined;
+const positional: string[] = [];
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === '--large') {
+    const n = Number(args[++i]);
+    if (!Number.isInteger(n) || n < 100 || n > 10_000) usage();
+    largeCount = n;
+  } else {
+    positional.push(args[i]!);
+  }
 }
-const emailArg = args[0];
+if (positional.length > 1) usage();
+const emailArg = positional[0];
 let ownerEmail: string | undefined;
 if (emailArg !== undefined) {
   const parsed = emailSchema.safeParse(emailArg);
-  if (!parsed.success) {
-    console.error('Usage: pnpm seed [you@example.com]');
-    process.exit(1);
-  }
-  ownerEmail = parsed.data;
+  if (!parsed.success) usage();
+  else ownerEmail = parsed.data;
 }
 
 const { db, sql } = createDb(config.DATABASE_URL);
@@ -59,6 +72,15 @@ try {
       `Seeded "${SEED_TREE_NAME}" (tree ${treeId})` +
         (ownerEmail ? `, owned by ${ownerEmail}` : ''),
     );
+    if (largeCount !== undefined) {
+      const large = await seedLargeFamily(db, {
+        people: largeCount,
+        ...(owner ? { ownerUserId: owner.id } : {}),
+      });
+      console.log(
+        `Seeded "${LARGE_SEED_TREE_NAME}" (tree ${large.treeId}) with ${largeCount} people`,
+      );
+    }
   }
 } finally {
   await sql.end();

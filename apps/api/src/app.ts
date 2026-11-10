@@ -16,6 +16,7 @@ import { personsRoutes } from './routes/persons.js';
 import { relationsRoutes } from './routes/relations.js';
 import { residencesRoutes } from './routes/residences.js';
 import { trashRoutes } from './routes/trash.js';
+import { graphRoutes } from './routes/graph.js';
 import { deletionRoutes } from './routes/deletion.js';
 import { passwordResetRoutes } from './routes/password-reset.js';
 import { treesRoutes } from './routes/trees.js';
@@ -92,6 +93,7 @@ export function buildApp({ config, checks, auth, db, rateLimitMax = 300, logStre
     app.register(residencesRoutes, { auth, db, config });
     app.register(deletionRoutes, { auth, db, config });
     app.register(trashRoutes, { auth, db, config });
+    app.register(graphRoutes, { auth, db, config });
   }
 
   app.setNotFoundHandler((_req, reply) => {

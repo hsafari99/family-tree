@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fakePerson } from '../test/fake-trees';
-import { formatFuzzyDate, parseYear, personName, personYears } from './format';
+import { formatFuzzyDate, initials, parseYear, personName, personYears } from './format';
 
 describe('personName', () => {
   it('joins given, middle and surname, skipping blanks', () => {
@@ -44,5 +44,13 @@ describe('formatFuzzyDate', () => {
     expect(formatFuzzyDate({ qualifier: 'between', date1: '1950', date2: '1955' })).toBe(
       'between 1950 and 1955',
     );
+  });
+});
+
+describe('initials', () => {
+  it('takes the first letters of given name and surname, upper-cased', () => {
+    expect(initials({ givenName: 'ada', middleName: null, surname: 'lovelace' })).toBe('AL');
+    expect(initials({ givenName: 'Zoë', middleName: null, surname: null })).toBe('Z');
+    expect(initials({ givenName: '😀x', middleName: null, surname: null })).toBe('😀');
   });
 });

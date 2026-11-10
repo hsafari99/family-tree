@@ -111,3 +111,109 @@ describe('AddRelativeForm', () => {
     expect(s.trees.callsTo('createPerson')).toEqual([]);
   });
 });
+
+describe('AddRelativeForm duplicate check', () => {
+  const ada = fakePerson({
+    givenName: 'Ada',
+    surname: 'Lovelace',
+    birthYear: 1815,
+    deathYear: 1852,
+  });
+
+  // The panel can reload once while the page settles (which resets an open form), so retry.
+  async function openForm(s: ReturnType<typeof setup>) {
+    renderAt(`/trees/${s.id}/people/${subject.id}?tab=relations`, s);
+    await waitFor(() => {
+      const button = screen.getByRole('button', { name: 'Add child' });
+      if (!screen.queryByLabelText('First name')) fireEvent.click(button);
+      expect(screen.getByLabelText('First name')).toBeInTheDocument();
+    });
+  }
+
+  function dupSetup() {
+    const s = setup();
+    s.trees.trees.get(s.id)!.persons.push({ ...ada });
+    return s;
+  }
+  const fillChild = (given: string, surname = 'Lovelace', year = '1815') => {
+    fireEvent.change(screen.getByLabelText('First name'), { target: { value: given } });
+    fireEvent.change(screen.getByLabelText('Last name'), { target: { value: surname } });
+    fireEvent.change(screen.getByLabelText('Birth year'), { target: { value: year } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+  };
+
+  it('prompts on a match without creating anything', async () => {
+    const s = dupSetup();
+    await openForm(s);
+    fillChild('Ada');
+    expect(
+      await screen.findByRole('button', { name: 'Yes, use Ada Lovelace' }),
+    ).toBeInTheDocument();
+    expect(s.trees.callsTo('findSimilar')).toHaveLength(1);
+    expect(s.trees.callsTo('createPerson')).toHaveLength(0);
+  });
+
+  it('Yes links the existing person', async () => {
+    const s = dupSetup();
+    await openForm(s);
+    fillChild('Ada');
+    fireEvent.click(await screen.findByRole('button', { name: 'Yes, use Ada Lovelace' }));
+    await waitFor(() => expect(s.trees.callsTo('addRelative')).toHaveLength(1));
+    expect(s.trees.callsTo('addRelative')[0]).toMatchObject({
+      personId: subject.id,
+      input: { personId: ada.id, as: 'child', kind: 'biological', unionId: UNION },
+    });
+    expect(s.trees.callsTo('createPerson')).toHaveLength(0);
+    await waitFor(() => expect(screen.queryByRole('form', { name: 'Add child' })).toBeNull());
+  });
+
+  it('No creates exactly once, and the same name is not asked again', async () => {
+    const s = dupSetup();
+    await openForm(s);
+    fillChild('Ada');
+    fireEvent.click(await screen.findByRole('button', { name: 'No, add a new person' }));
+    await waitFor(() => expect(s.trees.callsTo('createPerson')).toHaveLength(1));
+    expect(s.trees.callsTo('createPerson')[0]).toMatchObject({
+      input: { person: { givenName: 'Ada', surname: 'Lovelace' } },
+    });
+    expect(s.trees.trees.get(s.id)!.persons.filter((p) => p.givenName === 'Ada')).toHaveLength(2);
+    await waitFor(() => expect(screen.queryByRole('form', { name: 'Add child' })).toBeNull());
+  });
+
+  it('creates directly when nothing matches', async () => {
+    const s = dupSetup();
+    await openForm(s);
+    fillChild('Zed', 'Quux', '2001');
+    await waitFor(() => expect(s.trees.callsTo('createPerson')).toHaveLength(1));
+    expect(s.trees.callsTo('findSimilar')).toHaveLength(1);
+  });
+
+  it('still creates when the check fails', async () => {
+    const s = dupSetup();
+    s.trees.failNext('findSimilar', { code: 'NETWORK', message: 'x' });
+    await openForm(s);
+    fillChild('Ada');
+    await waitFor(() => expect(s.trees.callsTo('createPerson')).toHaveLength(1));
+  });
+
+  it('never offers the subject as a match', async () => {
+    const s = dupSetup();
+    await openForm(s);
+    fillChild('Ann', 'Hale', '');
+    await waitFor(() => expect(s.trees.callsTo('createPerson')).toHaveLength(1));
+    expect(screen.queryByRole('button', { name: /^Yes, use/ })).toBeNull();
+  });
+
+  it('checks again when the name changes after No', async () => {
+    const s = dupSetup();
+    s.trees.failNext('createPerson', { code: 'VALIDATION', message: 'nope' });
+    await openForm(s);
+    fillChild('Ada');
+    fireEvent.click(await screen.findByRole('button', { name: 'No, add a new person' }));
+    await screen.findByText('nope');
+    expect(s.trees.callsTo('findSimilar')).toHaveLength(1);
+    fireEvent.change(screen.getByLabelText('First name'), { target: { value: 'Adah' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    await waitFor(() => expect(s.trees.callsTo('findSimilar')).toHaveLength(2));
+  });
+});

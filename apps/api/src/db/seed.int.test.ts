@@ -3,8 +3,10 @@ import { and, eq, inArray, isNull, or } from 'drizzle-orm';
 import { afterAll, describe, expect, it } from 'vitest';
 import { loadConfig } from '../config.js';
 import { createDeps } from '../deps.js';
+import { kinIndex, connectedTo } from '@family-tree/shared';
+import { loadLiveGraph } from '../trees/graph.js';
 import { parentChild, persons, treeMembers, trees, unions, users } from './schema.js';
-import { SEED_TREE_NAME, seedSampleFamily } from './seed.js';
+import { LARGE_SEED_TREE_NAME, SEED_TREE_NAME, seedLargeFamily, seedSampleFamily } from './seed.js';
 
 const deps = createDeps(loadConfig());
 const { db } = deps;
@@ -91,6 +93,43 @@ describe('seedSampleFamily', () => {
     } finally {
       await db.delete(trees).where(eq(trees.name, SEED_TREE_NAME));
       await db.delete(users).where(eq(users.id, user!.id));
+    }
+  });
+});
+
+describe('seedLargeFamily', () => {
+  const mkUser = async () =>
+    (
+      await db
+        .insert(users)
+        .values({ name: 'Large Owner', email: `large-${randomUUID()}@example.com` })
+        .returning()
+    )[0]!;
+
+  it("creates a connected tree of the requested size and replaces only the owner's own", async () => {
+    const [a, b] = [await mkUser(), await mkUser()];
+    const created: string[] = [];
+    try {
+      const other = await seedLargeFamily(db, { ownerUserId: b.id, people: 100 });
+      created.push(other.treeId);
+      const first = await seedLargeFamily(db, { ownerUserId: a.id, people: 120 });
+      const second = await seedLargeFamily(db, { ownerUserId: a.id, people: 120 });
+      created.push(first.treeId, second.treeId);
+
+      const [tree] = await db.select().from(trees).where(eq(trees.id, second.treeId));
+      expect(tree!.name).toBe(LARGE_SEED_TREE_NAME);
+      expect(tree!.rootPersonId).toBe(second.rootPersonId);
+      expect(await db.select().from(persons).where(eq(persons.treeId, second.treeId))).toHaveLength(
+        120,
+      );
+      const graph = await loadLiveGraph(db, second.treeId);
+      expect(connectedTo(kinIndex(graph), second.rootPersonId).size).toBe(120);
+
+      expect(await db.select().from(trees).where(eq(trees.id, first.treeId))).toHaveLength(0);
+      expect(await db.select().from(trees).where(eq(trees.id, other.treeId))).toHaveLength(1);
+    } finally {
+      for (const id of created) await db.delete(trees).where(eq(trees.id, id));
+      for (const u of [a, b]) await db.delete(users).where(eq(users.id, u.id));
     }
   });
 });

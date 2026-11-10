@@ -3,21 +3,13 @@ import {
   type ChildKind,
   type PersonSummary,
   type PersonView,
+  RELATIVE_ROLES,
   type RelativeRole,
-  UNION_STATUSES,
-  UNION_TYPES,
-  updateUnionSchema,
 } from '@family-tree/shared';
-import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
-import { Link } from 'react-router';
+import { useEffect, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router';
 import { ConfirmButton } from '../../components/ConfirmButton';
-import {
-  FuzzyDateField,
-  fromDraft,
-  toDraft,
-  type FuzzyDraft,
-} from '../../components/FuzzyDateField';
-import { FormError, Success, validate, type FieldErrors } from '../../components/forms';
+import { FormError, Success } from '../../components/forms';
 import {
   CHILD_KIND_LABEL,
   formatFuzzyDate,
@@ -27,6 +19,8 @@ import {
 } from '../../trees/format';
 import { useTreesApi } from '../../trees/TreesApiContext';
 import { AddRelativeForm } from './AddRelativeForm';
+import { usePersonHref } from '../../canvas/params';
+import { UnionForm } from './UnionForm';
 import type { TabProps } from './usePersonSave';
 
 type Union = PersonView['relations']['unions'][number];
@@ -46,6 +40,7 @@ export function RelationsTab({
   persons,
 }: TabProps & { persons: PersonSummary[] }) {
   const api = useTreesApi();
+  const hrefOf = usePersonHref(treeId);
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;
@@ -53,14 +48,36 @@ export function RelationsTab({
       alive.current = false;
     };
   }, []);
-  const [adding, setAdding] = useState<RelativeRole | null>(null);
+  const [params, setParams] = useSearchParams();
+  const requested = RELATIVE_ROLES.find((r) => r === params.get('add')) ?? null;
+  const noParents = view.relations.parents.length === 0;
+  const startAdding = requested === 'sibling' && noParents ? null : requested;
+  const [adding, setAdding] = useState<RelativeRole | null>(startAdding);
+  // A card's "+" button arrives as ?add=<role>.
+  // (Derived during render, not in an effect: a mount effect could run after a click and undo it.)
+  const [seenRequest, setSeenRequest] = useState(startAdding);
+  if (seenRequest !== startAdding) {
+    setSeenRequest(startAdding);
+    setAdding(startAdding);
+  }
+  const stopAdding = () => {
+    setAdding(null);
+    if (params.has('add')) {
+      setParams(
+        (p) => {
+          const next = new URLSearchParams(p);
+          next.delete('add');
+          return next;
+        },
+        { replace: true },
+      );
+    }
+  };
   const [editingUnion, setEditingUnion] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const { relations: rel, capabilities: caps } = view;
-  const person = (p: PersonSummary) => (
-    <Link to={`/trees/${treeId}/people/${p.id}`}>{personName(p)}</Link>
-  );
+  const person = (p: PersonSummary) => <Link to={hrefOf(p.id)}>{personName(p)}</Link>;
 
   const [busy, setBusy] = useState(false);
 
@@ -186,12 +203,43 @@ export function RelationsTab({
             </p>
           )}
           <ul>
-            {u.children.map((c) => (
-              <li key={c.linkId}>
-                {person(c.person)} {kindSelect(c.linkId, c.kind, personName(c.person))}{' '}
-                {removeLink(c.linkId)}
-              </li>
-            ))}
+            {u.children.map((c, i) => {
+              const ids = u.children.map((x) => x.person.id);
+              const move = (by: -1 | 1) =>
+                void run(
+                  () => api.reorderChildren(treeId, u.id, moved(ids, i, by)),
+                  'Order saved.',
+                );
+              const showMove = caps.edit && u.children.length >= 2;
+              return (
+                <li key={c.linkId}>
+                  {person(c.person)} {kindSelect(c.linkId, c.kind, personName(c.person))}{' '}
+                  {showMove && i > 0 && (
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={busy}
+                      aria-label={`Move ${personName(c.person)} earlier`}
+                      onClick={() => move(-1)}
+                    >
+                      Move earlier
+                    </button>
+                  )}{' '}
+                  {showMove && i < u.children.length - 1 && (
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={busy}
+                      aria-label={`Move ${personName(c.person)} later`}
+                      onClick={() => move(1)}
+                    >
+                      Move later
+                    </button>
+                  )}{' '}
+                  {removeLink(c.linkId)}
+                </li>
+              );
+            })}
           </ul>
         </div>
       ))}
@@ -238,9 +286,9 @@ export function RelationsTab({
               subject={view}
               as={adding}
               persons={persons}
-              onCancel={() => setAdding(null)}
+              onCancel={stopAdding}
               onDone={() => {
-                setAdding(null);
+                stopAdding();
                 void reload();
                 onChanged();
               }}
@@ -250,6 +298,13 @@ export function RelationsTab({
       )}
     </div>
   );
+}
+
+/** `ids` with the item at `index` swapped with its neighbour. */
+function moved(ids: string[], index: number, by: -1 | 1): string[] {
+  const next = [...ids];
+  [next[index], next[index + by]] = [next[index + by]!, next[index]!];
+  return next;
 }
 
 const names = (people: PersonSummary[], fallback: string) =>
@@ -262,89 +317,4 @@ function unionDates(u: Union): string {
   if (from) return ` from ${from}`;
   if (to) return ` until ${to}`;
   return '';
-}
-
-const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
-
-function UnionForm({
-  union,
-  pending,
-  onSubmit,
-  onCancel,
-}: {
-  union: Union;
-  pending: boolean;
-  onSubmit: (input: Parameters<ReturnType<typeof useTreesApi>['updateUnion']>[2]) => Promise<void>;
-  onCancel: () => void;
-}) {
-  const uid = useId();
-  const [type, setType] = useState<string>(union.type);
-  const [status, setStatus] = useState<string>(union.status);
-  const [start, setStart] = useState<FuzzyDraft>(toDraft(union.startDate));
-  const [end, setEnd] = useState<FuzzyDraft>(toDraft(union.endDate));
-  const [errors, setErrors] = useState<FieldErrors>({});
-
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    const change: Record<string, unknown> = {};
-    if (type !== union.type) change.type = type;
-    if (status !== union.status) change.status = status;
-    const startDate = fromDraft(start);
-    const endDate = fromDraft(end);
-    if (!same(startDate, fromDraft(toDraft(union.startDate)))) change.startDate = startDate;
-    if (!same(endDate, fromDraft(toDraft(union.endDate)))) change.endDate = endDate;
-    if (Object.keys(change).length === 0) return onCancel();
-    const v = validate(updateUnionSchema, change);
-    if (!v.ok) return setErrors(v.errors);
-    setErrors({});
-    await onSubmit(change as Parameters<typeof onSubmit>[0]);
-  }
-
-  const select = (
-    id: string,
-    label: string,
-    value: string,
-    set: (v: string) => void,
-    options: Record<string, string>,
-  ) => (
-    <div className="field">
-      <label htmlFor={id}>{label}</label>
-      <select id={id} value={value} onChange={(e) => set(e.target.value)}>
-        {Object.entries(options).map(([k, l]) => (
-          <option key={k} value={k}>
-            {l}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-
-  return (
-    <form onSubmit={(e) => void submit(e)}>
-      {select(
-        `${uid}-type`,
-        'Type',
-        type,
-        setType,
-        Object.fromEntries(UNION_TYPES.map((k) => [k, UNION_TYPE_LABEL[k]])),
-      )}
-      {select(
-        `${uid}-status`,
-        'Status',
-        status,
-        setStatus,
-        Object.fromEntries(UNION_STATUSES.map((k) => [k, UNION_STATUS_LABEL[k]])),
-      )}
-      <FuzzyDateField label="Start" value={start} onChange={setStart} error={errors.startDate} />
-      <FuzzyDateField label="End" value={end} onChange={setEnd} error={errors.endDate} />
-      <p className="actions">
-        <button type="submit" disabled={pending}>
-          Save relationship
-        </button>
-        <button type="button" className="secondary" onClick={onCancel}>
-          Cancel
-        </button>
-      </p>
-    </form>
-  );
 }

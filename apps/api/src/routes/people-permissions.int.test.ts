@@ -38,15 +38,15 @@ type RoleName = (typeof ROLES)[number];
 /** Robert + Mary -> Dan; Dan + Ann -> Leo; George + Greta -> Ann; Dan + (none) -> Kim. */
 async function setup() {
   const { owner, treeId } = await ownerWithTree(app);
-  const [robert, mary, dan, ann, leo, george, greta, kim, scratch] = await Promise.all(
-    ['Robert', 'Mary', 'Dan', 'Ann', 'Leo', 'George', 'Greta', 'Kim', 'Scratch'].map((n) =>
-      addPerson(db, treeId, n),
+  const [robert, mary, dan, ann, leo, george, greta, kim, scratch, dee, gil] = await Promise.all(
+    ['Robert', 'Mary', 'Dan', 'Ann', 'Leo', 'George', 'Greta', 'Kim', 'Scratch', 'Dee', 'Gil'].map(
+      (n) => addPerson(db, treeId, n),
     ),
   );
-  const rm = await family(db, treeId, robert!, mary!, [dan!]);
+  const rm = await family(db, treeId, robert!, mary!, [dan!, dee!]);
   const danAnn = await family(db, treeId, dan!, ann!, [leo!]);
   await family(db, treeId, dan!, null, [kim!]);
-  const gg = await family(db, treeId, george!, greta!, [ann!]);
+  const gg = await family(db, treeId, george!, greta!, [ann!, gil!]);
   const batch = await softDeleteBatch(db, treeId, owner.userId, [scratch!.id]);
   const [residence] = await db
     .insert(residences)
@@ -77,6 +77,8 @@ async function setup() {
     p: { robert: robert!, dan: dan!, ann: ann!, george: george!, kim: kim!, greta: greta! },
     rm,
     gg,
+    rmKids: [dan!.id, dee!.id],
+    ggKids: [ann!.id, gil!.id],
     leoLink: leoLink!,
     residenceId: residence!.id,
   };
@@ -207,6 +209,39 @@ const ROWS: Row[] = [
     want: [204, 204, 403, 204, 403, 204],
   },
   {
+    name: 'GET graph (full)',
+    req: (c) => ['GET', `${T(c)}/graph?mode=full`],
+    want: [200, 200, 200, 200, 200, 200],
+  },
+  {
+    name: 'GET disconnected',
+    req: (c) => ['GET', `${T(c)}/disconnected`],
+    want: [200, 200, 200, 200, 200, 200],
+  },
+  {
+    name: 'GET persons/similar',
+    req: (c) => ['GET', `${T(c)}/persons/similar?givenName=Dan`],
+    want: [200, 200, 200, 200, 200, 200],
+  },
+  {
+    name: 'child-order Robert+Mary',
+    req: (c) => [
+      'POST',
+      `${T(c)}/unions/${c.rm.id}/child-order`,
+      { childIds: [...c.rmKids].reverse() },
+    ],
+    want: [204, 204, 403, 204, 403, 204],
+  },
+  {
+    name: 'child-order George+Greta',
+    req: (c) => [
+      'POST',
+      `${T(c)}/unions/${c.gg.id}/child-order`,
+      { childIds: [...c.ggKids].reverse() },
+    ],
+    want: [204, 204, 403, 403, 403, 204],
+  },
+  {
     name: 'GET trash batch',
     req: (c) => ['GET', `${T(c)}/trash/${c.batchId}`],
     want: [200, 403, 403, 403, 403, 403],
@@ -232,6 +267,18 @@ describe('people permission matrix', () => {
     },
     30_000,
   );
+
+  it('marks canAddRelative in the graph by scope, and nowhere for a dormant steward', async () => {
+    const ctx = await setup();
+    const flags = async (role: RoleName) => {
+      const res = await call(app, 'GET', `${T(ctx)}/graph?mode=full`, { jar: ctx.jars[role] });
+      const list = res.json().persons as { id: string; canAddRelative: boolean }[];
+      const f = (id: string) => list.find((x) => x.id === id)!.canAddRelative;
+      return [f(ctx.p.dan.id), f(ctx.p.george.id)];
+    };
+    expect(await flags('steward')).toEqual([true, false]);
+    expect(await flags('dormant')).toEqual([false, false]);
+  });
 
   it('lets a steward add to a person they created, but not delete one tied to outsiders', async () => {
     const ctx = await setup();
