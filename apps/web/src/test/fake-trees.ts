@@ -1273,6 +1273,18 @@ export class FakeTreesApi implements TreesApi {
     return ok(results);
   }
 
+  async exportTree(treeId: string) {
+    const forced = await this.enter('exportTree', treeId);
+    if (forced) return { ok: false as const, error: forced };
+    const t = this.find(treeId);
+    if (!t) return notFound();
+    if (!t.detail.capabilities.manageTree) return forbidden();
+    return ok({
+      blob: new Blob(['PK'], { type: 'application/zip' }),
+      fileName: 'family-tree-2026-11-10.zip',
+    });
+  }
+
   async relationship(treeId: string, from: string, to: string): Promise<Result<Relationship>> {
     const forced = await this.enter('relationship', { treeId, from, to });
     if (forced) return { ok: false as const, error: forced };

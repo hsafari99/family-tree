@@ -451,3 +451,51 @@ describe('graph, disconnected, similar and child-order', () => {
     );
   });
 });
+
+describe('exportTree', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const api = createTreesApi({ baseUrl: 'https://api.example.com' });
+
+  it('returns the ZIP and its file name', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(new Uint8Array([0x50, 0x4b]), {
+            status: 200,
+            headers: {
+              'content-type': 'application/zip',
+              'content-disposition': 'attachment; filename="family-tree-2026-11-10.zip"',
+            },
+          }),
+      ),
+    );
+    const res = await api.exportTree('t1');
+    expect(fetch).toHaveBeenCalledWith('https://api.example.com/api/v1/trees/t1/export', {
+      credentials: 'include',
+    });
+    if (!res.ok) throw new Error('expected ok');
+    expect(res.data.fileName).toBe('family-tree-2026-11-10.zip');
+    expect((await res.data.blob.arrayBuffer()).byteLength).toBe(2);
+  });
+
+  it.each([
+    [429, 'RATE_LIMITED', undefined, MESSAGES.exportLimited],
+    [503, 'RATE_LIMITED', undefined, MESSAGES.exportLimited],
+    [400, 'VALIDATION', { reason: 'tooLarge' }, MESSAGES.exportTooLarge],
+  ])('maps %i %s to a fixed message', async (status, code, details, message) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json(
+          { error: { code, message: 'server text', ...(details ? { details } : {}) } },
+          { status },
+        ),
+      ),
+    );
+    expect(await api.exportTree('t1')).toEqual({
+      ok: false,
+      error: expect.objectContaining({ code, message }),
+    });
+  });
+});

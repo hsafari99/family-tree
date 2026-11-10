@@ -47,6 +47,8 @@ export const MESSAGES = {
   badPassword: 'Password is incorrect',
   emailTaken: 'An account with this email already exists',
   invalidReset: 'Email or code is incorrect',
+  exportLimited: 'This tree was exported several times just now. Try again in a little while.',
+  exportTooLarge: 'This tree has too many photos to export as one file.',
   checkDetails: 'Check the details and try again',
   network: 'Cannot reach the server, check your connection and try again',
   unknown: 'Something went wrong, try again',
