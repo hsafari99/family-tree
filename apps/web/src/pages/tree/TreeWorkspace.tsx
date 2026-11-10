@@ -1,4 +1,12 @@
-import type { GraphQuery, PersonSummary, RelativeRole, TreeDetail } from '@family-tree/shared';
+import {
+  closeRelativeSteps,
+  GRAPH_DEPTH_MAX,
+  type GraphQuery,
+  type KinStep,
+  type PersonSummary,
+  type RelativeRole,
+  type TreeDetail,
+} from '@family-tree/shared';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useMatch, useNavigate, useParams, useSearchParams } from 'react-router';
 import { FormError } from '../../components/forms';
@@ -11,11 +19,13 @@ import {
   readCanvasParams,
   usePersonHref,
 } from '../../canvas/params';
+import { applyHighlight, type PathHighlight, pathHighlight } from '../../canvas/highlight';
 import { useTreeGraph } from '../../canvas/useTreeGraph';
 import { useTreesApi } from '../../trees/TreesApiContext';
 import { AddPersonForm } from './AddPersonForm';
 import { PeopleList } from './PeopleList';
 import { PersonPanel } from './PersonPanel';
+import { RelationshipPanel } from './RelationshipPanel';
 import { UnionPanel } from './UnionPanel';
 
 export function TreeWorkspace({
@@ -31,6 +41,7 @@ export function TreeWorkspace({
 }) {
   const { personId, unionId } = useParams();
   const newPerson = useMatch('/trees/:treeId/people/new') !== null;
+  const relationship = useMatch('/trees/:treeId/relationship') !== null;
   const [params] = useSearchParams();
   const { pathname } = useLocation();
   const navigate = useNavigate();
@@ -102,14 +113,43 @@ export function TreeWorkspace({
   const returnFocusTo = useRef<{ id: string | null } | null>(null);
   const close = useCallback(() => {
     returnFocusTo.current = { id: personId ?? null };
-    go(base, { focus: latest.current.keepFocus, tab: null, add: null });
+    go(base, { focus: latest.current.keepFocus, tab: null, add: null, from: null, to: null });
   }, [go, base, personId]);
   const canAdd = detail.capabilities.editAnywhere || detail.me.steward.active;
-  const selected = (newPerson && canAdd) || personId !== undefined || unionId !== undefined;
+  const selected =
+    (newPerson && canAdd) || personId !== undefined || unionId !== undefined || relationship;
   const ready = graph.status === 'ready' ? graph : null;
+  const [highlight, setHighlight] = useState<PathHighlight | null>(null);
+  useEffect(() => {
+    if (!relationship) setHighlight(null);
+  }, [relationship]);
+  const showPath = useCallback(
+    (fromId: string, steps: KinStep[]) => {
+      setHighlight(pathHighlight(fromId, steps));
+      const n = closeRelativeSteps(steps);
+      go(
+        pathname,
+        n <= GRAPH_DEPTH_MAX
+          ? { view: null, branch: null, focus: fromId, depth: Math.max(1, n) }
+          : { view: 'full', focus: null },
+      );
+    },
+    [go, pathname],
+  );
+  const drawn = useMemo(
+    () =>
+      ready && highlight
+        ? { ...ready, ...applyHighlight(ready.nodes, ready.edges, highlight) }
+        : ready,
+    [ready, highlight],
+  );
+  const offView =
+    highlight !== null &&
+    ready !== null &&
+    [...highlight.personIds].some((id) => !ready.graph.persons.some((p) => p.id === id));
   const panel = useRef<HTMLElement>(null);
   const canvasArea = useRef<HTMLElement>(null);
-  const panelKey = `${newPerson}/${personId}/${unionId}`;
+  const panelKey = `${newPerson}/${personId}/${unionId}/${relationship}`;
 
   // Opening the panel moves focus to its heading, once the panel has rendered one.
   useEffect(() => {
@@ -165,6 +205,7 @@ export function TreeWorkspace({
         params={view}
         disconnected={disconnected}
         hrefOf={hrefOf}
+        selectedId={personId ?? null}
         onChange={(change) => go(pathname, change)}
       />
       {notice && (
@@ -203,11 +244,16 @@ export function TreeWorkspace({
             {ready && !ready.graph.needsBranch && ready.nodes.length === 0 && (
               <p>No one to show yet.</p>
             )}
-            {ready && ready.nodes.length > 0 && (
+            {offView && (
+              <p role="status" className="notice">
+                Part of the path is outside this view. Try the full view.
+              </p>
+            )}
+            {drawn && drawn.nodes.length > 0 && (
               <FamilyCanvas
-                nodes={ready.nodes}
-                edges={ready.edges}
-                families={ready.families}
+                nodes={drawn.nodes}
+                edges={drawn.edges}
+                families={drawn.families}
                 focusId={view.mode === 'focus' ? focusId : null}
                 actions={actions}
                 selectedId={personId ?? null}
@@ -236,6 +282,13 @@ export function TreeWorkspace({
                   personId={personId}
                   persons={persons}
                   onChanged={changed}
+                />
+              ) : relationship ? (
+                <RelationshipPanel
+                  treeId={treeId}
+                  detail={detail}
+                  persons={persons}
+                  onShow={showPath}
                 />
               ) : (
                 <UnionPanel

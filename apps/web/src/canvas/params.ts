@@ -20,7 +20,10 @@ export function readCanvasParams(p: URLSearchParams): CanvasParams {
 }
 
 export type CanvasChange = Partial<
-  Record<'view' | 'depth' | 'branch' | 'focus' | 'tab' | 'add', string | number | null>
+  Record<
+    'view' | 'depth' | 'branch' | 'focus' | 'tab' | 'add' | 'from' | 'to',
+    string | number | null
+  >
 >;
 
 /** `?…` with `change` applied to `current`; null removes a key, and default values are left out. */
@@ -40,5 +43,5 @@ export function canvasSearch(current: URLSearchParams, change: CanvasChange): st
 export function usePersonHref(treeId: string): (personId: string) => string {
   const [params] = useSearchParams();
   return (personId) =>
-    `/trees/${treeId}/people/${personId}${canvasSearch(params, { focus: null, tab: null, add: null })}`;
+    `/trees/${treeId}/people/${personId}${canvasSearch(params, { focus: null, tab: null, add: null, from: null, to: null })}`;
 }

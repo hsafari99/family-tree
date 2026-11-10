@@ -687,3 +687,32 @@ img.card-photo {
     min-width: 0;
   }
 }
+
+.react-flow__node.is-path .person-card {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+  background: color-mix(in srgb, var(--accent) 14%, Canvas);
+}
+.react-flow__node.is-path .union-dot {
+  background: var(--accent);
+}
+.react-flow__edge.edge-path path {
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+.kin-headline {
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+.kin-path {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+  align-items: center;
+}
+.kin-path li + li::before {
+  content: '→ ';
+  color: var(--muted);
+}

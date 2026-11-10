@@ -2,7 +2,7 @@ import { GRAPH_DEPTH_MAX, type PersonSummary, type TreeDetail } from '@family-tr
 import { Link, useSearchParams } from 'react-router';
 import { PersonPicker } from '../components/PersonPicker';
 import { DisconnectedPeople } from './DisconnectedPeople';
-import type { CanvasChange, CanvasParams } from './params';
+import { type CanvasChange, type CanvasParams, canvasSearch } from './params';
 import { SearchBox } from './SearchBox';
 
 export function CanvasToolbar({
@@ -12,6 +12,7 @@ export function CanvasToolbar({
   params,
   disconnected,
   hrefOf,
+  selectedId,
   onChange,
 }: {
   treeId: string;
@@ -20,6 +21,7 @@ export function CanvasToolbar({
   params: CanvasParams;
   disconnected: PersonSummary[];
   hrefOf: (personId: string) => string;
+  selectedId?: string | null;
   onChange: (change: CanvasChange) => void;
 }) {
   const [search] = useSearchParams();
@@ -28,6 +30,11 @@ export function CanvasToolbar({
   return (
     <div className="canvas-toolbar">
       <SearchBox treeId={treeId} persons={persons} meId={detail.me.personId} />
+      <Link
+        to={`/trees/${treeId}/relationship${canvasSearch(search, { tab: null, add: null, to: selectedId ?? null })}`}
+      >
+        How are we related?
+      </Link>
       <div role="group" aria-label="View">
         <button
           type="button"

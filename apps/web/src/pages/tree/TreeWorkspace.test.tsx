@@ -2,7 +2,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { MESSAGES, toAuthError } from '../../auth/api';
 import { LayoutTimeoutError } from '../../canvas/layout-engine';
-import { haleGraph } from '../../canvas/test-fixtures';
+import { gp, gu, haleGraph } from '../../canvas/test-fixtures';
 import { FakeAuthApi } from '../../test/fake-auth';
 import { FakeTreesApi, fakePerson, fakePersonView } from '../../test/fake-trees';
 import { renderAt } from '../../test/render';
@@ -311,5 +311,76 @@ describe('TreeWorkspace panel focus and keys', () => {
     const s2 = setup();
     renderAt(`/trees/${s2.id}`, s2);
     expect(await screen.findByLabelText('Generations')).toHaveAttribute('max', '3');
+  });
+});
+
+describe('TreeWorkspace relationships', () => {
+  const SEX = {
+    robert: 'male',
+    margaret: 'female',
+    david: 'male',
+    susan: 'female',
+    leo: 'male',
+  } as const;
+  function relSetup(extend = false) {
+    const s = setup();
+    const persons: typeof hale.persons = hale.persons.map((p) => ({
+      ...p,
+      sex: (SEX as Record<string, 'male' | 'female'>)[p.id] ?? p.sex,
+    }));
+    const unions = [...hale.unions];
+    const links = [...hale.links];
+    if (extend) {
+      persons.push(gp('kid', 'Kit', 2020, { hasParents: true }));
+      unions.push(
+        gu('u-n', 'noah', null, { type: 'partnership', status: 'partners', childCount: 1 }),
+      );
+      links.push({ id: 'l-kid', unionId: 'u-n', childId: 'kid', kind: 'biological' });
+    }
+    s.t.graph = { ...hale, persons, unions, links, mode: 'focus', focusId: 'robert' };
+    if (extend)
+      s.t.persons.push(
+        fakePerson({ id: 'kid', givenName: 'Kit', surname: 'Hale', birthYear: 2020 }),
+      );
+    s.t.detail.me.personId = 'leo';
+    return s;
+  }
+  const isPath = () => document.querySelectorAll('.react-flow__node.is-path');
+
+  it('opens the panel from the toolbar link with the selected person', async () => {
+    const s = relSetup();
+    renderAt(`/trees/${s.id}/people/robert`, s);
+    const link = await screen.findByRole('link', { name: 'How are we related?' });
+    expect(link).toHaveAttribute('href', `/trees/${s.id}/relationship?to=robert`);
+    fireEvent.click(link);
+    expect(await screen.findByText('Robert Hale is your grandfather.')).toBeInTheDocument();
+  });
+
+  it('shows the path on the tree: close focus, highlighted people', async () => {
+    const s = relSetup();
+    renderAt(`/trees/${s.id}/relationship?to=robert`, s);
+    fireEvent.click(await screen.findByRole('button', { name: 'Show on the tree' }));
+    await waitFor(() =>
+      expect(graphCalls(s.trees)).toContainEqual({ mode: 'focus', focus: 'leo', depth: 2 }),
+    );
+    await waitFor(() => expect(isPath().length).toBeGreaterThanOrEqual(3));
+  });
+
+  it('switches to the full view for a long path', async () => {
+    const s = relSetup(true);
+    renderAt(`/trees/${s.id}/relationship?from=leo&to=kid`, s);
+    fireEvent.click(await screen.findByRole('button', { name: 'Show on the tree' }));
+    await waitFor(() => expect(graphCalls(s.trees)).toContainEqual({ mode: 'full' }));
+  });
+
+  it('Close clears the highlight and drops from and to', async () => {
+    const s = relSetup();
+    renderAt(`/trees/${s.id}/relationship?from=leo&to=robert`, s);
+    fireEvent.click(await screen.findByRole('button', { name: 'Show on the tree' }));
+    await waitFor(() => expect(isPath().length).toBeGreaterThan(0));
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(isPath()).toHaveLength(0));
+    const href = screen.getByRole('link', { name: 'How are we related?' }).getAttribute('href')!;
+    expect(href).not.toMatch(/from=|to=/);
   });
 });
