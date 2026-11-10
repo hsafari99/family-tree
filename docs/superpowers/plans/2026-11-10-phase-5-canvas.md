@@ -38,7 +38,8 @@
     - `.claude/settings.local.json`
     - `.vitest/`
 - **Dependencies:**
-  - Only the two new ones in Task 1, with exact versions. Every package they pull in must have been published at least 14 days before installation; Task 1 checks this.
+  - Only the two new ones in Task 1, with exact versions. Every package they pull in must have been published at least 14 days before installation; Task 1 checks this with a script.
+  - **Don't commit `minimumReleaseAge`**, and don't pass it on the command line (decision 20).
   - Never add `minimumReleaseAgeExclude`, and never upgrade other dependencies.
   - **Vite stays at 8.3.6** (the dev CPU has no AVX2). Don't add or upgrade any tool with a native binary. `elkjs` is pure JavaScript (GWT output, no dependencies, no install scripts). `@xyflow/react` pulls in d3, zustand and classcat, all pure JavaScript.
 - **Running the stack:**
@@ -94,11 +95,14 @@
    - **Focus views** return at most `FOCUS_VIEW_MAX = 500` people (nearest first) and set `truncated`.
    - **Full views:** with more than `FULL_VIEW_MAX = 2000` live people (spec §6) and no `branch`, the response is empty with `needsBranch: true`.
    - **Branch views** use the spec §4 branch rule without rule 5 (that rule is about a steward's own additions). They are capped at 2,000 people (`truncated`).
-   - **Client:** layout runs in a Web Worker with a 15-second timeout. `onlyRenderVisibleElements` is on from 300 nodes, and the minimap is hidden above 1,500 nodes. Cards simplify by zoom level (full → name and years → dot).
+   - **Client:** layout runs in a Web Worker with a 15-second timeout. A timeout shows "Layout is taking too long — try a smaller view." and opens the "All people" list. Only a worker **error** falls back to laying out on the main thread. `onlyRenderVisibleElements` is on from 300 nodes, and the minimap is hidden above 1,500 nodes. Cards simplify by zoom level (full → name and years → dot).
 5. **Per-item flags** (one pass, carry-forward from phase 4):
    - Each person has `canAddRelative` = `can(person.add, ends [id])`.
    - Each union has `canEdit` = `can(relation.edit, partners)`.
-   - Edit and delete rights for a person still come from `GET /persons/:id` when the panel opens; the canvas doesn't need them.
+   - **Dropped from the phase 4 carry-forward:** per-card `canEdit` and `canDelete`.
+     - Cards offer no edit or delete action: those live in the person panel, which loads them from `GET /persons/:id` (`capabilities`).
+     - `canDelete` would also be expensive. Its `can()` target is every person the delete touches (decision 5 of phase 4), which needs a deletion plan per person. For a 2,000-person view that's 2,000 plans per request, for data nobody shows.
+     - If a later card action needs them, compute them lazily for the selected person.
 6. **Consistent snapshot:** `loadGraphRows` reads people, unions and links in one `repeatable read`, `read only` transaction, with the same liveness rules as `loadLiveGraph`.
 7. **Disconnected people:**
    - `GET /trees/:id/disconnected` returns `{ persons: PersonSummary[] }`: live people not reachable from `root_person_id` through any union or parent–child link, sorted by surname and then given name.
@@ -152,11 +156,15 @@
     - **Content:** a silhouette with initials (photos are phase 6), the name, years as `personYears()` with "† " in front when not living, a grey frame when deceased, "You" on the user's own card, and a "focus" ring on the focused card.
     - **Zoom levels:** full card at zoom ≥ 0.55, name and years at ≥ 0.25, a dot below that.
     - **Accessibility:** the whole card face is one `<button>` named "Name, years, deceased, you". The "+" buttons are labelled "Add a parent of Name" and so on.
-    - **Keyboard:** Tab walks the cards in tree order. Focusing a card that is off-screen pans it into view.
+    - **Keyboard:** Tab walks the cards in reading order, top row first and left to right. After layout, the nodes are re-sorted by (y, x) for rendering, because React Flow's DOM order is the `nodes` array order. ELK still gets the model (sibling) order as input.
+    - **Focus panning:** focusing a card that is off-screen pans it into view.
     - React Flow's own node focus is off, so there are no double tab stops.
+    - **Large views:** from 300 nodes, `onlyRenderVisibleElements` removes off-screen cards from the DOM, so Tab can't reach them. Keyboard and screen-reader users have the "All people" list under the canvas, which has every person. The toolbar has a "List of all people" skip link to it.
 16. **Sibling order:**
     - **Endpoint:** `POST /trees/:id/unions/:uid/child-order { childIds }` takes the **complete** list of the union's live children in the new order. A different set is `409 CONFLICT` (the family changed).
-    - **Permission:** `relation.edit` with ends = the partners and the children.
+    - **Permission:**
+      - `relation.edit` with ends = the partners and the children.
+      - **Plus** `person.edit` on **every** child, because the write changes each child's person row. Owners and editors are unrestricted; a steward needs every child of that union in scope.
     - **What it writes:** `persons.sibling_order = 1..n`, without bumping `version` (it isn't a person field, so it doesn't stale someone's open edit form).
     - **Audit:** a new action `link.reorder` (entity `union`, people = partners and children), shown in History as "Children reordered".
     - **Shared order:** a child of two unions has one `sibling_order`, so reordering in one union can move them in the other. This is accepted.
@@ -169,14 +177,22 @@
     - The phase 4 people list stays, under the canvas in an "All people (N)" disclosure, as a non-visual fallback.
 18. **Out of scope** (phase 6): the search box and "How are we related?" (the top bar leaves room for them), and photos on cards.
 19. **Dev data:** `pnpm seed <email> --large <N>` adds "Large family (seed)" with N people (100–10,000) to test the 2,000-person rule and layout speed.
-20. **Dependency age:** `pnpm-workspace.yaml` gets `minimumReleaseAge: 20160` (14 days, in minutes), so pnpm itself refuses anything newer.
-    - This matters: d3-drag, d3-zoom, d3-selection, d3-interpolate, d3-color, d3-dispatch, d3-ease, d3-timer and d3-transition all got new patch releases on 2026-11-03.
-    - The setting makes pnpm resolve the previous (2021–2022) versions. Task 1 verifies the lockfile.
+20. **Dependency age without pnpm's gate:**
+    - **The problem:** d3-drag, d3-zoom, d3-selection, d3-interpolate, d3-color, d3-dispatch, d3-ease, d3-timer and d3-transition all got new patch releases on 2026-11-03, and React Flow's `^3` ranges would pick them up.
+    - **Why not pnpm's own gate:** pnpm 12.18 makes an explicitly set `minimumReleaseAge` strict, whether it comes from `pnpm-workspace.yaml` or a CLI flag (CHANGELOG: "`minimumReleaseAgeStrict` now defaults to `true` when `minimumReleaseAge` is explicitly configured … or a CLI flag"). It also verifies the **whole existing lockfile** against the cutoff.
+      - About 80 locked packages (vite 8.3.6, pnpm, fastify, …) are younger than 14 days, so the install would fail.
+      - The non-strict mode writes `minimumReleaseAgeExclude` instead, which is forbidden.
+      - Its CHANGELOG has no option that limits the check to newly resolved packages.
+    - **What we do instead:**
+      - exact pins for the two new packages;
+      - `overrides` in `pnpm-workspace.yaml` pinning the nine d3 packages to their last pre-2026-11-03 versions;
+      - a script that checks every **new** lockfile entry is 14+ days old and has no install script.
+    - The setting itself is a carry-forward item (after 2026-11-23).
 
 ## File map
 
 ```
-pnpm-workspace.yaml                    + minimumReleaseAge: 20160
+pnpm-workspace.yaml                    + overrides pinning nine d3 packages (decision 20)
 packages/shared/src/
   graph.ts (+test)                     graph query/response schemas, limits, compareSiblings, childOrderSchema, similarQuerySchema
   graph-view.ts (+test)                kinIndex, neighbourhood, connectedTo, visibleRelations, withHiddenRelatives
@@ -249,7 +265,7 @@ pnpm view elkjs time --json | grep -E '"0\.12\.0"'
 
   Expected: `12.12.0` is from 2026-09-24 and `0.12.0` from 2026-07-17. `elkjs` 0.12.1 and 0.13.0 (2026-10-28) are too new, so don't use them.
 
-- [ ] **Step 2: Turn on pnpm's own age gate.** Edit `pnpm-workspace.yaml` to:
+- [ ] **Step 2: Pin the d3 packages below the 2026-11-03 releases** (decision 20). Edit `pnpm-workspace.yaml` to:
 
 ```yaml
 packages:
@@ -258,9 +274,21 @@ packages:
 allowBuilds:
   esbuild: true
 injectWorkspacePackages: true
-# Refuse any package version published less than 14 days ago (minutes). Never add an exclude list.
-minimumReleaseAge: 20160
+# React Flow's d3 ranges would otherwise pick the 2026-11-03 patch releases (under 14 days old).
+# Drop these once those releases are 14+ days old and reviewed.
+overrides:
+  d3-color: 3.1.0
+  d3-dispatch: 3.0.1
+  d3-drag: 3.0.0
+  d3-ease: 3.0.1
+  d3-interpolate: 3.0.1
+  d3-selection: 3.0.0
+  d3-timer: 3.0.1
+  d3-transition: 3.0.1
+  d3-zoom: 3.0.0
 ```
+
+  Don't add `minimumReleaseAge` here, and don't pass `--config.minimum-release-age`. With pnpm 12.18 either one re-checks the whole existing lockfile and fails (decision 20).
 
 - [ ] **Step 3: Install with exact pins:**
 
@@ -268,9 +296,10 @@ minimumReleaseAge: 20160
 pnpm --filter @family-tree/web add --save-exact @xyflow/react@12.12.0 elkjs@0.12.0
 ```
 
-  Expected: `apps/web/package.json` dependencies gain `"@xyflow/react": "12.12.0"` and `"elkjs": "0.12.0"`. No other package's version changes (`git diff pnpm-lock.yaml` adds entries only).
-
-  If pnpm 12.18 rejects `minimumReleaseAge`, stop and ask. Don't work around it with `minimumReleaseAgeExclude`.
+  Expected:
+  - `apps/web/package.json` dependencies gain `"@xyflow/react": "12.12.0"` and `"elkjs": "0.12.0"`.
+  - No other package's version changes (`git diff pnpm-lock.yaml` adds entries and the `overrides` block only).
+  - `git diff pnpm-workspace.yaml` shows only the `overrides` block. If pnpm wrote `minimumReleaseAgeExclude` (or anything else) there, run `git checkout pnpm-workspace.yaml pnpm-lock.yaml apps/web/package.json`, then stop and ask.
 
 - [ ] **Step 4: Verify every new lockfile package is old enough** and has no install script. Write `scratchpad/check-ages.mjs` (outside the repo):
 
@@ -327,7 +356,7 @@ pnpm typecheck && pnpm --filter @family-tree/web test && pnpm --filter @family-t
 
 ```bash
 git add pnpm-workspace.yaml apps/web/package.json pnpm-lock.yaml
-git commit -m "build(web): add @xyflow/react 12.12.0 and elkjs 0.12.0; 14-day release age gate"
+git commit -m "build(web): add @xyflow/react 12.12.0 and elkjs 0.12.0; pin d3 below the 2026-11-03 releases"
 ```
 
 ---
@@ -443,7 +472,8 @@ export type GraphMode = (typeof GRAPH_MODES)[number];
 export const graphQuerySchema = z.object({
   mode: z.enum(GRAPH_MODES).default('focus'),
   focus: z.uuid().optional(),
-  depth: z.coerce.number().int().min(1).max(GRAPH_DEPTH_MAX).default(1),
+  // The generic keeps the input type `number | string` (Zod 4 coerce inputs are `unknown` otherwise).
+  depth: z.coerce.number<number | string>().int().min(1).max(GRAPH_DEPTH_MAX).default(1),
   branch: z.uuid().optional(),
 });
 export type GraphQuery = z.input<typeof graphQuerySchema>;
@@ -508,7 +538,7 @@ export const similarQuerySchema = z.object({
     .max(NAME_MAX)
     .optional()
     .transform((v) => (v === '' ? undefined : v)),
-  birthYear: z.coerce.number().int().min(1).max(9999).optional(),
+  birthYear: z.coerce.number<number | string>().int().min(1).max(9999).optional(),
 });
 export type SimilarQuery = z.input<typeof similarQuerySchema>;
 
@@ -532,6 +562,8 @@ export function compareSiblings(a: SiblingKey, b: SiblingKey): number {
   );
 }
 ```
+
+  With the `<number | string>` generic, `GraphQuery` and `SimilarQuery` (the `z.input` types) have `depth?: number | string` and `birthYear?: number | string`. That's what lets the web client's `qs(query)` and the fake's `findSimilar` typecheck. Add a type-level check in the test file: `const q: GraphQuery = { depth: 2 }; void q;` (it fails to compile if the input is `unknown`).
 
   Careful: `Infinity - Infinity` is `NaN`, and `NaN || x` falls through to `x`, which is the behaviour we want. The test with two `null` orders covers it.
 
@@ -1348,6 +1380,10 @@ const byName = (a: PersonSummary, b: PersonSummary) =>
   4. **Roles:**
      - A viewer gets 403.
      - A steward on Sam: `uOlive` has only one child, so add a second child with `addPerson` + an insert into `parentChild`. Then reordering `uOlive` is 204, and reordering `uPa` is 403.
+     - **A child outside the scope:** add `family(db, treeId, kp, x, [y1, y2])` with new people X, Y1 and Y2.
+       - Kp is in Sam's branch only as a partner (rule 4: no parents), so his children with X are **not** in it.
+       - `relation.edit` passes (Kp is an end), but reordering that union is **403**, because Y1 and Y2 are out of scope. Nothing changes.
+       - The owner and an editor get 204 on the same union.
      - An outsider gets 404.
   5. **The graph reflects it:** afterwards, `GET graph` shows the new `siblingOrder` values.
 
@@ -1381,6 +1417,9 @@ import { loadLiveGraph, lockTreeGraph } from '../trees/graph.js';
       const current = graph.parentChild.filter((l) => l.unionId === unionId).map((l) => l.childId);
       const partners = partnersOf(union);
       authorize(access, 'relation.edit', { kind: 'relation', ends: [...partners, ...current] });
+      // It writes every child's person row, so a steward needs each child in scope (decision 16).
+      // person.edit is editsAnywhere || inScope: owners and editors pass unrestricted.
+      for (const childId of current) authorize(access, 'person.edit', { kind: 'person', personId: childId });
       const same = current.length === childIds.length && childIds.every((id) => current.includes(id));
       if (!same) throw conflict('The children of this relationship changed; reload and try again');
       const before = (
@@ -1451,7 +1490,7 @@ import { loadLiveGraph, lockTreeGraph } from '../trees/graph.js';
   - **"Tree B authority":** add these sub-cases, each 404, with A's snapshot unchanged:
     - `GET /trees/B/graph?focus=<A person>`
     - `GET /trees/B/graph?mode=full&branch=<A person>`
-    - `POST /trees/B/unions/<A union>/child-order`
+    - `POST /trees/B/unions/<A union>/child-order` with the body `{ childIds: [<A person>, <A person2>] }`. Two distinct, valid uuids are needed, because the body is parsed before the union lookup; a bad body would answer 400 and never reach the 404.
   - The soft-deleted-tree and 401 tests pick the new routes up automatically.
 
 - [ ] **Step 2: Add rows** to the `people-permissions.int.test.ts` table (Hale shape; Robert + Mary → Dan; George + Greta → Ann). For the reorder rows, give each union a second child in setup.
@@ -1482,7 +1521,7 @@ import { loadLiveGraph, lockTreeGraph } from '../trees/graph.js';
   - a root;
   - everyone connected to the root: `connectedTo(kinIndex(await loadLiveGraph(db, treeId)), root).size` is 120.
 
-  Calling it twice replaces the tree, as the sample seed does.
+  Calling it twice for the same owner replaces that owner's tree. A "Large family (seed)" tree owned by **another** user is left alone (assert it still exists).
 
 - [ ] **Step 2: Implement** `seedLargeFamily` in `seed.ts`:
 
@@ -1501,7 +1540,12 @@ export async function seedLargeFamily(
   { ownerUserId, people }: { ownerUserId?: string; people: number },
 ): Promise<{ treeId: string; rootPersonId: string }> {
   return db.transaction(async (tx) => {
-    await tx.delete(trees).where(eq(trees.name, LARGE_SEED_TREE_NAME));
+    // Replace only this user's earlier large seed (or, without an owner, an ownerless one),
+    // never someone else's tree that happens to have the same name.
+    const mine = ownerUserId
+      ? sql`${trees.id} in (select tree_id from tree_members where user_id = ${ownerUserId} and role = 'owner')`
+      : sql`not exists (select 1 from tree_members m where m.tree_id = ${trees.id})`;
+    await tx.delete(trees).where(and(eq(trees.name, LARGE_SEED_TREE_NAME), mine));
     const [tree] = await tx.insert(trees).values({ name: LARGE_SEED_TREE_NAME }).returning();
     const treeId = tree!.id;
     const ps: (typeof persons.$inferInsert)[] = [];
@@ -1550,10 +1594,18 @@ export async function seedLargeFamily(
 
   The `while` condition guards the partner and the inner loop guards each child, so exactly `people` rows are created. The last couple may have no children.
 
+  `seed.ts` needs `and` and `sql` from `drizzle-orm` for the scoped delete.
+
   **`seed-cli.ts`:** accept `pnpm seed [email] [--large N]`.
   - Parse `--large` and its number (100–10,000, otherwise print usage and exit 1).
   - Run `seedLargeFamily` **in addition to** the sample family, and print `Seeded "Large family (seed)" (tree <id>) with N people`.
-  - The usage text becomes `Usage: pnpm seed [you@example.com] [--large N]`.
+  - The usage text becomes:
+
+    ```
+    Usage: pnpm seed [you@example.com] [--large N]
+      --large N  also create "Large family (seed)" with N people (100–10000); replaces only
+                 a tree of that name owned by you (or an ownerless one without an email)
+    ```
 
 - [ ] **Step 3: Run** `seed.int.test.ts`; it passes. By hand (with the dev stack up), run `pnpm seed --large 2500` once and check that it finishes in a few seconds.
 
@@ -1586,6 +1638,7 @@ export async function seedLargeFamily(
 
 ```ts
   layoutFailed: 'The tree couldn’t be drawn. Try the focus view, or reload the page.',
+  layoutTooSlow: 'Layout is taking too long — try a smaller view.',
 ```
 
   **`trees/api.ts`:** add these to `TreesApi`, to `TREES_API_METHODS` and to `createTreesApi`:
@@ -1675,15 +1728,17 @@ import type { LayoutEngine } from '../canvas/layout-engine';
 /** Places nodes on a grid in input order. `failNext()` makes the next layout reject. */
 export class FakeLayoutEngine implements LayoutEngine {
   calls: ElkNode[] = [];
-  private failing = false;
-  failNext() {
-    this.failing = true;
+  private failing: Error | null = null;
+  /** The next layout rejects with `error` (for example a LayoutTimeoutError). */
+  failNext(error: Error = new Error('layout failed')) {
+    this.failing = error;
   }
   async layout(graph: ElkNode): Promise<ElkNode> {
     this.calls.push(graph);
     if (this.failing) {
-      this.failing = false;
-      throw new Error('layout failed');
+      const error = this.failing;
+      this.failing = null;
+      throw error;
     }
     return {
       ...graph,
@@ -1937,7 +1992,8 @@ import { personName, UNION_STATUS_LABEL } from '../trees/format';
 
 export const CARD_WIDTH = 184;
 export const CARD_HEIGHT = 88;
-export const UNION_SIZE = 14;
+/** The union node's box, which is also its hit area: 24px meets WCAG 2.5.8. The visible dot inside is 12px. */
+export const UNION_SIZE = 24;
 
 export type PersonNodeData = {
   person: GraphPerson;
@@ -2134,7 +2190,8 @@ export function assignGenerations({ personIds, families }: GenerationInput): Map
      - Each child has `width` and `height` from the node.
      - Each edge is `{ id, sources: [source], targets: [target] }`.
   2. **No rows:** with `gens === null`, there is no `elk.partitioning.activate` and no per-node partitions.
-  3. **Output:** `applyElkLayout(nodes, { id: 'root', children: [{ id: 'p:robert', x: 10, y: 20 }] })` sets Robert's position to `{ x: 10, y: 20 }` and leaves the others unchanged.
+  3. **Output:** `applyElkLayout(nodes, { id: 'root', children: [{ id: 'p:robert', x: 10, y: 20 }] })` sets Robert's position to `{ x: 10, y: 20 }` and leaves the others' positions unchanged.
+  4. **Reading order:** given positions where Mia is at (0, 300), Leo at (200, 300) and Robert at (100, 0), the output order is Robert, Mia, Leo. Meanwhile `toElkGraph(flow, …).children` keeps `flow.nodes`' model order: assert the ELK input order is unchanged by a previous `applyElkLayout` call.
 
   **`canvas/layout.test.ts`** (real ELK, in Node):
 
@@ -2245,13 +2302,19 @@ export function toElkGraph(flow: Flow, generations: ReadonlyMap<string, number> 
   };
 }
 
-/** Copies ELK's positions onto the React Flow nodes. */
+/**
+ * Copies ELK's positions onto the React Flow nodes, then sorts them by (y, x). React Flow renders
+ * nodes in array order, so this makes Tab follow reading order (decision 15). The ELK input
+ * keeps the model order: call this only on the way out.
+ */
 export function applyElkLayout(nodes: CanvasNode[], laidOut: ElkNode): CanvasNode[] {
   const pos = new Map((laidOut.children ?? []).map((c) => [c.id, { x: c.x ?? 0, y: c.y ?? 0 }]));
-  return nodes.map((n) => {
-    const p = pos.get(n.id);
-    return p ? { ...n, position: p } : n;
-  });
+  return nodes
+    .map((n) => {
+      const p = pos.get(n.id);
+      return p ? { ...n, position: p } : n;
+    })
+    .sort((a, b) => a.position.y - b.position.y || a.position.x - b.position.x);
 }
 ```
 
@@ -2274,12 +2337,17 @@ export interface LayoutEngine {
 }
 export const LAYOUT_TIMEOUT_MS = 15_000;
 
+/** The layout took longer than LAYOUT_TIMEOUT_MS; the page shows MESSAGES.layoutTooSlow. */
+export class LayoutTimeoutError extends Error {
+  override name = 'LayoutTimeoutError';
+}
+
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   return Promise.race([
     p,
     new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error('layout timed out')), ms);
+      timer = setTimeout(() => reject(new LayoutTimeoutError('layout timed out')), ms);
     }),
   ]).finally(() => clearTimeout(timer));
 }
@@ -2289,24 +2357,46 @@ const inThread = async (): Promise<ELK> => {
   return new Elk();
 };
 
+/** The worker itself failed (blocked by CSP, missing file, script error). */
+export class LayoutWorkerError extends Error {
+  override name = 'LayoutWorkerError';
+}
+
 /**
  * ELK in a Web Worker (decision 4), loaded on first use so the 1.6 MB worker stays out of the
- * main bundle. If the worker can't start at all (blocked or missing), falls back once to ELK on
- * the main thread. A timeout after the worker has worked is just an error.
+ * main bundle.
+ * - It falls back to ELK on the main thread **only when the worker errors**: it couldn't be
+ *   created, or `worker.onerror` fired.
+ * - A timeout never falls back (a big graph would then freeze the page). It rejects with
+ *   LayoutTimeoutError and starts a fresh worker next time.
  */
 export function createWorkerLayoutEngine(): LayoutEngine {
   let elk: Promise<ELK> | null = null;
-  let workerWorked = false;
-  let fellBack = false;
+  let workerFailed = false;
+  let failPending: ((e: Error) => void) | null = null;
   const start = async (): Promise<ELK> => {
+    if (workerFailed) return inThread();
     try {
       const [{ default: Elk }, { default: workerUrl }] = await Promise.all([
         import('elkjs/lib/elk-api.js'),
         import('elkjs/lib/elk-worker.min.js?url'),
       ]);
-      return new Elk({ workerUrl });
+      return new Elk({
+        workerUrl,
+        // Our own factory, so a worker error is seen instead of leaving layout() pending forever.
+        workerFactory: (url) => {
+          const worker = new Worker(url ?? workerUrl);
+          worker.onerror = (ev) => {
+            ev.preventDefault();
+            workerFailed = true;
+            failPending?.(new LayoutWorkerError('ELK worker failed'));
+          };
+          return worker;
+        },
+      });
     } catch {
-      fellBack = true;
+      workerFailed = true; // new Worker() threw (e.g. blocked)
+      console.warn('ELK worker unavailable; laying out on the main thread');
       return inThread();
     }
   };
@@ -2314,17 +2404,22 @@ export function createWorkerLayoutEngine(): LayoutEngine {
     async layout(graph) {
       elk ??= start();
       const engine = await elk;
+      const workerError = new Promise<never>((_, reject) => {
+        failPending = reject;
+      });
       try {
-        const out = await withTimeout(engine.layout(graph), LAYOUT_TIMEOUT_MS);
-        workerWorked = true;
-        return out;
+        return await withTimeout(Promise.race([engine.layout(graph), workerError]), LAYOUT_TIMEOUT_MS);
       } catch (err) {
         engine.terminateWorker();
-        elk = null;
-        if (workerWorked || fellBack) throw err;
-        fellBack = true;
-        elk = inThread();
-        return withTimeout((await elk).layout(graph), LAYOUT_TIMEOUT_MS);
+        if (err instanceof LayoutWorkerError) {
+          console.warn('ELK worker failed; laying out on the main thread');
+          elk = inThread();
+          return withTimeout((await elk).layout(graph), LAYOUT_TIMEOUT_MS);
+        }
+        elk = null; // timeout or ELK error: a fresh worker next time, never the main thread
+        throw err;
+      } finally {
+        failPending = null;
       }
     },
   };
@@ -2336,6 +2431,7 @@ export const browserLayoutEngine: LayoutEngine = createWorkerLayoutEngine();
 
   - **Interop:** `elk-api.js` and `elk.bundled.js` are browserified CommonJS. If `default` is `undefined` at runtime in the browser, use `const Elk = (mod.default ?? mod) as typeof mod.default`.
   - **Typing:** `?url` imports are typed by `vite/client` (already in `tsconfig.json`). `terminateWorker()` is a no-op without a worker.
+  - **Not unit-tested:** the engine isn't tested in jsdom (there is no `Worker`). The walk-through checks, in both `vite dev` and the build, that the worker request succeeds and that neither "ELK worker …" warning is logged.
 
   **`App.tsx`:** wrap the routes in `<LayoutEngineProvider engine={browserLayoutEngine}>`.
 
@@ -2397,7 +2493,7 @@ describe('canvas settings', () => {
   4. **Can't add:** with `canAddRelative: false`, there are no "+" buttons.
   5. **Compact:** no initials and no "+" buttons, but the name and years are there.
   6. **Dot:** only one button, with the same accessible name, and no visible text.
-  7. **You and focus:** `isMe` shows "You" and adds ", you" to the name. `isFocus` adds the class `is-focus`. `hiddenRelatives` adds ", more relatives not shown" and a "more" marker.
+  7. **You, focus and selection:** `isMe` shows "You" and adds ", you" to the name. `isSelected` adds `is-selected` (the "+" buttons show without hover). `isFocus` adds the class `is-focus`. `hiddenRelatives` adds ", more relatives not shown" and a "more" marker.
   8. **No HTML:** a `givenName` of `<b>x</b>` renders literally, and there is no `<b>` element.
 
 - [ ] **Step 2: Run them; they fail.**
@@ -2457,6 +2553,8 @@ export interface CanvasActions {
   openUnion(unionId: string): void;
   /** Pans so the card is on screen (keyboard focus). */
   reveal(personId: string): void;
+  /** The person whose panel is open; their card shows its "+" buttons without hover. */
+  selectedId: string | null;
 }
 const Ctx = createContext<CanvasActions | null>(null);
 export const CanvasActionsProvider = Ctx.Provider;
@@ -2489,6 +2587,7 @@ export function PersonCardView({
   detail,
   isFocus,
   isMe,
+  isSelected = false,
   onOpen,
   onAdd,
   onFocus,
@@ -2497,6 +2596,7 @@ export function PersonCardView({
   detail: CardDetail;
   isFocus: boolean;
   isMe: boolean;
+  isSelected?: boolean;
   onOpen: () => void;
   onAdd: (as: RelativeRole) => void;
   onFocus?: () => void;
@@ -2513,7 +2613,13 @@ export function PersonCardView({
   ]
     .filter(Boolean)
     .join(', ');
-  const cls = ['person-card', `person-card-${detail}`, deceased && 'is-deceased', isFocus && 'is-focus']
+  const cls = [
+    'person-card',
+    `person-card-${detail}`,
+    deceased && 'is-deceased',
+    isFocus && 'is-focus',
+    isSelected && 'is-selected',
+  ]
     .filter(Boolean)
     .join(' ');
   return (
@@ -2579,6 +2685,7 @@ export function PersonNode({ data }: NodeProps<PersonFlowNode>) {
         detail={detail}
         isFocus={data.isFocus}
         isMe={data.isMe}
+        isSelected={actions.selectedId === id}
         onOpen={() => actions.openPerson(id)}
         onAdd={(as) => actions.addRelative(id, as)}
         onFocus={() => actions.reveal(id)}
@@ -2650,7 +2757,11 @@ export function UnionNode({ data }: NodeProps<UnionFlowNode>) {
   position: absolute; width: 22px; height: 22px; padding: 0; border-radius: 50%;
   font-size: 14px; line-height: 20px; opacity: 0; transition: opacity 0.1s;
 }
-.person-card:hover .card-add, .person-card:focus-within .card-add { opacity: 1; }
+.person-card:hover .card-add,
+.person-card:focus-within .card-add,
+.person-card.is-selected .card-add { opacity: 1; }
+/* Touch screens have no hover: always show the "+" buttons there. */
+@media (hover: none) { .card-add { opacity: 1; } }
 .card-add-top { top: -12px; left: calc(50% - 11px); }
 .card-add-bottom { bottom: -12px; left: calc(50% - 11px); }
 .card-add-left { left: -12px; top: calc(50% - 11px); }
@@ -2660,10 +2771,14 @@ export function UnionNode({ data }: NodeProps<UnionFlowNode>) {
 .person-card-dot .card-open { width: 100%; height: 100%; }
 .card-handle { opacity: 0; pointer-events: none; }
 .union-dot {
-  all: unset; display: block; width: 14px; height: 14px; border-radius: 50%;
-  background: #4a6fa5; cursor: pointer;
+  /* A 24px target (WCAG 2.5.8) around a 12px visible dot. */
+  all: unset; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%;
+  cursor: pointer;
 }
-.union-dot.is-ended { background: #fff; border: 2px dashed #9a9a9a; box-sizing: border-box; }
+.union-dot::before {
+  content: ''; width: 12px; height: 12px; border-radius: 50%; background: #4a6fa5; box-sizing: border-box;
+}
+.union-dot.is-ended::before { background: #fff; border: 2px dashed #9a9a9a; }
 .union-dot:focus-visible { outline: 3px solid #1d4ed8; outline-offset: 2px; }
 .react-flow__edge.edge-adoptive path { stroke-dasharray: 6 4; }
 .react-flow__edge.edge-step path, .react-flow__edge.edge-foster path { stroke-dasharray: 1 4; stroke-linecap: round; }
@@ -2683,7 +2798,7 @@ export function UnionNode({ data }: NodeProps<UnionFlowNode>) {
 **Files:**
 - Create: `apps/web/src/canvas/FamilyCanvas.tsx`, `apps/web/src/canvas/FamilyCanvas.test.tsx`, `apps/web/src/canvas/useTreeGraph.ts`
 
-- [ ] **Step 1: Write the failing tests** `canvas/FamilyCanvas.test.tsx`. Render `FamilyCanvas` with `haleGraph()`, mapped by `graphToFlow`, positioned by `applyElkLayout(flow.nodes, await new FakeLayoutEngine().layout(toElkGraph(flow, null)))`, and with `vi.fn()` actions:
+- [ ] **Step 1: Write the failing tests** `canvas/FamilyCanvas.test.tsx`. Render `FamilyCanvas` with `haleGraph()`, mapped by `graphToFlow`, positioned by `applyElkLayout(flow.nodes, await new FakeLayoutEngine().layout(toElkGraph(flow, null)))`, and with `vi.fn()` actions (plus `selectedId: null`):
   1. **Cards and dots:** each person has a card button, for example `getByRole('button', { name: 'Robert Hale, 1930–1998, deceased' })`, and each drawn union has its dot ("Relationship of Robert Hale and Margaret Hale (Widowed)").
   2. **Clicks:** clicking Robert's card calls `openPerson('robert')`. Clicking the dot calls `openUnion('u-rm')`. Clicking "Add a child of Laura Chen" calls `addRelative('laura', 'child')`.
   3. **Container:** the container has `aria-label="Family tree"`, and the React Flow controls (zoom in, zoom out, fit view) are present.
@@ -2725,7 +2840,7 @@ export interface FamilyCanvasProps {
   families: Family[];
   /** Centred after each layout in focus view; null in full view. */
   focusId: string | null;
-  actions: Omit<CanvasActions, 'reveal'>;
+  actions: Omit<CanvasActions, 'reveal'>; // includes selectedId
   /** Sibling drag (Task 17). */
   onReorder?: (unionId: string, childIds: string[]) => void;
 }
@@ -2822,10 +2937,11 @@ import { applyElkLayout, toElkGraph } from './elk-graph';
 import { assignGenerations } from './generations';
 import { type CanvasNode, type Family, graphToFlow } from './graph-to-flow';
 import { useLayoutEngine } from './LayoutEngineContext';
+import { LayoutTimeoutError } from './layout-engine';
 
 export type TreeGraphState =
   | { status: 'loading' }
-  | { status: 'error'; message: string }
+  | { status: 'error'; message: string; timedOut?: boolean }
   | { status: 'ready'; graph: TreeGraph; nodes: CanvasNode[]; edges: Edge[]; families: Family[] };
 
 /** Fetches the graph, maps it, lays it out. Stale responses are dropped. */
@@ -2860,8 +2976,13 @@ export function useTreeGraph(
           edges: flow.edges,
           families: flow.families,
         });
-      } catch {
-        if (active) setState({ status: 'error', message: MESSAGES.layoutFailed });
+      } catch (err) {
+        if (!active) return;
+        setState(
+          err instanceof LayoutTimeoutError
+            ? { status: 'error', message: MESSAGES.layoutTooSlow, timedOut: true }
+            : { status: 'error', message: MESSAGES.layoutFailed },
+        );
       }
     })();
     return () => {
@@ -2962,11 +3083,13 @@ export function usePersonHref(treeId: string): (personId: string) => string {
   2. **Opening a person:**
      - Clicking Robert's card lands on `/trees/<id>/people/robert`. The person panel loads (`getPerson`), and `getGraph` is called again with `focus: 'robert'` (re-centring).
      - **Close** returns to `/trees/<id>?focus=robert`, and the panel is gone.
-  3. **Full view:** **Full** (with `aria-pressed`) sets `?view=full` and calls `getGraph` with `{ mode: 'full' }`. The depth slider is hidden and the branch select is shown. Choosing Robert in "Branch" calls `getGraph` with `{ mode: 'full', branch: 'robert' }`.
+  3. **Full view:** **Full** (with `aria-pressed`) sets `?view=full` and calls `getGraph` with `{ mode: 'full' }`. The depth slider is hidden and the branch search is shown. Typing "Rob" in "Show the branch of" lists "Robert Hale"; clicking it calls `getGraph` with `{ mode: 'full', branch: 'robert' }`. **Whole tree** clears it. A search with no match lists nothing.
   4. **Depth:** on **Focus**, changing the "Generations" range to 2 sets `?depth=2` and calls `getGraph` with `depth: 2`.
   5. **Needs a branch:** a graph with `needsBranch: true, total: 2500` shows "This tree has 2,500 people, too many to draw at once. Choose a branch to show." and the branch select. There is no canvas.
   6. **Truncated:** a graph with `truncated: true` shows "Only part of the tree is shown. Pick a branch or use the focus view to see the rest."
-  7. **Layout failure:** `layout.failNext()` shows `MESSAGES.layoutFailed`.
+  7. **Layout failure:**
+     - `layout.failNext()` shows `MESSAGES.layoutFailed`.
+     - `layout.failNext(new LayoutTimeoutError())` shows "Layout is taking too long — try a smaller view." and opens the "All people" disclosure.
   8. **Graph error:** `trees.failNext('getGraph', NOT_FOUND)` shows the message and a "Back to the starting person" link.
   9. **Union panel:** clicking the David + Laura dot lands on `/trees/<id>/unions/u-dl?focus=<root>` and shows `UnionPanel` (Task 15 Step 5).
   10. **Disconnected people:**
@@ -3099,10 +3222,16 @@ export function UnionPanel({
   It renders a `div.canvas-toolbar` with, in order:
   1. **View switch:** a `role="group"` labelled "View", holding two buttons: **Focus** (`aria-pressed`, `onChange({ view: null, branch: null })`) and **Full** (`onChange({ view: 'full', focus: null })`).
   2. **Focus view:** `<label>Generations <input type="range" min="1" max="3" step="1" value={depth} aria-valuetext={`${depth} ${depth === 1 ? 'step' : 'steps'}`} /></label> <output>{depth}</output>`. On change: `onChange({ depth })`.
-  3. **Full view:** `<label>Branch <select>`, with "Whole tree" (value '') and then every person by `personName`. On change: `onChange({ branch: value || null })`.
+  3. **Full view:** a `BranchPicker`, a searchable input rather than a `<select>` with up to 10,000 options.
+     - `<label>Show the branch of <input type="search"></label>`. As you type (2+ letters), it lists up to 20 matches below it, filtered with `normalizeName` on `personName` (contains). Each match is a button showing the name and years.
+     - Choosing one calls `onChange({ branch: id })`.
+     - When a branch is set, it shows "Branch: <name>" with a **Whole tree** button (`onChange({ branch: null })`).
+     - Esc clears the input.
+     - The matches are a plain list of buttons, so no ARIA combobox is needed.
   4. **Add a person** (`Link` to `/trees/:id/people/new` + the current search), when `capabilities.editAnywhere || me.steward.active`.
   5. `<DisconnectedPeople>`.
   6. **Members and invites**, then **Trash** (`manageTree`), then **Your trees** (links, as in phase 4).
+  7. A **List of all people** link (`href="#people-fallback"`) that also opens the disclosure. This is the keyboard route past `onlyRenderVisibleElements` (decision 15). Give the `<details>` `id="people-fallback"`.
 
   The search box and "How are we related?" are phase 6.
 
@@ -3184,8 +3313,9 @@ export function TreeWorkspace({
       addRelative: (id: string, as: RelativeRole) =>
         go(`${base}/people/${id}`, { focus: null, tab: 'relations', add: as }),
       openUnion: (id: string) => go(`${base}/unions/${id}`, { focus: keepFocus, tab: null, add: null }),
+      selectedId: personId ?? null,
     }),
-    [go, base, keepFocus],
+    [go, base, keepFocus, personId],
   );
   const close = () => go(base, { focus: keepFocus, tab: null, add: null });
   const selected = newPerson || personId !== undefined || unionId !== undefined;
@@ -3267,7 +3397,8 @@ export function TreeWorkspace({
           <p className="hint canvas-hint">Select someone on the tree to see their details.</p>
         )}
       </div>
-      <details className="people-fallback">
+      {/* Opened when the layout timed out, so people stay reachable (decision 4). */}
+      <details className="people-fallback" open={graph.status === 'error' && graph.timedOut ? true : undefined}>
         <summary>All people ({persons.length})</summary>
         <PeopleList treeId={treeId} persons={persons} detail={detail} selectedId={personId} />
       </details>
@@ -3276,7 +3407,7 @@ export function TreeWorkspace({
 }
 ```
 
-  When `needsBranch`, the branch select must be visible. It already is, because `needsBranch` only happens in full view, where the toolbar shows it.
+  When `needsBranch`, the branch search must be visible. It already is, because `needsBranch` only happens in full view, where the toolbar shows it.
 
   **`PersonPanel.tsx`:** a tab change must keep the other parameters and drop `add`:
 
@@ -3362,7 +3493,7 @@ export function TreeWorkspace({
   **`AddRelativeForm.test.tsx`** (the fake tree has "Ada Lovelace" b. 1815 and the subject Robert):
   1. **A match:** a new child "Ada" / "Lovelace" / 1815 → **Add** calls `findSimilar` and shows the prompt. `createPerson` is **not** called.
   2. **Yes:** **Yes, use Ada Lovelace** calls `addRelative(robert, { personId: ada, as: 'child', kind: 'biological', unionId })`, then `onDone`.
-  3. **No:** **No, add a new person** calls `createPerson` with the typed person. Submitting the same name again doesn't prompt again.
+  3. **No:** clicking **No, add a new person** once calls `createPerson` exactly once, with the typed person (assert `trees.callsTo('createPerson')` has length 1 and its input). The new person is in `trees.trees.get(id).persons`, and `onDone` was called. Opening the form again and submitting the same name doesn't prompt again.
   4. **No match:** a name with no match ("Zed") calls `createPerson` directly, after one `findSimilar` call.
   5. **Check fails:** `failNext('findSimilar', NETWORK)` still creates the person (decision 9).
   6. **Subject excluded:** the subject never appears as a match.
@@ -3371,7 +3502,7 @@ export function TreeWorkspace({
   **`AddPersonForm.test.tsx`:**
   1. **Yes, unconnected:** "Ada Lovelace" with no connection → prompt → **Yes** navigates to Ada's panel and calls neither `createPerson` nor `addRelative`.
   2. **Yes, connected:** with "Connect to: Robert, as their child" → **Yes** calls `addRelative(robert, { personId: ada, as: 'child', kind: 'biological' })` and lands on Ada.
-  3. **No:** creates as in phase 4.
+  3. **No:** one click on **No, add a new person** calls `createPerson` once and lands on the new person's panel.
 
   **`PersonPanel.test.tsx` / `TreeWorkspace.test.tsx`:**
   1. Opening `/trees/t/people/robert?tab=relations&add=child` shows the Relations tab with the "Add child" form open.
@@ -3387,7 +3518,7 @@ export function TreeWorkspace({
 
 ```ts
 import type { PersonSummary, SimilarQuery } from '@family-tree/shared';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useTreesApi } from '../../trees/TreesApiContext';
 
 /**
@@ -3398,12 +3529,13 @@ import { useTreesApi } from '../../trees/TreesApiContext';
 export function useDuplicateCheck(treeId: string, excludeIds: readonly string[]) {
   const api = useTreesApi();
   const [matches, setMatches] = useState<PersonSummary[] | null>(null);
-  const [confirmedNew, setConfirmedNew] = useState<string | null>(null);
+  // A ref, not state: "No, add a new person" must take effect in the same event (no stale closure).
+  const confirmedNew = useRef<string | null>(null);
 
   const check = useCallback(
     async (q: SimilarQuery): Promise<boolean> => {
       const key = JSON.stringify(q);
-      if (confirmedNew === key) return true;
+      if (confirmedNew.current === key) return true;
       const res = await api.findSimilar(treeId, q);
       if (!res.ok) return true;
       const found = res.data.filter((p) => !excludeIds.includes(p.id));
@@ -3411,10 +3543,10 @@ export function useDuplicateCheck(treeId: string, excludeIds: readonly string[])
       setMatches(found);
       return false;
     },
-    [api, treeId, excludeIds, confirmedNew],
+    [api, treeId, excludeIds],
   );
   const confirmNew = (q: SimilarQuery) => {
-    setConfirmedNew(JSON.stringify(q));
+    confirmedNew.current = JSON.stringify(q);
     setMatches(null);
   };
   return { matches, check, confirmNew, dismiss: () => setMatches(null) };
@@ -3478,7 +3610,7 @@ export function DuplicatePrompt({
 
   **`AddRelativeForm.tsx`:**
   - `const dup = useDuplicateCheck(treeId, useMemo(() => [subject.person.id], [subject.person.id]));`
-  - Split the new-person path of `submit` into `createNew()` (the phase 4 code) and a guard:
+  - Split the new-person path of `submit` into a guard and `createNew(input)`. `createNew` calls `createPerson` and then does the phase 4 result handling (`onDone`, the error message):
 
 ```ts
     if (mode === 'new') {
@@ -3492,16 +3624,18 @@ export function DuplicatePrompt({
         if (alive.current) setPending(false);
         return; // the prompt is showing
       }
-      res = await api.createPerson(treeId, input as CreatePersonInput);
+      return createNew(input as CreatePersonInput);
     }
 ```
 
   - Render `{dup.matches && <DuplicatePrompt … />}` above the submit buttons:
     - `onUse={(p) => void linkExisting(p.id)}`, where `linkExisting` calls `api.addRelative(treeId, subject.person.id, { personId, ...link })` with the same result handling as the existing-person path.
-    - `onCreateNew={() => { dup.confirmNew(similarQueryOf(quick)); void submitNow(); }}`. Here `submitNow` re-runs `submit` without an event: make `submit(e?: FormEvent)` call `e?.preventDefault()`.
+    - `onCreateNew={() => { dup.confirmNew(similarQueryOf(quick)); void createNew(currentInput()); }}`.
+      - It calls `createNew` **directly**. It doesn't re-run `submit`, whose closure would still hold the old state.
+      - `currentInput()` builds the same validated input as `submit`.
   - Editing any quick field calls `dup.dismiss()`.
 
-  **`AddPersonForm.tsx`:** the same guard before `createPerson`. Its `linkExisting(p)`:
+  **`AddPersonForm.tsx`:** the same guard before `createPerson`, and the same direct `createNew(input)` call from `onCreateNew`. Its `linkExisting(p)`:
   - with a `to` connection: `api.addRelative(treeId, to, { personId: p.id, as, kind: 'biological' })`; on success `onCreated()`, then navigate to `/trees/:treeId/people/<p.id>`; `CONFLICT` shows its message;
   - without one: navigate to `/trees/:treeId/people/<p.id>` (nothing is created).
 
@@ -3669,7 +3803,10 @@ api.reorderChildren(treeId, u.id, moved(u.children.map((c) => c.person.id), inde
   4. **Full view:**
      - All 10 people, in 3 rows. Susan's single-parent union shows one partner line and Noah below.
      - Zoom out: the cards become name and years, then dots. The minimap and the zoom and fit controls work.
-     - The network panel shows a request for `elk-worker.min-*.js` (the layout runs in a worker), and there are no console errors.
+     - **In `vite dev` (the Docker web container),** the network panel shows a 200 request for the ELK worker. In dev it is served from `/node_modules/…/elkjs/lib/elk-worker.min.js` or `/@fs/…`. The console has neither "ELK worker unavailable" nor "ELK worker failed".
+     - If dev can't serve it, fix it (for example Vite `server.fs.allow`, or `optimizeDeps.exclude: ['elkjs']`) before going on; don't accept the main-thread fallback.
+     - Then run `pnpm --filter @family-tree/web build && pnpm --filter @family-tree/web preview` and repeat the check: the worker request is `assets/elk-worker.min-*.js`.
+     - There are no console errors.
   5. **Click Robert:**
      - The person panel opens on the right, and the URL is `/people/<robert>`.
      - In focus view, the canvas re-centres on Robert.
@@ -3748,6 +3885,10 @@ api.reorderChildren(treeId, u.id, moved(u.children.map((c) => c.person.id), inde
     - the worker request.
     Reuse the Task 18 walk-through steps.
   - **GEDCOM:** export `sibling_order` as the order of `CHIL` lines in each `FAM`.
+- **Release-age gate (after 2026-11-23):**
+  - Once every locked package is 14+ days old, consider committing `minimumReleaseAge: 20160` to `pnpm-workspace.yaml`. Check first, in a scratch clone: `pnpm install --frozen-lockfile` with the setting must pass with no violations, and must write no `minimumReleaseAgeExclude`.
+  - Then remove the d3 `overrides` (if those 2026-11-03 releases are then acceptable).
+  - Every later dependency change then needs the newest locked package to be 14+ days old, or the install fails. Document that in the README.
 - **Known trade-offs to revisit:**
   - **Per-request graph:** `loadGraphRows` reads the whole tree on every graph request (it's needed for `hasParents`, `hiddenRelatives`, the branch rule and the 2,000 count). That's fine for families. Profile it at 10k people; a cached per-tree skeleton invalidated on structural writes (they all take `lockTreeGraph`) is the next step.
   - **Depth cost:** focus depth counts siblings as one step, which grows quickly at depth 3 in big families. The 500-person cap guards it.
