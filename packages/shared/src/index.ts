@@ -6,3 +6,4 @@ export * from './trees.js';
 export * from './branch.js';
 export * from './branch-fixtures.js';
 export * from './people.js';
+export * from './family-graph.js';
