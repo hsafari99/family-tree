@@ -1,6 +1,6 @@
 import type { PersonSummary, TreeDetail } from '@family-tree/shared';
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
-import { Link, useMatch, useNavigate, useParams } from 'react-router';
+import { Link, useLocation, useMatch, useNavigate, useParams } from 'react-router';
 import { ConfirmButton } from '../components/ConfirmButton';
 import { FormError } from '../components/forms';
 import { Page } from '../components/Page';
@@ -20,6 +20,9 @@ export function TreePage() {
   const { treeId = '', personId } = useParams();
   const newPerson = useMatch('/trees/:treeId/people/new') !== null;
   const api = useTreesApi();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [notice, setNotice] = useState<string | null>(null);
   const [detail, setDetail] = useState<TreeDetail | null>(null);
   const [persons, setPersons] = useState<PersonSummary[]>([]);
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
@@ -40,6 +43,15 @@ export function TreePage() {
       active = false;
     };
   }, [api, treeId]);
+
+  // A notice passed through the router state (e.g. after a delete) shows once.
+  useEffect(() => {
+    const state = location.state as { notice?: string } | null;
+    if (state?.notice) {
+      setNotice(state.notice);
+      void navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [location, navigate]);
 
   const refreshPersons = useCallback(async () => {
     const res = await api.listPersons(treeId);
@@ -74,6 +86,11 @@ export function TreePage() {
 
   return (
     <Page title={tree.name} wide>
+      {notice && (
+        <p role="status" className="success">
+          {notice}
+        </p>
+      )}
       <p>{ROLE_LINE[me.role]}</p>
       {me.steward.grants.length > 0 &&
         (me.steward.active ? (

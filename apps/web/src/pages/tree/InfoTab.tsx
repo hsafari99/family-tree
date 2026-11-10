@@ -13,6 +13,7 @@ import {
 } from '../../components/FuzzyDateField';
 import { Field, FormError, Success, validate, type FieldErrors } from '../../components/forms';
 import { formatFuzzyDate, personName, SEX_LABEL } from '../../trees/format';
+import { DeletePerson } from './DeletePerson';
 import { type TabProps, usePersonSave } from './usePersonSave';
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
@@ -52,7 +53,7 @@ function Details({ person }: { person: PersonView['person'] }) {
 }
 
 export function InfoTab(props: TabProps) {
-  const { view } = props;
+  const { view, treeId } = props;
   const s = usePersonSave(props);
   const [editing, setEditing] = useState(false);
 
@@ -66,6 +67,9 @@ export function InfoTab(props: TabProps) {
         </button>
       )}
       {editing && <InfoForm view={view} s={s} onClose={() => setEditing(false)} />}
+      {view.capabilities.delete && (
+        <DeletePerson treeId={treeId} personId={view.person.id} onChanged={props.onChanged} />
+      )}
     </div>
   );
 }

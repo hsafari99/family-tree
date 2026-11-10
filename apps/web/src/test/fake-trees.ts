@@ -849,15 +849,16 @@ export class FakeTreesApi implements TreesApi {
     if (!this.mayDelete(t)) return forbidden();
     const blockedByRoot = personId === t.detail.tree.rootPersonId;
     return ok<DeletePreview>(
-      t.previews.get(personId) ?? {
-        mode,
-        people: [summary],
-        unions: 0,
-        links: 0,
-        outsideScope: 0,
-        blockedByRoot,
-        allowed: !blockedByRoot,
-      },
+      t.previews.get(`${personId}:${mode}`) ??
+        t.previews.get(personId) ?? {
+          mode,
+          people: [summary],
+          unions: 0,
+          links: 0,
+          outsideScope: 0,
+          blockedByRoot,
+          allowed: !blockedByRoot,
+        },
     );
   }
 
@@ -869,15 +870,16 @@ export class FakeTreesApi implements TreesApi {
     const summary = t.persons.find((p) => p.id === personId);
     if (!summary) return this.personNotFound();
     if (!this.mayDelete(t)) return fail('FORBIDDEN', MESSAGES.deleteNotAllowed);
-    const preview = t.previews.get(personId) ?? {
-      mode,
-      people: [summary],
-      unions: 0,
-      links: 0,
-      outsideScope: 0,
-      blockedByRoot: personId === t.detail.tree.rootPersonId,
-      allowed: personId !== t.detail.tree.rootPersonId,
-    };
+    const preview = t.previews.get(`${personId}:${mode}`) ??
+      t.previews.get(personId) ?? {
+        mode,
+        people: [summary],
+        unions: 0,
+        links: 0,
+        outsideScope: 0,
+        blockedByRoot: personId === t.detail.tree.rootPersonId,
+        allowed: personId !== t.detail.tree.rootPersonId,
+      };
     if (preview.blockedByRoot || preview.people.some((p) => p.id === t.detail.tree.rootPersonId)) {
       return this.invalid();
     }
