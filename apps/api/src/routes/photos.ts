@@ -9,7 +9,7 @@ import { and, count, desc, eq, sql } from 'drizzle-orm';
 import type { FastifyError, FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { requireSession } from '../auth/session-guard.js';
 import { persons, photos } from '../db/schema.js';
-import { AppError, idParam, notFound } from '../errors.js';
+import { AppError, idParam, notFound, safeError } from '../errors.js';
 import {
   lockTreePhotos,
   photoBytesUsed,
@@ -128,9 +128,10 @@ export const photosRoutes: FastifyPluginAsync<
       const { width, height } = processed;
 
       await storage.put(keys.thumb, processed.thumb, 'image/webp');
+      let committed: { row: typeof photos.$inferSelect; used: number };
       try {
         await storage.put(keys.full, processed.full, 'image/webp');
-        const { row, used } = await db.transaction(async (tx) => {
+        committed = await db.transaction(async (tx) => {
           // Lock order: the tree graph, then photos. The access read in onRequest may be stale
           // by now, so it is loaded again under the lock.
           await lockTreeGraph(tx, treeId);
@@ -177,12 +178,14 @@ export const photosRoutes: FastifyPluginAsync<
           });
           return { row: row!, used: used + bytes };
         });
-        const photo = await toPhoto(storage, { ...row, uploadedByName: req.user!.name });
-        return reply.code(201).send({ photo, usage: { usedBytes: used, limitBytes } });
       } catch (err) {
         await discard([keys.thumb, keys.full], req.log);
         throw err;
       }
+      // After the commit: a failure here must not delete the objects of a photo that now exists.
+      const { row, used } = committed;
+      const photo = await toPhoto(storage, { ...row, uploadedByName: req.user!.name });
+      return reply.code(201).send({ photo, usage: { usedBytes: used, limitBytes } });
     },
   );
 
@@ -241,7 +244,12 @@ export const photosRoutes: FastifyPluginAsync<
       });
       return gone;
     });
-    await drainStorageDeletions(db, storage, { keys, log: req.log });
+    // The delete is committed: a failing drain leaves the keys queued for the purge job.
+    try {
+      await drainStorageDeletions(db, storage, { keys, log: req.log });
+    } catch (err) {
+      req.log.error({ err: safeError(err) }, 'storage drain failed; keys stay queued');
+    }
     return reply.code(204).send();
   });
 };

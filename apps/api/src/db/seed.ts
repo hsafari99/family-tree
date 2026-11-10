@@ -1,7 +1,8 @@
 import { type FuzzyDate, sortYear } from '@family-tree/shared';
 import { and, eq, sql } from 'drizzle-orm';
 import type { Db } from './client.js';
-import { parentChild, persons, residences, treeMembers, trees, unions } from './schema.js';
+import { queuePhotoObjects } from '../storage/deletions.js';
+import { parentChild, persons, photos, residences, treeMembers, trees, unions } from './schema.js';
 
 export const SEED_TREE_NAME = 'Sample family (seed)';
 
@@ -20,6 +21,10 @@ export async function seedSampleFamily(
 ): Promise<{ treeId: string; rootPersonId: string }> {
   return db.transaction(async (tx) => {
     // Dev only: deletes any tree named SEED_TREE_NAME, so re-seeding replaces the sample family.
+    await queuePhotoObjects(
+      tx,
+      sql`${photos.treeId} in (select id from ${trees} where ${trees.name} = ${SEED_TREE_NAME})`,
+    );
     await tx.delete(trees).where(eq(trees.name, SEED_TREE_NAME));
     const [tree] = await tx.insert(trees).values({ name: SEED_TREE_NAME }).returning();
     if (!tree) throw new Error('Failed to create seed tree');
@@ -209,6 +214,10 @@ export async function seedLargeFamily(
     const mine = ownerUserId
       ? sql`${trees.id} in (select tree_id from tree_members where user_id = ${ownerUserId} and role = 'owner')`
       : sql`not exists (select 1 from tree_members m where m.tree_id = ${trees.id})`;
+    await queuePhotoObjects(
+      tx,
+      sql`${photos.treeId} in (select id from ${trees} where ${trees.name} = ${LARGE_SEED_TREE_NAME} and ${mine})`,
+    );
     await tx.delete(trees).where(and(eq(trees.name, LARGE_SEED_TREE_NAME), mine));
     const [tree] = await tx.insert(trees).values({ name: LARGE_SEED_TREE_NAME }).returning();
     const treeId = tree!.id;

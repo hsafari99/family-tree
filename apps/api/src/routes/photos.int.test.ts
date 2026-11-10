@@ -1,6 +1,6 @@
 import { count, eq, inArray } from 'drizzle-orm';
 import sharp from 'sharp';
-import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { call, signUp, type CookieJar } from '../../test/auth-helpers.js';
 import { gif, jpegWithExif, png, pngHeaderOnly, SECRET, webp } from '../../test/photo-fixtures.js';
 import { addPhotoRow, objectExists, upload } from '../../test/photo-helpers.js';
@@ -19,6 +19,12 @@ import { createAuth } from '../auth/auth.js';
 import { loadConfig } from '../config.js';
 import { auditLog, photos, storageDeletions } from '../db/schema.js';
 import { createDeps } from '../deps.js';
+import { drainStorageDeletions } from '../storage/deletions.js';
+
+vi.mock('../storage/deletions.js', async (orig) => {
+  const m = await orig<typeof import('../storage/deletions.js')>();
+  return { ...m, drainStorageDeletions: vi.fn(m.drainStorageDeletions) };
+});
 import { limiter } from '../photos/limiter.js';
 
 const config = loadConfig();
@@ -225,9 +231,45 @@ describe('primary and delete', () => {
     );
     expect(await rowCount(treeId)).toBe(0);
   });
+
+  it('still answers 204 when the outbox drain itself throws, leaving the keys queued', async () => {
+    const { owner, treeId, url } = await setup();
+    const a = (await upload(app, url, owner.jar, await png(), 'image/png')).json().photo;
+    const [row] = await db.select().from(photos).where(eq(photos.id, a.id));
+    vi.mocked(drainStorageDeletions).mockRejectedValueOnce(new Error('db down'));
+    const del = await call(app, 'DELETE', photoUrl(treeId, a.id), { jar: owner.jar });
+    expect(del.statusCode).toBe(204);
+    expect(await rowCount(treeId)).toBe(0);
+    const keys = [row!.storageKeyFull, row!.storageKeyThumb];
+    expect(
+      await db.select().from(storageDeletions).where(inArray(storageDeletions.key, keys)),
+    ).toHaveLength(2);
+    await drainStorageDeletions(db, deps.storage, { keys });
+  });
 });
 
 describe('limits', () => {
+  it('keeps the committed photo and its objects when signing the response fails', async () => {
+    const { owner, treeId, url } = await setup();
+    const broken = buildApp({
+      config,
+      checks: deps.checks,
+      auth,
+      db,
+      storage: { ...deps.storage, signedUrl: () => Promise.reject(new Error('sign down')) },
+    });
+    try {
+      const res = await upload(broken, url, owner.jar, await png(), 'image/png');
+      expect(res.statusCode).toBe(500);
+    } finally {
+      await broken.close();
+    }
+    const rows = await db.select().from(photos).where(eq(photos.treeId, treeId));
+    expect(rows).toHaveLength(1);
+    expect(await objectExists(deps, rows[0]!.storageKeyFull)).toBe(true);
+    expect(await objectExists(deps, rows[0]!.storageKeyThumb)).toBe(true);
+  });
+
   it('enforces the tree quota, counting Trash, until erased', async () => {
     const probe = await setup();
     const first = (await upload(app, probe.url, probe.owner.jar, await png(), 'image/png')).json()

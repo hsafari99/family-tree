@@ -1,5 +1,5 @@
 import { eq, inArray } from 'drizzle-orm';
-import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { call, signUp, type CookieJar } from '../../test/auth-helpers.js';
 import { addPhotoRow, objectExists } from '../../test/photo-helpers.js';
 import {
@@ -28,6 +28,12 @@ import {
   unions,
 } from '../db/schema.js';
 import { createDeps } from '../deps.js';
+import { drainStorageDeletions } from '../storage/deletions.js';
+
+vi.mock('../storage/deletions.js', async (orig) => {
+  const m = await orig<typeof import('../storage/deletions.js')>();
+  return { ...m, drainStorageDeletions: vi.fn(m.drainStorageDeletions) };
+});
 
 const config = loadConfig();
 const deps = createDeps(config);
@@ -452,6 +458,17 @@ describe('Trash erase and photos', () => {
     expect(await db.select().from(photos).where(eq(photos.id, t.photo.id))).toHaveLength(0);
     for (const k of t.keys) expect(await objectExists(deps, k)).toBe(false);
     expect(await queued(t.keys)).toHaveLength(0);
+  });
+
+  it('still answers 204 when the outbox drain itself throws, leaving the keys queued', async () => {
+    const t = await personWithPhoto(app);
+    vi.mocked(drainStorageDeletions).mockRejectedValueOnce(new Error('db down'));
+    const res = await call(app, 'DELETE', `/api/v1/trees/${t.treeId}/trash/${t.batch.id}`, {
+      jar: t.owner.jar,
+    });
+    expect(res.statusCode).toBe(204);
+    expect(await db.select().from(photos).where(eq(photos.id, t.photo.id))).toHaveLength(0);
+    expect(await queued(t.keys)).toHaveLength(2);
   });
 
   it('restore brings the photos back', async () => {

@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { requireSession } from '../auth/session-guard.js';
-import { idParam } from '../errors.js';
+import { idParam, safeError } from '../errors.js';
 import { drainStorageDeletions } from '../storage/deletions.js';
 import { TREE } from '../permissions/can.js';
 import { authorize, loadAccess } from '../trees/access.js';
@@ -48,7 +48,12 @@ export const trashRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
       authorize(access, 'trash.erase', TREE);
       return eraseBatch(tx, access, batchId);
     });
-    await drainStorageDeletions(db, storage, { keys, log: req.log });
+    // The erase is committed: a failing drain leaves the keys queued for the purge job.
+    try {
+      await drainStorageDeletions(db, storage, { keys, log: req.log });
+    } catch (err) {
+      req.log.error({ err: safeError(err) }, 'storage drain failed; keys stay queued');
+    }
     return reply.code(204).send();
   });
 };
