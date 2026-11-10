@@ -62,6 +62,15 @@ export const MESSAGES = {
   notFound: 'This tree doesn’t exist or you don’t have access to it',
   conflict: 'That already exists',
   itemGone: 'That item no longer exists. Refresh and try again.',
+  staleEdit:
+    'Someone else changed this person while you were editing. Load the latest version and make your change again.',
+  restoreConflict:
+    'This can’t be restored because the family has changed since it was deleted. You can erase it instead.',
+  alreadyRelated: 'They are already related this way',
+  trashOwnerOnly: 'Only the tree owner can open the Trash',
+  personNotFound: 'This person doesn’t exist or has been deleted',
+  deleteNotAllowed: 'This includes people outside your branch. Ask the owner to delete it.',
+  itemChanged: 'That changed in the meantime. Reload and try again.',
 } as const;
 
 /** The error code AuthProvider reacts to by re-reading the session. */

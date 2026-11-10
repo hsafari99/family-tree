@@ -118,4 +118,139 @@ describe('createTreesApi', () => {
     expect(urlOf(mock.mock.calls[0]!)).toBe(`${BASE}/api/v1/invites/accept`);
     expect(JSON.parse(initOf(mock.mock.calls[0]!).body as string)).toEqual({ token });
   });
+
+  describe('people, relations and Trash', () => {
+    const PID = '7f9619ff-8b86-4d11-b42d-00c04fc964aa';
+    const summary = {
+      id: PID,
+      givenName: 'Ada',
+      middleName: null,
+      surname: null,
+      birthYear: null,
+      deathYear: null,
+      isLiving: true,
+    };
+    const view = {
+      person: {
+        id: PID,
+        givenName: 'Ada',
+        middleName: null,
+        surname: null,
+        maidenName: null,
+        nickname: null,
+        sex: 'female',
+        birthDate: null,
+        birthPlace: null,
+        deathDate: null,
+        deathPlace: null,
+        causeOfDeath: null,
+        isLiving: true,
+        occupation: null,
+        education: null,
+        biography: null,
+        notes: null,
+        version: 1,
+        createdByName: null,
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+      residences: [],
+      relations: { parents: [], unions: [], siblings: [] },
+      capabilities: { edit: true, addRelative: true, delete: true },
+    };
+
+    it('reads a person', async () => {
+      const mock = stubFetch({ status: 200, body: view });
+      expect(await api().getPerson('t', PID)).toEqual({ ok: true, data: view });
+      expect(urlOf(mock.mock.calls[0]!)).toBe(`${BASE}/api/v1/trees/t/persons/${PID}`);
+    });
+
+    it('creates a person and returns its id', async () => {
+      const mock = stubFetch({ status: 201, body: { id: PID } });
+      const input = { person: { givenName: 'Ada' } };
+      expect(await api().createPerson('t', input)).toEqual({ ok: true, data: { id: PID } });
+      const init = initOf(mock.mock.calls[0]!);
+      expect(init.method).toBe('POST');
+      expect(JSON.parse(init.body as string)).toEqual(input);
+    });
+
+    it('maps a stale edit to its own message', async () => {
+      stubFetch({ status: 409, body: errorBody('CONFLICT') });
+      expect(await api().updatePerson('t', PID, { version: 1, givenName: 'B' })).toEqual({
+        ok: false,
+        error: { code: 'CONFLICT', message: MESSAGES.staleEdit },
+      });
+    });
+
+    it('maps a restore conflict', async () => {
+      stubFetch({ status: 409, body: errorBody('CONFLICT') });
+      expect(await api().restoreBatch('t', ID)).toEqual({
+        ok: false,
+        error: { code: 'CONFLICT', message: MESSAGES.restoreConflict },
+      });
+    });
+
+    it('maps a forbidden Trash list', async () => {
+      stubFetch({ status: 403, body: errorBody('FORBIDDEN') });
+      expect(await api().listTrash('t')).toEqual({
+        ok: false,
+        error: { code: 'FORBIDDEN', message: MESSAGES.trashOwnerOnly },
+      });
+    });
+
+    it('maps a forbidden delete', async () => {
+      stubFetch({ status: 403, body: errorBody('FORBIDDEN') });
+      expect(await api().deletePerson('t', PID, 'person')).toEqual({
+        ok: false,
+        error: { code: 'FORBIDDEN', message: MESSAGES.deleteNotAllowed },
+      });
+    });
+
+    it('maps a relation conflict', async () => {
+      stubFetch({ status: 409, body: errorBody('CONFLICT') });
+      expect(await api().addRelative('t', PID, { as: 'partner', personId: ID })).toEqual({
+        ok: false,
+        error: { code: 'CONFLICT', message: MESSAGES.alreadyRelated },
+      });
+    });
+
+    it('deletes a residence with no body', async () => {
+      const mock = stubFetch({ status: 204 });
+      expect(await api().deleteResidence('t', ID)).toEqual({ ok: true, data: undefined });
+      const init = initOf(mock.mock.calls[0]!);
+      expect(init.method).toBe('DELETE');
+      expect(init.body).toBeUndefined();
+      expect(urlOf(mock.mock.calls[0]!)).toBe(`${BASE}/api/v1/trees/t/residences/${ID}`);
+    });
+
+    it('previews a delete with the mode', async () => {
+      const body = {
+        mode: 'descendants',
+        people: [summary],
+        unions: 0,
+        links: 0,
+        outsideScope: 0,
+        blockedByRoot: false,
+        allowed: true,
+      };
+      const mock = stubFetch({ status: 200, body });
+      expect(await api().previewDelete('t', PID, 'descendants')).toEqual({ ok: true, data: body });
+      expect(urlOf(mock.mock.calls[0]!)).toBe(
+        `${BASE}/api/v1/trees/t/persons/${PID}/delete-preview`,
+      );
+      expect(JSON.parse(initOf(mock.mock.calls[0]!).body as string)).toEqual({
+        mode: 'descendants',
+      });
+    });
+
+    it('unwraps history and Trash lists', async () => {
+      stubFetch({ status: 200, body: { entries: [] } }, { status: 200, body: { batches: [] } });
+      expect(await api().personHistory('t', PID)).toEqual({ ok: true, data: [] });
+      expect(await api().listTrash('t')).toEqual({ ok: true, data: [] });
+    });
+
+    it('gives the generic error for an unexpected body', async () => {
+      stubFetch({ status: 200, body: { nope: true } });
+      expect(await api().getPerson('t', PID)).toEqual({ ok: false, error: toAuthError(500) });
+    });
+  });
 });
