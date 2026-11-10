@@ -402,6 +402,13 @@ img.card-photo {
   width: 100%;
   height: 100%;
 }
+/* React Flow turns off pointer events on nodes that are neither draggable nor selectable (a lone
+   person, or anyone outside a sibling group); the buttons inside must still take clicks. */
+.person-card .card-open,
+.person-card .card-add,
+.union-dot {
+  pointer-events: auto;
+}
 .card-handle {
   opacity: 0;
   pointer-events: none;
