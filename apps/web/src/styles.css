@@ -253,3 +253,49 @@ a {
   border: 1px solid var(--border);
   border-radius: 0.4rem;
 }
+
+/* People list and person panel */
+.tree-layout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+.tree-layout ul {
+  padding-left: 1.1rem;
+}
+.tree-layout a[aria-current='page'] {
+  font-weight: 700;
+}
+.prose {
+  white-space: pre-line;
+  margin: 0;
+}
+.person-panel dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 1rem;
+}
+.person-panel dt {
+  font-weight: 600;
+}
+.person-panel dd {
+  margin: 0;
+}
+textarea {
+  font: inherit;
+  width: 100%;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  background: Canvas;
+  color: CanvasText;
+}
+@media (max-width: 720px) {
+  .tree-layout {
+    grid-template-columns: 1fr;
+  }
+  .tree-panel {
+    order: -1;
+  }
+}

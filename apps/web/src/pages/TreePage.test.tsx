@@ -154,4 +154,32 @@ describe('TreePage', () => {
     expect(screen.getByRole('button', { name: 'Delete tree' })).toBeDisabled();
     expect(s.trees.callsTo('deleteTree')).toHaveLength(0);
   });
+
+  it('links people to their panels and marks the selected one', async () => {
+    const s = setup();
+    renderAt(`/trees/${s.id}/people/${bob.id}`, s);
+    const link = await screen.findByRole('link', { name: /Bob Hale/ });
+    expect(link).toHaveAttribute('href', `/trees/${s.id}/people/${bob.id}`);
+    expect(link).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: /Ada Hale/ })).not.toHaveAttribute('aria-current');
+  });
+
+  it('shows Add a person to editors and Trash to the owner only', async () => {
+    const owner = setup();
+    const { unmount } = renderAt(`/trees/${owner.id}`, owner);
+    expect(await screen.findByRole('link', { name: 'Add a person' })).toHaveAttribute(
+      'href',
+      `/trees/${owner.id}/people/new`,
+    );
+    expect(screen.getByRole('link', { name: 'Trash' })).toHaveAttribute(
+      'href',
+      `/trees/${owner.id}/trash`,
+    );
+    unmount();
+    const viewer = setup({ role: 'viewer', detail: { capabilities: viewerCaps } });
+    renderAt(`/trees/${viewer.id}`, viewer);
+    await screen.findByText('You are a viewer of this tree.');
+    expect(screen.queryByRole('link', { name: 'Add a person' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Trash' })).not.toBeInTheDocument();
+  });
 });

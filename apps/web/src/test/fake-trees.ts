@@ -556,7 +556,7 @@ export class FakeTreesApi implements TreesApi {
     const t = this.find(treeId);
     if (!t) return notFound();
     const view = this.viewOf(t, personId);
-    return view ? ok(view) : this.personNotFound();
+    return view ? ok(structuredClone(view)) : this.personNotFound();
   }
 
   async createPerson(treeId: string, input: CreatePersonInput) {

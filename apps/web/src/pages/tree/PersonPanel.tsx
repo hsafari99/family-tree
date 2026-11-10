@@ -1,0 +1,96 @@
+import type { PersonView } from '@family-tree/shared';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router';
+import { FormError } from '../../components/forms';
+import { Tabs } from '../../components/Tabs';
+import { personName, personYears } from '../../trees/format';
+import { useTreesApi } from '../../trees/TreesApiContext';
+import { HistoryTab } from './HistoryTab';
+import { InfoTab } from './InfoTab';
+import { PlacesTab } from './PlacesTab';
+
+const TABS = [
+  { id: 'info', label: 'Info' },
+  { id: 'places', label: 'Places' },
+  { id: 'photos', label: 'Photos' },
+  { id: 'relations', label: 'Relations' },
+  { id: 'history', label: 'History' },
+] as const;
+
+const yearOf = (d: { date1: string } | null) => (d ? Number(d.date1.slice(0, 4)) : null);
+
+export function PersonPanel({
+  treeId,
+  personId,
+  onChanged,
+}: {
+  treeId: string;
+  personId: string;
+  onChanged: () => void;
+}) {
+  const api = useTreesApi();
+  const [view, setView] = useState<PersonView | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [params, setParams] = useSearchParams();
+  const alive = useRef(true);
+
+  const load = useCallback(async () => {
+    const res = await api.getPerson(treeId, personId);
+    if (!alive.current) return;
+    if (res.ok) {
+      setView(res.data);
+      setError(null);
+    } else setError(res.error.message);
+  }, [api, treeId, personId]);
+
+  useEffect(() => {
+    alive.current = true;
+    setView(null);
+    setError(null);
+    void load();
+    return () => {
+      alive.current = false;
+    };
+  }, [load]);
+
+  if (error && !view) {
+    return (
+      <div>
+        <FormError>{error}</FormError>
+        <p>
+          <Link to={`/trees/${treeId}`}>Back to the list</Link>
+        </p>
+      </div>
+    );
+  }
+  if (!view) return <p>Loading…</p>;
+
+  const raw = params.get('tab');
+  const tab = TABS.find((t) => t.id === raw)?.id ?? 'info';
+  const p = view.person;
+  const years = personYears({ birthYear: yearOf(p.birthDate), deathYear: yearOf(p.deathDate) });
+  const tabProps = { treeId, view, reload: load, onChanged };
+
+  return (
+    <div className="person-panel">
+      <h2>
+        {personName(p)}
+        {years && ` ${years}`}
+      </h2>
+      {p.nickname && <p>“{p.nickname}”</p>}
+      {p.maidenName && <p>Maiden name: {p.maidenName}</p>}
+      <Tabs
+        tabs={TABS}
+        current={tab}
+        onChange={(id) => setParams({ tab: id }, { replace: true })}
+      />
+      <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
+        {tab === 'info' && <InfoTab {...tabProps} />}
+        {tab === 'places' && <PlacesTab {...tabProps} />}
+        {tab === 'photos' && <p>Photos arrive in a later version.</p>}
+        {tab === 'relations' && <p>Relations arrive next.</p>}
+        {tab === 'history' && <HistoryTab treeId={treeId} personId={personId} />}
+      </div>
+    </div>
+  );
+}

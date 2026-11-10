@@ -48,6 +48,22 @@ export function AppRoutes() {
         }
       />
       <Route
+        path="/trees/:treeId/people/new"
+        element={
+          <RequireAuth>
+            <TreePage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/trees/:treeId/people/:personId"
+        element={
+          <RequireAuth>
+            <TreePage />
+          </RequireAuth>
+        }
+      />
+      <Route
         path="/trees/:treeId"
         element={
           <RequireAuth>

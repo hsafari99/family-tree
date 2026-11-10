@@ -1,10 +1,12 @@
 import type { PersonSummary, TreeDetail } from '@family-tree/shared';
-import { type FormEvent, useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { type FormEvent, useCallback, useEffect, useState } from 'react';
+import { Link, useMatch, useNavigate, useParams } from 'react-router';
 import { ConfirmButton } from '../components/ConfirmButton';
 import { FormError } from '../components/forms';
 import { Page } from '../components/Page';
-import { personName, personYears } from '../trees/format';
+import { PeopleList } from './tree/PeopleList';
+import { PersonPanel } from './tree/PersonPanel';
+import { personName } from '../trees/format';
 import { useTreesApi } from '../trees/TreesApiContext';
 
 const ROLE_LINE = {
@@ -14,7 +16,8 @@ const ROLE_LINE = {
 } as const;
 
 export function TreePage() {
-  const { treeId = '' } = useParams();
+  const { treeId = '', personId } = useParams();
+  const newPerson = useMatch('/trees/:treeId/people/new') !== null;
   const api = useTreesApi();
   const [detail, setDetail] = useState<TreeDetail | null>(null);
   const [persons, setPersons] = useState<PersonSummary[]>([]);
@@ -35,6 +38,11 @@ export function TreePage() {
     return () => {
       active = false;
     };
+  }, [api, treeId]);
+
+  const refreshPersons = useCallback(async () => {
+    const res = await api.listPersons(treeId);
+    if (res.ok) setPersons(res.data);
   }, [api, treeId]);
 
   if (error) {
@@ -77,25 +85,27 @@ export function TreePage() {
         ))}
       {rootName && <p>Starting person: {rootName}</p>}
 
-      <section>
-        <h2>People ({persons.length})</h2>
-        <p className="hint">The interactive family tree arrives in a later version.</p>
-        <ul>
-          {persons.map((p) => {
-            const years = personYears(p);
-            return (
-              <li key={p.id}>
-                {personName(p)}
-                {years && ` ${years}`}
-                {p.id === me.personId && ' (you)'}
-              </li>
-            );
-          })}
-        </ul>
-      </section>
+      <div className="tree-layout">
+        <PeopleList treeId={treeId} persons={persons} detail={detail} selectedId={personId} />
+        <div className="tree-panel">
+          {newPerson ? (
+            <p>Adding people arrives next.</p>
+          ) : personId ? (
+            <PersonPanel
+              key={personId}
+              treeId={treeId}
+              personId={personId}
+              onChanged={() => void refreshPersons()}
+            />
+          ) : (
+            <p className="hint">Choose someone from the list to see their details.</p>
+          )}
+        </div>
+      </div>
 
       <p className="actions">
         <Link to={`/trees/${treeId}/members`}>Members and invites</Link>
+        {capabilities.manageTree && <Link to={`/trees/${treeId}/trash`}>Trash</Link>}
         <Link to="/">Your trees</Link>
       </p>
 
