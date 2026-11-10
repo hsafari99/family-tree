@@ -1,6 +1,7 @@
-import { eq } from 'drizzle-orm';
-import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { eq, inArray } from 'drizzle-orm';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { call, signUp, type CookieJar } from '../../test/auth-helpers.js';
+import { addPhotoRow, objectExists } from '../../test/photo-helpers.js';
 import {
   addGrant,
   addMember,
@@ -21,10 +22,18 @@ import {
   invites,
   parentChild,
   persons,
+  photos,
+  storageDeletions,
   treeMembers,
   unions,
 } from '../db/schema.js';
 import { createDeps } from '../deps.js';
+import { drainStorageDeletions } from '../storage/deletions.js';
+
+vi.mock('../storage/deletions.js', async (orig) => {
+  const m = await orig<typeof import('../storage/deletions.js')>();
+  return { ...m, drainStorageDeletions: vi.fn(m.drainStorageDeletions) };
+});
 
 const config = loadConfig();
 const deps = createDeps(config);
@@ -423,5 +432,84 @@ describe('trash review fixes', () => {
     expect((await call(app, 'DELETE', trash(treeId, b), { jar: owner.jar })).statusCode).toBe(204);
     const all = await db.select().from(auditLog);
     expect(JSON.stringify(all.filter((r) => r.treeId === treeId))).not.toContain(p.kim.id);
+  });
+});
+
+describe('Trash erase and photos', () => {
+  async function personWithPhoto(a: ReturnType<typeof buildApp>) {
+    const { owner, treeId } = await ownerWithTree(a);
+    const person = await addPerson(db, treeId, 'Pic');
+    const photo = await addPhotoRow(db, treeId, person.id);
+    const keys = [photo.storageKeyFull, photo.storageKeyThumb];
+    for (const k of keys) await deps.storage.put(k, new Uint8Array([1, 2, 3]), 'image/webp');
+    const batch = await softDeleteBatch(db, treeId, owner.userId, [person.id]);
+    return { owner, treeId, person, photo, keys, batch };
+  }
+  const queued = (keys: string[]) =>
+    db.select().from(storageDeletions).where(inArray(storageDeletions.key, keys));
+
+  it('erase frees the photo objects', async () => {
+    const t = await personWithPhoto(app);
+    expect(await db.select().from(photos).where(eq(photos.id, t.photo.id))).toHaveLength(1);
+    const res = await call(app, 'DELETE', `/api/v1/trees/${t.treeId}/trash/${t.batch.id}`, {
+      jar: t.owner.jar,
+    });
+    expect(res.statusCode).toBe(204);
+    expect(await db.select().from(photos).where(eq(photos.id, t.photo.id))).toHaveLength(0);
+    for (const k of t.keys) expect(await objectExists(deps, k)).toBe(false);
+    expect(await queued(t.keys)).toHaveLength(0);
+  });
+
+  it('still answers 204 when the outbox drain itself throws, leaving the keys queued', async () => {
+    const t = await personWithPhoto(app);
+    vi.mocked(drainStorageDeletions).mockRejectedValueOnce(new Error('db down'));
+    const res = await call(app, 'DELETE', `/api/v1/trees/${t.treeId}/trash/${t.batch.id}`, {
+      jar: t.owner.jar,
+    });
+    expect(res.statusCode).toBe(204);
+    expect(await db.select().from(photos).where(eq(photos.id, t.photo.id))).toHaveLength(0);
+    expect(await queued(t.keys)).toHaveLength(2);
+  });
+
+  it('restore brings the photos back', async () => {
+    const t = await personWithPhoto(app);
+    const restore = await call(
+      app,
+      'POST',
+      `/api/v1/trees/${t.treeId}/trash/${t.batch.id}/restore`,
+      {
+        jar: t.owner.jar,
+      },
+    );
+    expect(restore.statusCode).toBe(204);
+    const view = await call(app, 'GET', `/api/v1/trees/${t.treeId}/persons/${t.person.id}`, {
+      jar: t.owner.jar,
+    });
+    expect(view.json().photos.map((p: { id: string }) => p.id)).toEqual([t.photo.id]);
+  });
+
+  it('still answers 204 when storage is down, and keeps the keys queued', async () => {
+    const down = {
+      ...deps.storage,
+      delete: () => Promise.reject(new Error('down')),
+    };
+    const brokenApp = buildApp({ config, checks: deps.checks, auth, db, storage: down });
+    try {
+      const t = await personWithPhoto(brokenApp);
+      const res = await call(brokenApp, 'DELETE', `/api/v1/trees/${t.treeId}/trash/${t.batch.id}`, {
+        jar: t.owner.jar,
+      });
+      expect(res.statusCode).toBe(204);
+      expect(await db.select().from(photos).where(eq(photos.id, t.photo.id))).toHaveLength(0);
+      const rows = await queued(t.keys);
+      expect(rows).toHaveLength(2);
+      expect(rows.every((r) => r.attempts === 1)).toBe(true);
+      const { drainStorageDeletions } = await import('../storage/deletions.js');
+      await drainStorageDeletions(db, deps.storage, { keys: t.keys });
+      expect(await queued(t.keys)).toHaveLength(0);
+      for (const k of t.keys) expect(await objectExists(deps, k)).toBe(false);
+    } finally {
+      await brokenApp.close();
+    }
   });
 });

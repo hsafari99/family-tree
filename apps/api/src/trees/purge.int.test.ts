@@ -1,6 +1,7 @@
-import { eq, sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { call } from '../../test/auth-helpers.js';
+import { addPhotoRow, objectExists } from '../../test/photo-helpers.js';
 import {
   addGrant,
   addMember,
@@ -19,10 +20,13 @@ import {
   deletionBatches,
   invites,
   persons,
+  photos,
+  storageDeletions,
   treeMembers,
   trees,
 } from '../db/schema.js';
 import { createDeps } from '../deps.js';
+import { drainStorageDeletions } from '../storage/deletions.js';
 import { purgeDeletedTrees, startPurgeJob } from './purge.js';
 
 const config = loadConfig();
@@ -166,5 +170,63 @@ describe('purge batching and locking', () => {
     const stop = startPurgeJob(db, log, 60_000);
     await stop();
     expect(log.error).not.toHaveBeenCalled();
+  });
+});
+
+async function treeWithPhoto() {
+  const { treeId } = await ownerWithTree(app);
+  const person = await addPerson(db, treeId, 'Pic');
+  const photo = await addPhotoRow(db, treeId, person.id);
+  const keys = [photo.storageKeyFull, photo.storageKeyThumb];
+  for (const k of keys) await deps.storage.put(k, new Uint8Array([1, 2, 3]), 'image/webp');
+  return { treeId, keys, photo };
+}
+const queued = (keys: string[]) =>
+  db.select().from(storageDeletions).where(inArray(storageDeletions.key, keys));
+
+describe('photo objects of purged trees', () => {
+  it('queues them before the cascade, then frees them', async () => {
+    const t = await treeWithPhoto();
+    await ago(t.treeId, 31);
+    const { ids } = await purgeDeletedTrees(db);
+    expect(ids).toContain(t.treeId);
+    expect(await db.select().from(photos).where(eq(photos.treeId, t.treeId))).toHaveLength(0);
+    expect(await queued(t.keys)).toHaveLength(2);
+    for (const k of t.keys) expect(await objectExists(deps, k)).toBe(true);
+    await drainStorageDeletions(db, deps.storage);
+    for (const k of t.keys) expect(await objectExists(deps, k)).toBe(false);
+    expect(await queued(t.keys)).toHaveLength(0);
+  });
+
+  it('is drained by the job when it has a store, and kept queued without one', async () => {
+    const log = { info: vi.fn(), error: vi.fn() };
+    const a = await treeWithPhoto();
+    await ago(a.treeId, 31);
+    const stop = startPurgeJob(db, log, 60_000, deps.storage);
+    await vi.waitFor(async () => {
+      expect(await db.select().from(trees).where(eq(trees.id, a.treeId))).toHaveLength(0);
+      expect(await queued(a.keys)).toHaveLength(0);
+    });
+    await stop();
+    for (const k of a.keys) expect(await objectExists(deps, k)).toBe(false);
+
+    const b = await treeWithPhoto();
+    await ago(b.treeId, 31);
+    const stop2 = startPurgeJob(db, log, 60_000);
+    await vi.waitFor(async () => {
+      expect(await queued(b.keys)).toHaveLength(2);
+    });
+    await stop2();
+    await drainStorageDeletions(db, deps.storage);
+  });
+
+  it('leaves a restored tree alone', async () => {
+    const t = await treeWithPhoto();
+    await ago(t.treeId, 31);
+    await db.update(trees).set({ deletedAt: null }).where(eq(trees.id, t.treeId));
+    await purgeDeletedTrees(db);
+    expect(await db.select().from(photos).where(eq(photos.treeId, t.treeId))).toHaveLength(1);
+    expect(await queued(t.keys)).toHaveLength(0);
+    for (const k of t.keys) expect(await objectExists(deps, k)).toBe(true);
   });
 });

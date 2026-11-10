@@ -2,11 +2,13 @@ import type { PersonSummary, PersonView } from '@family-tree/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { FormError } from '../../components/forms';
+import { PersonPhoto, PhotoRefreshContext, useThrottled } from '../../components/PersonPhoto';
 import { Tabs } from '../../components/Tabs';
 import { personName, personYears } from '../../trees/format';
 import { useTreesApi } from '../../trees/TreesApiContext';
 import { HistoryTab } from './HistoryTab';
 import { InfoTab } from './InfoTab';
+import { PhotosTab } from './PhotosTab';
 import { PlacesTab } from './PlacesTab';
 import { RelationsTab } from './RelationsTab';
 
@@ -56,6 +58,8 @@ export function PersonPanel({
     };
   }, [load]);
 
+  const refreshPhotos = useThrottled(() => void load());
+
   if (error && !view) {
     return (
       <div>
@@ -75,36 +79,43 @@ export function PersonPanel({
   const tabProps = { treeId, view, reload: load, onChanged };
 
   return (
-    <div className="person-panel">
-      {error && <FormError>{error}</FormError>}
-      <h2>
-        {personName(p)}
-        {years && ` ${years}`}
-      </h2>
-      {p.nickname && <p>“{p.nickname}”</p>}
-      {p.maidenName && <p>Maiden name: {p.maidenName}</p>}
-      <Tabs
-        tabs={TABS}
-        current={tab}
-        onChange={(id) =>
-          setParams(
-            (p) => {
-              const next = new URLSearchParams(p);
-              next.set('tab', id);
-              next.delete('add');
-              return next;
-            },
-            { replace: true },
-          )
-        }
-      />
-      <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
-        {tab === 'info' && <InfoTab {...tabProps} />}
-        {tab === 'places' && <PlacesTab {...tabProps} />}
-        {tab === 'photos' && <p>Photos arrive in a later version.</p>}
-        {tab === 'relations' && <RelationsTab {...tabProps} persons={persons} />}
-        {tab === 'history' && <HistoryTab treeId={treeId} personId={personId} />}
+    <PhotoRefreshContext.Provider value={refreshPhotos}>
+      <div className="person-panel">
+        {error && <FormError>{error}</FormError>}
+        <PersonPhoto
+          url={view.photos.find((x) => x.isPrimary)?.thumbUrl ?? null}
+          person={p}
+          className="panel-photo"
+        />
+        <h2>
+          {personName(p)}
+          {years && ` ${years}`}
+        </h2>
+        {p.nickname && <p>“{p.nickname}”</p>}
+        {p.maidenName && <p>Maiden name: {p.maidenName}</p>}
+        <Tabs
+          tabs={TABS}
+          current={tab}
+          onChange={(id) =>
+            setParams(
+              (p) => {
+                const next = new URLSearchParams(p);
+                next.set('tab', id);
+                next.delete('add');
+                return next;
+              },
+              { replace: true },
+            )
+          }
+        />
+        <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
+          {tab === 'info' && <InfoTab {...tabProps} />}
+          {tab === 'places' && <PlacesTab {...tabProps} />}
+          {tab === 'photos' && <PhotosTab {...tabProps} />}
+          {tab === 'relations' && <RelationsTab {...tabProps} persons={persons} />}
+          {tab === 'history' && <HistoryTab treeId={treeId} personId={personId} />}
+        </div>
       </div>
-    </div>
+    </PhotoRefreshContext.Provider>
   );
 }

@@ -81,6 +81,14 @@ export function AppRoutes() {
         }
       />
       <Route
+        path="/trees/:treeId/relationship"
+        element={
+          <RequireAuth>
+            <TreePage />
+          </RequireAuth>
+        }
+      />
+      <Route
         path="/trees/:treeId"
         element={
           <RequireAuth>

@@ -19,6 +19,7 @@ export function gp(
     hasParents: false,
     hiddenRelatives: false,
     canAddRelative: true,
+    photoThumbUrl: null,
     ...extra,
   };
 }

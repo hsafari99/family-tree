@@ -1,6 +1,7 @@
 import type { GraphPerson, RelativeRole } from '@family-tree/shared';
 import { Handle, type NodeProps, Position, type ReactFlowState, useStore } from '@xyflow/react';
-import { initials, personName, personYears } from '../trees/format';
+import { PersonPhoto } from '../components/PersonPhoto';
+import { personName, personYears } from '../trees/format';
 import { type CardDetail, cardDetail } from './canvas-settings';
 import { useCanvasActions, useSelectionStore } from './CanvasActions';
 import { useIsSelected } from './selection';
@@ -56,9 +57,7 @@ export function PersonCardView({
   return (
     <div className={cls} onFocus={onFocus}>
       {detail === 'full' && (
-        <span className="card-photo" aria-hidden="true">
-          {initials(person)}
-        </span>
+        <PersonPhoto url={person.photoThumbUrl} person={person} className="card-photo" />
       )}
       <button
         type="button"

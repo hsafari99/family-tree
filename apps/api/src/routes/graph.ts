@@ -10,7 +10,7 @@ import {
   SIMILAR_LIMIT,
   similarQuerySchema,
 } from '@family-tree/shared';
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 import { requireSession } from '../auth/session-guard.js';
 import { persons } from '../db/schema.js';
@@ -21,8 +21,8 @@ import { authorize, loadAccess } from '../trees/access.js';
 import { audit } from '../trees/audit.js';
 import { loadLiveGraph, lockTreeGraph } from '../trees/graph.js';
 import { loadGraphRows } from '../trees/graph-rows.js';
-import { buildTreeGraph } from '../trees/graph-view.js';
-import { summaryColumns } from '../trees/people.js';
+import { buildTreeGraph, withPhotoUrls } from '../trees/graph-view.js';
+import { similarCandidates } from '../trees/search.js';
 import type { TreeRouteOptions } from './trees.js';
 
 const toSummary = ({
@@ -45,7 +45,10 @@ const toSummary = ({
 const byName = (a: PersonSummary, b: PersonSummary) =>
   (a.surname ?? '').localeCompare(b.surname ?? '') || a.givenName.localeCompare(b.givenName);
 
-export const graphRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, { auth, db }) => {
+export const graphRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
+  app,
+  { auth, db, storage },
+) => {
   app.addHook('preHandler', requireSession(auth));
 
   /** Everything the canvas needs in one response (spec §7). */
@@ -53,7 +56,8 @@ export const graphRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, { a
     const access = await loadAccess(db, idParam(req.params, 'treeId'), req.user!.id);
     authorize(access, 'tree.view', TREE);
     const query = parseBody(graphQuerySchema, req.query);
-    return buildTreeGraph(await loadGraphRows(db, access.treeId), access, query);
+    const rows = await loadGraphRows(db, access.treeId);
+    return withPhotoUrls(buildTreeGraph(rows, access, query), rows, storage);
   });
 
   /** Live people not reachable from the root through any relation (decision 7). */
@@ -80,10 +84,7 @@ export const graphRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, { a
       const access = await loadAccess(db, idParam(req.params, 'treeId'), req.user!.id);
       authorize(access, 'tree.view', TREE);
       const q = parseBody(similarQuerySchema, req.query);
-      const candidates = await db
-        .select({ ...summaryColumns, maidenName: persons.maidenName, nickname: persons.nickname })
-        .from(persons)
-        .where(and(eq(persons.treeId, access.treeId), isNull(persons.deletedAt)));
+      const candidates = await similarCandidates(db, access.treeId, q);
       return { persons: findSimilar(candidates, q, SIMILAR_LIMIT).map(toSummary) };
     },
   );

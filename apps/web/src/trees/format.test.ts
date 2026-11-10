@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { fakePerson } from '../test/fake-trees';
-import { formatFuzzyDate, initials, parseYear, personName, personYears } from './format';
+import {
+  formatBytes,
+  formatFuzzyDate,
+  initials,
+  parseYear,
+  personName,
+  personYears,
+} from './format';
 
 describe('personName', () => {
   it('joins given, middle and surname, skipping blanks', () => {
@@ -52,5 +59,21 @@ describe('initials', () => {
     expect(initials({ givenName: 'ada', middleName: null, surname: 'lovelace' })).toBe('AL');
     expect(initials({ givenName: 'Zoë', middleName: null, surname: null })).toBe('Z');
     expect(initials({ givenName: '😀x', middleName: null, surname: null })).toBe('😀');
+  });
+});
+
+describe('formatBytes', () => {
+  it('uses binary math with KB/MB/GB labels', () => {
+    expect(formatBytes(0)).toBe('0 B');
+    expect(formatBytes(950)).toBe('950 B');
+    expect(formatBytes(12_345)).toBe('12.1 KB');
+    expect(formatBytes(1536)).toBe('1.5 KB');
+    expect(formatBytes(1_073_741_824)).toBe('1 GB');
+    expect(formatBytes(10 * 1024 * 1024)).toBe('10 MB');
+  });
+  it('rounds before choosing the unit', () => {
+    expect(formatBytes(999_999)).toBe('977 KB');
+    expect(formatBytes(1023)).toBe('1023 B');
+    expect(formatBytes(1024 * 1024 - 1)).toBe('1 MB');
   });
 });

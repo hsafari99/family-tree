@@ -15,16 +15,22 @@ import { meRoutes } from './routes/me.js';
 import { personsRoutes } from './routes/persons.js';
 import { relationsRoutes } from './routes/relations.js';
 import { residencesRoutes } from './routes/residences.js';
+import { photosRoutes } from './routes/photos.js';
 import { trashRoutes } from './routes/trash.js';
+import type { limiter } from './photos/limiter.js';
 import { graphRoutes } from './routes/graph.js';
+import { searchRoutes } from './routes/search.js';
 import { deletionRoutes } from './routes/deletion.js';
 import { passwordResetRoutes } from './routes/password-reset.js';
 import { treesRoutes } from './routes/trees.js';
 import type { Db } from './db/client.js';
+import { createObjectStore, type ObjectStore } from './storage/objects.js';
 import { originGuard } from './security/origin-guard.js';
 
 /** Mounts /api/auth/* and the session and reset routes. Optional so unit tests skip the database. */
-type AuthOptions = { auth?: undefined; db?: undefined } | { auth: Auth; db: Db };
+type AuthOptions =
+  | { auth?: undefined; db?: undefined; storage?: undefined }
+  | { auth: Auth; db: Db; storage?: ObjectStore };
 
 export type AppOptions = AuthOptions & {
   config: Config;
@@ -33,6 +39,8 @@ export type AppOptions = AuthOptions & {
   rateLimitMax?: number;
   /** Where log lines go (default stdout). Tests pass a stream to inspect them. */
   logStream?: { write(line: string): void };
+  /** Photo processing slots; tests inject a full one to check the busy answer. */
+  photoJobs?: ReturnType<typeof limiter>;
 };
 
 /**
@@ -45,7 +53,16 @@ function trustHops(hops: number) {
   return hops > 0 ? (_address: string, hop: number) => hop < hops : false;
 }
 
-export function buildApp({ config, checks, auth, db, rateLimitMax = 300, logStream }: AppOptions) {
+export function buildApp({
+  config,
+  checks,
+  auth,
+  db,
+  storage,
+  rateLimitMax = 300,
+  logStream,
+  photoJobs,
+}: AppOptions) {
   const app = Fastify({
     trustProxy: trustHops(config.TRUST_PROXY),
     logger:
@@ -80,20 +97,31 @@ export function buildApp({ config, checks, auth, db, rateLimitMax = 300, logStre
   });
   app.addHook('onRequest', originGuard(config.WEB_ORIGIN));
   app.register(healthRoutes, { checks });
+  // Tests that don't care about storage get a real store from the config (no network until used).
+  const store = auth ? (storage ?? createObjectStore(config)) : undefined;
+  if (auth && !storage) app.addHook('onClose', async () => store!.close());
   if (auth) {
     app.register(authRoutes, { auth });
     app.register(meRoutes, { auth, db });
     app.register(passwordResetRoutes, { auth, db });
-    app.register(treesRoutes, { auth, db, config });
-    app.register(membersRoutes, { auth, db, config });
-    app.register(stewardsRoutes, { auth, db, config });
-    app.register(invitesRoutes, { auth, db, config });
-    app.register(personsRoutes, { auth, db, config });
-    app.register(relationsRoutes, { auth, db, config });
-    app.register(residencesRoutes, { auth, db, config });
-    app.register(deletionRoutes, { auth, db, config });
-    app.register(trashRoutes, { auth, db, config });
-    app.register(graphRoutes, { auth, db, config });
+    app.register(treesRoutes, { auth, db, config, storage: store! });
+    app.register(membersRoutes, { auth, db, config, storage: store! });
+    app.register(stewardsRoutes, { auth, db, config, storage: store! });
+    app.register(invitesRoutes, { auth, db, config, storage: store! });
+    app.register(personsRoutes, { auth, db, config, storage: store! });
+    app.register(relationsRoutes, { auth, db, config, storage: store! });
+    app.register(residencesRoutes, { auth, db, config, storage: store! });
+    app.register(photosRoutes, {
+      auth,
+      db,
+      config,
+      storage: store!,
+      ...(photoJobs ? { photoJobs } : {}),
+    });
+    app.register(deletionRoutes, { auth, db, config, storage: store! });
+    app.register(trashRoutes, { auth, db, config, storage: store! });
+    app.register(graphRoutes, { auth, db, config, storage: store! });
+    app.register(searchRoutes, { auth, db, config, storage: store! });
   }
 
   app.setNotFoundHandler((_req, reply) => {

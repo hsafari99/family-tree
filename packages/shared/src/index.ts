@@ -10,3 +10,6 @@ export * from './family-graph.js';
 export * from './graph.js';
 export * from './graph-view.js';
 export * from './similar.js';
+export * from './photos.js';
+export * from './kinship.js';
+export * from './search.js';

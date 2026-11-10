@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MESSAGES } from '../auth/api';
+import { haleGraph } from '../canvas/test-fixtures';
 import { FakeTreesApi, fakeGraph, fakeGraphPerson, fakePerson } from './fake-trees';
 
 const viewerCaps = {
@@ -307,6 +308,129 @@ describe('FakeTreesApi graph, similar and child-order', () => {
         ok: false,
         error: { code: 'CONFLICT', message: MESSAGES.itemChanged },
       });
+    });
+  });
+});
+
+describe('FakeTreesApi photos, search and relationships', () => {
+  const png = (size = 1000) => {
+    const b = new Blob(['x'], { type: 'image/png' });
+    return Object.defineProperty(b, 'size', { value: size });
+  };
+
+  function one(role: 'owner' | 'viewer' = 'owner') {
+    const trees = new FakeTreesApi();
+    const ada = fakePerson({ givenName: 'Ada' });
+    const treeId = trees.addTree({
+      persons: [ada],
+      role,
+      ...(role === 'viewer' ? { detail: { capabilities: viewerCaps } } : {}),
+    });
+    return { trees, treeId, ada };
+  }
+
+  it('uploads, moves the main photo and promotes on delete', async () => {
+    const { trees, treeId, ada } = one();
+    const a = await trees.uploadPhoto(treeId, ada.id, png());
+    const b = await trees.uploadPhoto(treeId, ada.id, png());
+    if (!a.ok || !b.ok) throw new Error('upload failed');
+    expect(a.data.photo.isPrimary).toBe(true);
+    expect(b.data.photo.isPrimary).toBe(false);
+    expect(b.data.usage.usedBytes).toBe(100_000);
+    await trees.setPrimaryPhoto(treeId, b.data.photo.id);
+    let view = await trees.getPerson(treeId, ada.id);
+    expect(view.ok && view.data.photos.find((p) => p.isPrimary)?.id).toBe(b.data.photo.id);
+    await trees.deletePhoto(treeId, b.data.photo.id);
+    view = await trees.getPerson(treeId, ada.id);
+    expect(view.ok && view.data.photos.map((p) => [p.id, p.isPrimary])).toEqual([
+      [a.data.photo.id, true],
+    ]);
+    expect(view.ok && view.data.photoUsage.usedBytes).toBe(50_000);
+  });
+
+  it('refuses bad types, big files, quota overflow, viewers and unknown people', async () => {
+    const { trees, treeId, ada } = one();
+    const gif = new Blob(['x'], { type: 'image/gif' });
+    expect(await trees.uploadPhoto(treeId, ada.id, gif)).toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION', message: MESSAGES.photoType },
+    });
+    expect(await trees.uploadPhoto(treeId, ada.id, png(10 * 1024 * 1024 + 1))).toMatchObject({
+      ok: false,
+      error: { message: MESSAGES.photoTooLarge },
+    });
+    trees.trees.get(treeId)!.photoLimit = 60_000;
+    await trees.uploadPhoto(treeId, ada.id, png());
+    expect(await trees.uploadPhoto(treeId, ada.id, png())).toMatchObject({
+      ok: false,
+      error: { code: 'QUOTA_EXCEEDED', message: MESSAGES.photoQuota },
+    });
+    expect(await trees.uploadPhoto(treeId, 'nobody', png())).toMatchObject({
+      ok: false,
+      error: { code: 'NOT_FOUND' },
+    });
+    const v = one('viewer');
+    expect(await v.trees.uploadPhoto(v.treeId, v.ada.id, png())).toMatchObject({
+      ok: false,
+      error: { code: 'FORBIDDEN' },
+    });
+    expect(trees.callsTo('uploadPhoto')[0]).toMatchObject({ type: 'image/gif', size: 1 });
+  });
+
+  it('sets the thumbnail on the graph person', async () => {
+    const { trees, treeId, ada } = one();
+    trees.trees.get(treeId)!.graph = fakeGraph([fakeGraphPerson(ada)]);
+    await trees.uploadPhoto(treeId, ada.id, png());
+    const g = await trees.getGraph(treeId, {});
+    expect(g.ok && g.data.persons[0]!.photoThumbUrl).toMatch(/^https:\/\/photos\.test\//);
+  });
+
+  function hale() {
+    const trees = new FakeTreesApi();
+    const g = haleGraph();
+    const treeId = trees.addTree({
+      persons: g.persons.map(
+        ({ id, givenName, middleName, surname, birthYear, deathYear, isLiving }) => ({
+          id,
+          givenName,
+          middleName,
+          surname,
+          birthYear,
+          deathYear,
+          isLiving,
+        }),
+      ),
+      detail: { me: { role: 'owner', personId: 'leo', steward: { grants: [], active: false } } },
+    });
+    trees.trees.get(treeId)!.graph = g;
+    return { trees, treeId };
+  }
+
+  it('searches by words, years and status, and relates results to me', async () => {
+    const { trees, treeId } = hale();
+    const r = await trees.search(treeId, { q: 'lau' });
+    expect(r.ok && r.data.map((x) => x.givenName)).toEqual(['Laura']);
+    expect(r.ok && r.data[0]!.relation).toMatchObject([{ move: 'parent', personId: 'laura' }]);
+    const me = await trees.search(treeId, { q: 'leo' });
+    expect(me.ok && me.data[0]!.relation).toEqual([]);
+    const born = await trees.search(treeId, { bornFrom: 1990, bornTo: 1999 });
+    expect(born.ok && born.data.map((x) => x.givenName)).toContain('Leo');
+    const dead = await trees.search(treeId, { status: 'deceased' });
+    expect(dead.ok && dead.data.every((x) => !x.isLiving)).toBe(true);
+    await trees.search(treeId, { q: 'x', place: 'Leeds', branch: 'leo' });
+    expect(trees.callsTo('search').at(-1)).toMatchObject({
+      query: { place: 'Leeds', branch: 'leo' },
+    });
+  });
+
+  it('finds a relationship path over the graph', async () => {
+    const { trees, treeId } = hale();
+    const r = await trees.relationship(treeId, 'leo', 'laura');
+    expect(r.ok && r.data.steps).toMatchObject([{ move: 'parent', personId: 'laura' }]);
+    expect(r.ok && r.data.persons.map((p) => p.id)).toEqual(['leo', 'laura']);
+    expect(await trees.relationship(treeId, 'leo', 'nobody')).toMatchObject({
+      ok: false,
+      error: { code: 'NOT_FOUND' },
     });
   });
 });

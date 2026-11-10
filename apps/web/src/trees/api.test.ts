@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MESSAGES, SESSION_EXPIRED, toAuthError } from '../auth/api';
-import { createTreesApi } from './api';
+import { createTreesApi, TREES_API_METHODS } from './api';
 
 const BASE = 'https://api.example.com';
 const ID = '6f9619ff-8b86-4d11-b42d-00c04fc964ff';
@@ -154,6 +154,8 @@ describe('createTreesApi', () => {
         updatedAt: '2026-01-01T00:00:00.000Z',
       },
       residences: [],
+      photos: [],
+      photoUsage: { usedBytes: 0, limitBytes: 1_073_741_824 },
       relations: { parents: [], unions: [], siblings: [] },
       capabilities: { edit: true, addRelative: true, delete: true },
     };
@@ -338,5 +340,114 @@ describe('graph, disconnected, similar and child-order', () => {
   it('gives the generic error for a graph body that does not match', async () => {
     stubFetch({ status: 200, body: { persons: 'nope' } });
     expect(await api().getGraph('t', {})).toEqual({ ok: false, error: toAuthError(500) });
+  });
+
+  const photo = {
+    id: ID,
+    width: 8,
+    height: 8,
+    bytes: 10,
+    isPrimary: true,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    uploadedByName: 'Ann',
+    thumbUrl: 'https://p.test/t',
+    fullUrl: 'https://p.test/f',
+  };
+
+  it('uploads a photo as a raw Blob body with its content type', async () => {
+    const mock = stubFetch({
+      status: 201,
+      body: { photo, usage: { usedBytes: 10, limitBytes: 100 } },
+    });
+    const file = new Blob(['x'], { type: 'image/png' });
+    const res = await api().uploadPhoto('t', 'p', file);
+    expect(res.ok).toBe(true);
+    expect(urlOf(mock.mock.calls[0]!)).toBe(`${BASE}/api/v1/trees/t/persons/p/photos`);
+    const init = initOf(mock.mock.calls[0]!);
+    expect(init.method).toBe('POST');
+    expect(init.headers).toEqual({ 'content-type': 'image/png' });
+    expect(init.body).toBe(file);
+    expect(init.credentials).toBe('include');
+  });
+
+  it('maps upload errors by reason and code to fixed messages', async () => {
+    const reasons: [string, string][] = [
+      ['type', MESSAGES.photoType],
+      ['tooLarge', MESSAGES.photoTooLarge],
+      ['dimensions', MESSAGES.photoDimensions],
+      ['unreadable', MESSAGES.photoUnreadable],
+      ['tooMany', MESSAGES.photoTooMany],
+    ];
+    for (const [reason, message] of reasons) {
+      stubFetch({
+        status: 400,
+        body: { error: { code: 'VALIDATION', message: 'server text', details: { reason } } },
+      });
+      expect(await api().uploadPhoto('t', 'p', new Blob(['x']))).toMatchObject({
+        ok: false,
+        error: { message },
+      });
+    }
+    stubFetch({
+      status: 413,
+      body: { error: { code: 'VALIDATION', message: 'x', details: { reason: 'tooLarge' } } },
+    });
+    expect(await api().uploadPhoto('t', 'p', new Blob(['x']))).toMatchObject({
+      ok: false,
+      error: { message: MESSAGES.photoTooLarge },
+    });
+    stubFetch({ status: 403, body: errorBody('QUOTA_EXCEEDED') });
+    expect(await api().uploadPhoto('t', 'p', new Blob(['x']))).toMatchObject({
+      ok: false,
+      error: { code: 'QUOTA_EXCEEDED', message: MESSAGES.photoQuota },
+    });
+  });
+
+  it('sets the main photo and deletes a photo', async () => {
+    const mock = stubFetch({ status: 204 }, { status: 204 });
+    expect(await api().setPrimaryPhoto('t', 'ph')).toEqual({ ok: true, data: undefined });
+    expect(urlOf(mock.mock.calls[0]!)).toBe(`${BASE}/api/v1/trees/t/photos/ph/primary`);
+    expect(initOf(mock.mock.calls[0]!).method).toBe('POST');
+    expect(await api().deletePhoto('t', 'ph')).toEqual({ ok: true, data: undefined });
+    expect(urlOf(mock.mock.calls[1]!)).toBe(`${BASE}/api/v1/trees/t/photos/ph`);
+    expect(initOf(mock.mock.calls[1]!).method).toBe('DELETE');
+  });
+
+  it('searches without blank parameters and returns the results', async () => {
+    const results = [{ ...summary, photoThumbUrl: null, relation: [] }];
+    const mock = stubFetch({ status: 200, body: { results } });
+    const res = await api().search('t', { q: 'ann', status: 'living', bornFrom: undefined });
+    expect(res).toEqual({ ok: true, data: results });
+    expect(urlOf(mock.mock.calls[0]!)).toBe(`${BASE}/api/v1/trees/t/search?q=ann&status=living`);
+  });
+
+  it('passes the abort signal to search and never throws when aborted', async () => {
+    const controller = new AbortController();
+    const mock = vi.fn<typeof fetch>(async () => {
+      throw new DOMException('aborted', 'AbortError');
+    });
+    vi.stubGlobal('fetch', mock);
+    const res = await api().search('t', { q: 'ann' }, controller.signal);
+    expect(initOf(mock.mock.calls[0]!).signal).toBe(controller.signal);
+    expect(res).toEqual({ ok: false, error: { code: 'NETWORK', message: MESSAGES.network } });
+  });
+
+  it('fetches a relationship', async () => {
+    const body = { steps: [], persons: [{ ...summary, sex: 'female', photoThumbUrl: null }] };
+    const mock = stubFetch({ status: 200, body });
+    expect(await api().relationship('t', 'a', 'b')).toEqual({ ok: true, data: body });
+    expect(urlOf(mock.mock.calls[0]!)).toBe(`${BASE}/api/v1/trees/t/relationship?from=a&to=b`);
+  });
+
+  it('lists the new methods', () => {
+    expect(TREES_API_METHODS).toEqual(
+      expect.arrayContaining([
+        'uploadPhoto',
+        'setPrimaryPhoto',
+        'deletePhoto',
+        'search',
+        'relationship',
+      ]),
+    );
   });
 });

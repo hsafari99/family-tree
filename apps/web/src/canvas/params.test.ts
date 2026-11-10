@@ -26,4 +26,7 @@ describe('canvas URL parameters', () => {
       '?depth=2&tab=relations&add=child',
     );
   });
+  it('drops from and to', () => {
+    expect(canvasSearch(sp('from=a&to=b&view=full'), { from: null, to: null })).toBe('?view=full');
+  });
 });

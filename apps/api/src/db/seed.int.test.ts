@@ -5,7 +5,16 @@ import { loadConfig } from '../config.js';
 import { createDeps } from '../deps.js';
 import { kinIndex, connectedTo } from '@family-tree/shared';
 import { loadLiveGraph } from '../trees/graph.js';
-import { parentChild, persons, treeMembers, trees, unions, users } from './schema.js';
+import { addPhotoRow } from '../../test/photo-helpers.js';
+import {
+  parentChild,
+  persons,
+  storageDeletions,
+  treeMembers,
+  trees,
+  unions,
+  users,
+} from './schema.js';
 import { LARGE_SEED_TREE_NAME, SEED_TREE_NAME, seedLargeFamily, seedSampleFamily } from './seed.js';
 
 const deps = createDeps(loadConfig());
@@ -14,6 +23,28 @@ const { db } = deps;
 afterAll(async () => {
   await db.delete(trees).where(eq(trees.name, SEED_TREE_NAME));
   await deps.close();
+});
+
+describe('reseeding frees photo objects', () => {
+  it.each([
+    ['sample', () => seedSampleFamily(db)],
+    ['large', () => seedLargeFamily(db, { people: 10 })],
+  ])('queues the replaced %s tree’s photo keys', async (_name, seed) => {
+    const first = await seed();
+    const person = (await db.select().from(persons).where(eq(persons.treeId, first.treeId)))[0]!;
+    const photo = await addPhotoRow(db, first.treeId, person.id, true);
+    const keys = [photo.storageKeyFull, photo.storageKeyThumb];
+    try {
+      await seed();
+      const queued = await db
+        .select()
+        .from(storageDeletions)
+        .where(inArray(storageDeletions.key, keys));
+      expect(queued).toHaveLength(2);
+    } finally {
+      await db.delete(storageDeletions).where(inArray(storageDeletions.key, keys));
+    }
+  });
 });
 
 describe('seedSampleFamily', () => {

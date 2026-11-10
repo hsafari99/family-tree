@@ -36,6 +36,20 @@
       "when": 1794283348392,
       "tag": "0004_batch_roots",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794320796183,
+      "tag": "0005_search_extensions",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794320833280,
+      "tag": "0006_photos_search",
+      "breakpoints": true
     }
   ]
 }

@@ -1,80 +1,9 @@
-import {
-  GRAPH_DEPTH_MAX,
-  normalizeName,
-  type PersonSummary,
-  type TreeDetail,
-} from '@family-tree/shared';
-import { useId, useState } from 'react';
+import { GRAPH_DEPTH_MAX, type PersonSummary, type TreeDetail } from '@family-tree/shared';
 import { Link, useSearchParams } from 'react-router';
-import { personName, personYears } from '../trees/format';
+import { PersonPicker } from '../components/PersonPicker';
 import { DisconnectedPeople } from './DisconnectedPeople';
-import type { CanvasChange, CanvasParams } from './params';
-
-const MATCHES_MAX = 20;
-
-/** A searchable branch chooser: a select with thousands of options would be unusable. */
-function BranchPicker({
-  persons,
-  branch,
-  onChange,
-}: {
-  persons: PersonSummary[];
-  branch: string | null;
-  onChange: (change: CanvasChange) => void;
-}) {
-  const id = useId();
-  const [text, setText] = useState('');
-  const query = normalizeName(text);
-  const matches =
-    query.length < 2
-      ? []
-      : persons.filter((p) => normalizeName(personName(p)).includes(query)).slice(0, MATCHES_MAX);
-  const chosen = branch ? persons.find((p) => p.id === branch) : undefined;
-  return (
-    <div className="branch-picker">
-      <label htmlFor={id}>Show the branch of</label>{' '}
-      <input
-        id={id}
-        type="search"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') setText('');
-        }}
-      />
-      {matches.length > 0 && (
-        <ul className="branch-matches">
-          {matches.map((p) => {
-            const years = personYears(p);
-            return (
-              <li key={p.id}>
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() => {
-                    setText('');
-                    onChange({ branch: p.id });
-                  }}
-                >
-                  {personName(p)}
-                  {years && ` ${years}`}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      {branch && (
-        <p className="branch-current">
-          Branch: {chosen ? personName(chosen) : 'someone'}{' '}
-          <button type="button" className="secondary" onClick={() => onChange({ branch: null })}>
-            Whole tree
-          </button>
-        </p>
-      )}
-    </div>
-  );
-}
+import { type CanvasChange, type CanvasParams, canvasSearch } from './params';
+import { SearchBox } from './SearchBox';
 
 export function CanvasToolbar({
   treeId,
@@ -83,6 +12,7 @@ export function CanvasToolbar({
   params,
   disconnected,
   hrefOf,
+  selectedId,
   onChange,
 }: {
   treeId: string;
@@ -91,6 +21,7 @@ export function CanvasToolbar({
   params: CanvasParams;
   disconnected: PersonSummary[];
   hrefOf: (personId: string) => string;
+  selectedId?: string | null;
   onChange: (change: CanvasChange) => void;
 }) {
   const [search] = useSearchParams();
@@ -98,6 +29,12 @@ export function CanvasToolbar({
   const full = params.mode === 'full';
   return (
     <div className="canvas-toolbar">
+      <SearchBox treeId={treeId} persons={persons} meId={detail.me.personId} />
+      <Link
+        to={`/trees/${treeId}/relationship${canvasSearch(search, { tab: null, add: null, ...(selectedId ? { to: selectedId } : {}) })}`}
+      >
+        How are we related?
+      </Link>
       <div role="group" aria-label="View">
         <button
           type="button"
@@ -133,7 +70,15 @@ export function CanvasToolbar({
           <output>{params.depth}</output>
         </>
       )}
-      {full && <BranchPicker persons={persons} branch={params.branch} onChange={onChange} />}
+      {full && (
+        <PersonPicker
+          label="Show the branch of"
+          clearLabel="Whole tree"
+          persons={persons}
+          value={params.branch}
+          onChange={(id) => onChange({ branch: id })}
+        />
+      )}
       {(capabilities.editAnywhere || me.steward.active) && (
         <Link to={`/trees/${treeId}/people/new${search.size ? `?${search}` : ''}`}>
           Add a person

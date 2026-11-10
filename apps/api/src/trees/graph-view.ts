@@ -12,6 +12,8 @@ import {
 } from '@family-tree/shared';
 import { notFound } from '../errors.js';
 import { can } from '../permissions/can.js';
+import { signThumbs } from '../photos/photos.js';
+import type { ObjectStore } from '../storage/objects.js';
 import type { Access } from './access.js';
 import type { GraphRows } from './graph-rows.js';
 
@@ -71,11 +73,12 @@ export function buildTreeGraph(rows: GraphRows, access: Access, q: ParsedGraphQu
     needsBranch,
     persons: rows.persons
       .filter((p) => ids.has(p.id))
-      .map((p) => ({
-        ...p,
+      .map(({ photoThumbKey, ...p }) => ({
+        ...(void photoThumbKey, p),
         hasParents: hasParents.has(p.id),
         hiddenRelatives: hidden.has(p.id),
         canAddRelative: can(access, 'person.add', { kind: 'relation', ends: [p.id] }),
+        photoThumbUrl: null,
       })),
     unions: rows.unions
       .filter((u) => unionIds.has(u.id))
@@ -86,4 +89,18 @@ export function buildTreeGraph(rows: GraphRows, access: Access, q: ParsedGraphQu
       })),
     links: rows.parentChild.filter((l) => linkIds.has(l.id)),
   };
+}
+
+/** Signs the primary thumbnails of the people in the view (decision 17); layout never sees them. */
+export async function withPhotoUrls(
+  graph: TreeGraph,
+  rows: GraphRows,
+  store: ObjectStore,
+): Promise<TreeGraph> {
+  const keyOf = new Map(rows.persons.map((p) => [p.id, p.photoThumbKey]));
+  const urls = await signThumbs(
+    store,
+    graph.persons.map((p) => keyOf.get(p.id) ?? null),
+  );
+  return { ...graph, persons: graph.persons.map((p, i) => ({ ...p, photoThumbUrl: urls[i]! })) };
 }

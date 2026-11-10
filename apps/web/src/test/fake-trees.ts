@@ -8,6 +8,15 @@ import {
   type DeleteMode,
   type DeletePreview,
   findSimilar,
+  kinPathsFrom,
+  normalizeName,
+  PHOTO_MEDIA_TYPES,
+  PHOTO_UPLOAD_MAX_BYTES,
+  type Relationship,
+  relationshipPath,
+  type SearchQuery,
+  type SearchResult,
+  type UploadedPhoto,
   type GraphPerson,
   type GraphQuery,
   type HistoryEntry,
@@ -58,6 +67,9 @@ export interface FakeTree {
   graph?: TreeGraph;
   /** What listDisconnected returns. */
   disconnected: PersonSummary[];
+  /** Photo storage limit and use, in bytes (default 1 GiB, nothing used). */
+  photoLimit: number;
+  photoUsed: number;
 }
 
 export interface FakeDeletedTree {
@@ -70,6 +82,7 @@ export interface FakeDeletedTree {
   tree: FakeTree;
 }
 
+const PHOTO_BYTES = 50_000;
 const ok = <T>(data: T): Result<T> => ({ ok: true, data });
 const fail = (code: string, message: string): Result<never> => ({
   ok: false,
@@ -102,6 +115,7 @@ export function fakeGraphPerson(
     hasParents: false,
     hiddenRelatives: false,
     canAddRelative: true,
+    photoThumbUrl: null,
     ...partial,
   };
 }
@@ -156,6 +170,8 @@ export function fakePersonView(
       updatedAt: new Date(0).toISOString(),
     },
     residences: [],
+    photos: [],
+    photoUsage: { usedBytes: 0, limitBytes: 1_073_741_824 },
     relations: { parents: [], unions: [], siblings: [] },
     capabilities: { edit: true, addRelative: true, delete: true },
     ...partial,
@@ -183,6 +199,7 @@ export class FakeTreesApi implements TreesApi {
   private pending = new Set<Method>();
   private waiting: (() => void)[] = [];
   private tokenCount = 0;
+  private photoCount = 0;
 
   /** Adds a tree (an owner view with every capability and one person by default); returns its id. */
   addTree(
@@ -222,6 +239,8 @@ export class FakeTreesApi implements TreesApi {
       trashPeople: new Map(),
       trashViews: new Map(),
       disconnected: [],
+      photoLimit: 1_073_741_824,
+      photoUsed: 0,
     });
     return id;
   }
@@ -570,7 +589,10 @@ export class FakeTreesApi implements TreesApi {
 
   private viewOf(t: FakeTree, personId: string): PersonView | undefined {
     const stored = t.people.get(personId);
-    if (stored) return stored;
+    if (stored) {
+      stored.photoUsage = { usedBytes: t.photoUsed, limitBytes: t.photoLimit };
+      return stored;
+    }
     const summary = t.persons.find((p) => p.id === personId);
     if (!summary) return undefined;
     const view = fakePersonView(summary, {
@@ -579,6 +601,7 @@ export class FakeTreesApi implements TreesApi {
         addRelative: this.mayEdit(t),
         delete: this.mayDelete(t),
       },
+      photoUsage: { usedBytes: t.photoUsed, limitBytes: t.photoLimit },
     });
     t.people.set(personId, view);
     return view;
@@ -1114,6 +1137,178 @@ export class FakeTreesApi implements TreesApi {
       );
     }
     return ok(undefined);
+  }
+
+  // ---- photos (decisions 10, 14), search and relationships (decisions 18, 20) ----
+
+  async uploadPhoto(treeId: string, personId: string, file: Blob): Promise<Result<UploadedPhoto>> {
+    const forced = await this.enter('uploadPhoto', {
+      treeId,
+      personId,
+      type: file.type,
+      size: file.size,
+    });
+    if (forced) return { ok: false as const, error: forced };
+    const t = this.find(treeId);
+    if (!t) return notFound();
+    const view = this.viewOf(t, personId);
+    if (!view) return this.personNotFound();
+    if (!this.mayEdit(t) || !view.capabilities.edit) return forbidden();
+    if (!(PHOTO_MEDIA_TYPES as readonly string[]).includes(file.type)) {
+      return fail('VALIDATION', MESSAGES.photoType);
+    }
+    if (file.size > PHOTO_UPLOAD_MAX_BYTES) return fail('VALIDATION', MESSAGES.photoTooLarge);
+    if (t.photoUsed + PHOTO_BYTES > t.photoLimit) {
+      return fail('QUOTA_EXCEEDED', MESSAGES.photoQuota);
+    }
+    const id = `ph-${++this.photoCount}`;
+    const photo = {
+      id,
+      width: 800,
+      height: 600,
+      bytes: PHOTO_BYTES,
+      isPrimary: view.photos.length === 0,
+      createdAt: new Date().toISOString(),
+      uploadedByName: 'You',
+      thumbUrl: `https://photos.test/${id}/thumb`,
+      fullUrl: `https://photos.test/${id}/full`,
+    };
+    view.photos.push(photo);
+    t.photoUsed += PHOTO_BYTES;
+    this.syncThumb(t, view);
+    return ok({
+      photo: { ...photo },
+      usage: { usedBytes: t.photoUsed, limitBytes: t.photoLimit },
+    });
+  }
+
+  private syncThumb(t: FakeTree, view: PersonView) {
+    const gp = t.graph?.persons.find((p) => p.id === view.person.id);
+    if (gp) gp.photoThumbUrl = view.photos.find((p) => p.isPrimary)?.thumbUrl ?? null;
+  }
+
+  private findPhoto(t: FakeTree, photoId: string) {
+    for (const v of this.views(t)) {
+      const photo = v.photos.find((x) => x.id === photoId);
+      if (photo) return { view: v, photo };
+    }
+    return undefined;
+  }
+
+  async setPrimaryPhoto(treeId: string, photoId: string) {
+    const forced = await this.enter('setPrimaryPhoto', { treeId, photoId });
+    if (forced) return { ok: false as const, error: forced };
+    const t = this.find(treeId);
+    if (!t) return notFound();
+    const found = this.findPhoto(t, photoId);
+    if (!found) return notFound();
+    if (!this.mayEdit(t) || !found.view.capabilities.edit) return forbidden();
+    for (const p of found.view.photos) p.isPrimary = p.id === photoId;
+    found.view.photos.sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
+    this.syncThumb(t, found.view);
+    return ok(undefined);
+  }
+
+  async deletePhoto(treeId: string, photoId: string) {
+    const forced = await this.enter('deletePhoto', { treeId, photoId });
+    if (forced) return { ok: false as const, error: forced };
+    const t = this.find(treeId);
+    if (!t) return notFound();
+    const found = this.findPhoto(t, photoId);
+    if (!found) return notFound();
+    if (!this.mayEdit(t) || !found.view.capabilities.edit) return forbidden();
+    const { view, photo } = found;
+    view.photos = view.photos.filter((p) => p.id !== photoId);
+    t.photoUsed -= photo.bytes;
+    // Like the server: deleting the main photo promotes the newest remaining one.
+    if (photo.isPrimary && view.photos.length > 0) {
+      const newest = [...view.photos].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]!;
+      newest.isPrimary = true;
+      view.photos.sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
+    }
+    this.syncThumb(t, view);
+    return ok(undefined);
+  }
+
+  private kinGraph(t: FakeTree) {
+    if (!t.graph) return undefined;
+    return {
+      persons: t.graph.persons,
+      unions: t.graph.unions,
+      parentChild: t.graph.links,
+    };
+  }
+
+  async search(treeId: string, query: SearchQuery, signal?: AbortSignal) {
+    const forced = await this.enter('search', { treeId, query, signal });
+    if (forced) return { ok: false as const, error: forced };
+    const t = this.find(treeId);
+    if (!t) return notFound();
+    const words = normalizeName(query.q ?? '')
+      .split(/\s+/)
+      .filter(Boolean);
+    const graph = this.kinGraph(t);
+    const me = t.detail.me.personId;
+    const pathTo = graph && me ? kinPathsFrom(graph, me) : null;
+    const num = (v: unknown) => (v === undefined || v === '' ? undefined : Number(v));
+    const [bf, bt, df, dt] = [query.bornFrom, query.bornTo, query.diedFrom, query.diedTo].map(num);
+    const results: SearchResult[] = t.persons
+      .filter((p) => {
+        const name = normalizeName(personName(p));
+        if (!words.every((w) => name.includes(w))) return false;
+        if (bf !== undefined && (p.birthYear === null || p.birthYear < bf)) return false;
+        if (bt !== undefined && (p.birthYear === null || p.birthYear > bt)) return false;
+        if (df !== undefined && (p.deathYear === null || p.deathYear < df)) return false;
+        if (dt !== undefined && (p.deathYear === null || p.deathYear > dt)) return false;
+        if (query.status === 'living' && !p.isLiving) return false;
+        if (query.status === 'deceased' && p.isLiving) return false;
+        return true;
+      })
+      .slice(0, num(query.limit) ?? 20)
+      .map((p) => ({
+        ...p,
+        photoThumbUrl: t.graph?.persons.find((g) => g.id === p.id)?.photoThumbUrl ?? null,
+        relation: pathTo ? pathTo(p.id) : null,
+      }));
+    return ok(results);
+  }
+
+  async relationship(treeId: string, from: string, to: string): Promise<Result<Relationship>> {
+    const forced = await this.enter('relationship', { treeId, from, to });
+    if (forced) return { ok: false as const, error: forced };
+    const t = this.find(treeId);
+    if (!t) return notFound();
+    const byId = new Map((t.graph?.persons ?? []).map((p) => [p.id, p]));
+    const graph = this.kinGraph(t);
+    if (!graph || !byId.has(from) || !byId.has(to)) return notFound();
+    const steps = relationshipPath(graph, from, to);
+    const people = [from, ...(steps ?? []).map((s) => s.personId)].map((id) => byId.get(id)!);
+    return ok({
+      steps,
+      persons: people.map(
+        ({
+          id,
+          givenName,
+          middleName,
+          surname,
+          birthYear,
+          deathYear,
+          isLiving,
+          sex,
+          photoThumbUrl,
+        }) => ({
+          id,
+          givenName,
+          middleName,
+          surname,
+          birthYear,
+          deathYear,
+          isLiving,
+          sex,
+          photoThumbUrl,
+        }),
+      ),
+    });
   }
 }
 

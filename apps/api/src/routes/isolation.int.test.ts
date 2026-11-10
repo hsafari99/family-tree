@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { call, CookieJar } from '../../test/auth-helpers.js';
+import { addPhotoRow } from '../../test/photo-helpers.js';
 import {
   addGrant,
   addMember,
@@ -20,6 +21,7 @@ import {
   invites,
   parentChild,
   persons,
+  photos,
   resetLinks,
   residences,
   treeMembers,
@@ -54,6 +56,7 @@ type Ids = {
   link: string;
   residence: string;
   batch: string;
+  photo: string;
 };
 type Route = readonly [
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
@@ -105,6 +108,13 @@ const routes = (t: string, ids: Ids): Route[] => [
   ['GET', `/api/v1/trees/${t}/graph?focus=${ids.person}&depth=2`],
   ['GET', `/api/v1/trees/${t}/disconnected`],
   ['GET', `/api/v1/trees/${t}/persons/similar?givenName=Intruder`],
+  ['GET', `/api/v1/trees/${t}/search?q=Anchor`],
+  ['GET', `/api/v1/trees/${t}/search?q=x&branch=${ids.person}`],
+  ['GET', `/api/v1/trees/${t}/relationship?from=${ids.person}&to=${ids.person2}`],
+  // A JSON body: the outsider is refused in onRequest, before the body is parsed.
+  ['POST', `/api/v1/trees/${t}/persons/${ids.person}/photos`, { x: 1 }],
+  ['POST', `/api/v1/trees/${t}/photos/${ids.photo}/primary`],
+  ['DELETE', `/api/v1/trees/${t}/photos/${ids.photo}`],
   [
     'POST',
     `/api/v1/trees/${t}/unions/${ids.union}/child-order`,
@@ -128,6 +138,7 @@ async function setup() {
     .values({ treeId, personId: person.id, place: 'Leeds' })
     .returning();
   const batch = await softDeleteBatch(db, treeId, owner.userId, [p4.id]);
+  const photo = await addPhotoRow(db, treeId, person.id);
   const [invite] = await db
     .insert(invites)
     .values({
@@ -154,6 +165,7 @@ async function setup() {
     link: link!.id,
     residence: res!.id,
     batch: batch.id,
+    photo: photo.id,
   };
   return { owner, member, treeId, treeB, x, ids };
 }
@@ -169,6 +181,7 @@ async function snapshot(treeId: string) {
   const us = await db.select().from(unions).where(eq(unions.treeId, treeId));
   const pcs = await db.select().from(parentChild).where(eq(parentChild.treeId, treeId));
   const rs = await db.select().from(residences).where(eq(residences.treeId, treeId));
+  const phs = await db.select().from(photos).where(eq(photos.treeId, treeId));
   const bs = await db.select().from(deletionBatches).where(eq(deletionBatches.treeId, treeId));
   const audits = await db
     .select({ id: auditLog.id })
@@ -196,6 +209,7 @@ async function snapshot(treeId: string) {
     ),
     parentChild: by(pcs.map((x) => ({ id: x.id, kind: x.kind, deletedAt: x.deletedAt }))),
     residences: by(rs.map((x) => ({ id: x.id, place: x.place }))),
+    photos: by(phs.map((x) => ({ id: x.id, isPrimary: x.isPrimary, personId: x.personId }))),
     batches: by(bs.map((x) => ({ id: x.id, restoredAt: x.restoredAt }))),
     auditCount: audits.length,
     name: tree!.name,
@@ -242,7 +256,7 @@ describe('cross-tree isolation', () => {
       const res = await run(x.jar, route);
       expect(res.statusCode, `${route[0]} ${route[1]}`).toBe(404);
     }
-    const aIds = [ids.person, ids.union, ids.link, ids.residence, ids.batch];
+    const aIds = [ids.person, ids.union, ids.link, ids.residence, ids.batch, ids.photo];
     const aRoutes = routes(t, ids).filter((rt) => aIds.some((id) => rt[1].includes(id)));
     expect(aRoutes.length).toBeGreaterThan(10);
     for (const route of aRoutes) {
@@ -256,6 +270,16 @@ describe('cross-tree isolation', () => {
     ]);
     expect(branch.statusCode).toBe(404);
     const bRoot = (await db.select().from(trees).where(eq(trees.id, t)))[0]!.rootPersonId!;
+    const crossRel = await run(x.jar, [
+      'GET',
+      `/api/v1/trees/${t}/relationship?from=${ids.person}&to=${bRoot}`,
+    ]);
+    expect(crossRel.statusCode).toBe(404);
+    const crossBranch = await run(x.jar, [
+      'GET',
+      `/api/v1/trees/${t}/search?q=x&branch=${ids.person}`,
+    ]);
+    expect(crossBranch.statusCode).toBe(404);
     const attach = await run(x.jar, [
       'POST',
       `/api/v1/trees/${t}/persons`,

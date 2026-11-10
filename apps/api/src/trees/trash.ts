@@ -13,11 +13,13 @@ import {
   invites,
   parentChild,
   persons,
+  photos,
   treeMembers,
   unions,
   users,
 } from '../db/schema.js';
 import { conflict, isUniqueViolation, notFound } from '../errors.js';
+import { queuePhotoObjects } from '../storage/deletions.js';
 import { audit, type AuditActor } from './audit.js';
 import { grantClosure } from './grants.js';
 import { loadLiveGraph } from './graph.js';
@@ -322,6 +324,9 @@ export async function eraseBatch(tx: Tx, actor: AuditActor, batchId: string) {
 
   await tx.delete(parentChild).where(eq(parentChild.deletionBatchId, b.id));
   await tx.delete(unions).where(eq(unions.deletionBatchId, b.id));
+  // Their photos go with them (FK cascade); queue the objects first (decision 13).
+  const objectKeys =
+    ids.length > 0 ? await queuePhotoObjects(tx, inArray(photos.personId, ids)) : [];
   // Cascades to their residences and to rows of other batches that still point at them.
   await tx.delete(persons).where(eq(persons.deletionBatchId, b.id));
 
@@ -355,4 +360,5 @@ export async function eraseBatch(tx: Tx, actor: AuditActor, batchId: string) {
     entityId: b.id,
     after: { mode: b.mode, people: ids.length, unions: unionIds.length, links: linkIds.length },
   });
+  return objectKeys;
 }

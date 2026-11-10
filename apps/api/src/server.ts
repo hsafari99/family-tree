@@ -20,7 +20,13 @@ const deps = createDeps(config);
 await runMigrations(deps.db);
 if (config.S3_CREATE_BUCKET) await ensureBucket(deps.s3, config.S3_BUCKET);
 
-const app = buildApp({ config, checks: deps.checks, auth: deps.auth, db: deps.db });
+const app = buildApp({
+  config,
+  checks: deps.checks,
+  auth: deps.auth,
+  db: deps.db,
+  storage: deps.storage,
+});
 deps.attachAuthLogger(app.log.child({ module: 'better-auth' }));
 
 const stopPurge =
@@ -29,6 +35,7 @@ const stopPurge =
         deps.db,
         app.log.child({ module: 'purge' }),
         config.TREE_PURGE_INTERVAL_MINUTES * 60_000,
+        deps.storage,
       )
     : async () => {};
 

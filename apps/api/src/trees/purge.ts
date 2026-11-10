@@ -1,8 +1,10 @@
 import { TREE_RESTORE_DAYS } from '@family-tree/shared';
-import { sql } from 'drizzle-orm';
+import { inArray, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
-import { trees } from '../db/schema.js';
+import { photos, trees } from '../db/schema.js';
 import { safeError } from '../errors.js';
+import { drainStorageDeletions, queuePhotoObjects } from '../storage/deletions.js';
+import type { ObjectStore } from '../storage/objects.js';
 
 const BATCH = 50;
 
@@ -15,7 +17,7 @@ export interface PurgeResult {
 /**
  * Hard-deletes trees soft-deleted more than TREE_RESTORE_DAYS ago, with everything in them
  * (FK cascades), owner or not, in short transactions of up to 50 trees. Age is measured with
- * the database clock. Returns the purged ids (phase 6 deletes their photos). One instance at a
+ * the database clock. Queues the purged trees' photo objects in the outbox; `drainStorageDeletions` deletes them. Returns the purged ids. One instance at a
  * time: the lock is taken per batch, and a caller that can't get it reports `busy`. A concurrent
  * restore wins, because the subselect locks the rows and re-checks deleted_at.
  */
@@ -28,16 +30,20 @@ export async function purgeDeletedTrees(db: Db): Promise<PurgeResult> {
       )) as unknown as { ok: boolean }[];
       if (!lock?.ok) return null;
       const rows = (await tx.execute(sql`
-        delete from ${trees} where id in (
-          select id from ${trees}
-          where deleted_at is not null
-            and deleted_at < now() - make_interval(days => ${TREE_RESTORE_DAYS})
-          order by deleted_at
-          limit ${BATCH}
-          for update skip locked
-        ) returning id
+        select id from ${trees}
+        where deleted_at is not null
+          and deleted_at < now() - make_interval(days => ${TREE_RESTORE_DAYS})
+        order by deleted_at
+        limit ${BATCH}
+        for update skip locked
       `)) as unknown as { id: string }[];
-      return rows.map((r) => r.id);
+      const batchIds = rows.map((r) => r.id);
+      if (batchIds.length === 0) return [];
+      // The rows are locked, so a concurrent restore waits and then finds nothing to restore.
+      // Photo objects outlive their rows: queue them before the cascade (decision 13).
+      await queuePhotoObjects(tx, inArray(photos.treeId, batchIds));
+      await tx.delete(trees).where(inArray(trees.id, batchIds));
+      return batchIds;
     });
     if (batch === null) return { ids, busy: true };
     ids.push(...batch);
@@ -54,13 +60,24 @@ interface JobLog {
  * Runs the purge now and then every `intervalMs`. The returned function stops the timer and
  * resolves once any run in flight has finished.
  */
-export function startPurgeJob(db: Db, log: JobLog, intervalMs: number): () => Promise<void> {
+export function startPurgeJob(
+  db: Db,
+  log: JobLog,
+  intervalMs: number,
+  store?: ObjectStore,
+): () => Promise<void> {
   let current: Promise<void> | null = null;
   const tick = () => {
     if (current) return;
     current = purgeDeletedTrees(db)
-      .then(({ ids }) => {
+      .then(async ({ ids }) => {
         if (ids.length > 0) log.info({ count: ids.length }, 'purged deleted trees');
+        if (!store) return;
+        for (;;) {
+          const { deleted, failed } = await drainStorageDeletions(db, store, { log });
+          if (deleted > 0) log.info({ deleted }, 'deleted stored objects');
+          if (deleted + failed < 500 || failed > 0) break; // done, or storage is down: next tick
+        }
       })
       .catch((err: unknown) => log.error({ err: safeError(err) }, 'tree purge failed'))
       .finally(() => {

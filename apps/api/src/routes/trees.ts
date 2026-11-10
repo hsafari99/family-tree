@@ -20,12 +20,14 @@ import { authorize, loadAccess } from '../trees/access.js';
 import { audit } from '../trees/audit.js';
 import { lockTreeGraph } from '../trees/graph.js';
 import { personFieldsOf } from '../trees/people.js';
+import type { ObjectStore } from '../storage/objects.js';
 import { lockUserTrees, ownedLiveTreeCount } from '../trees/quota.js';
 
 export interface TreeRouteOptions {
   auth: Auth;
   db: Db;
   config: Config;
+  storage: ObjectStore;
 }
 
 const RESTORE_MS = TREE_RESTORE_DAYS * 86_400_000;

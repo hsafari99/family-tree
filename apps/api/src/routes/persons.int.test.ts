@@ -217,6 +217,17 @@ describe('person routes', () => {
     expect(rs.map((r) => r.statusCode)).toEqual([404, 404, 404]);
   });
 
+  it('keeps the generic 4xx shape for unsupported media types outside the upload route', async () => {
+    const { owner, treeId } = await ownerWithTree(app);
+    const res = await call(app, 'POST', url(treeId), {
+      jar: owner.jar,
+      headers: { 'content-type': 'image/gif' },
+    });
+    expect(res.statusCode).toBe(415);
+    expect(res.json().error.code).toBe('BAD_REQUEST');
+    expect(res.json().error.details).toBeUndefined();
+  });
+
   it('limits a steward to their branch', async () => {
     const { owner, treeId } = await ownerWithTree(app);
     const dan = await addPerson(db, treeId, 'Dan');

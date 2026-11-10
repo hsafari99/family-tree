@@ -50,3 +50,9 @@ if (typeof HTMLElement !== 'undefined') {
   (SVGElement.prototype as unknown as { getBBox(): DOMRect }).getBBox = () =>
     ({ x: 0, y: 0, width: 0, height: 0 }) as DOMRect;
 }
+
+// jsdom has no object URLs (used by the photo cropper).
+if (!URL.createObjectURL) {
+  URL.createObjectURL = () => 'blob:fake';
+  URL.revokeObjectURL = () => {};
+}

@@ -129,6 +129,9 @@ export const ACTION_LABEL: Record<AuditAction, string> = {
   'residence.create': 'Place of residence added',
   'residence.update': 'Place of residence changed',
   'residence.delete': 'Place of residence removed',
+  'photo.create': 'Photo added',
+  'photo.primary': 'Main photo changed',
+  'photo.delete': 'Photo removed',
   'trash.restore': 'Restored from Trash',
   'trash.erase': 'Erased permanently',
   'member.join': 'Joined the tree',
@@ -152,4 +155,22 @@ export function formatValue(v: unknown): string {
 export function initials(p: NameParts): string {
   const first = (s: string | null) => (s ? ([...s.trim()][0] ?? '') : '');
   return (first(p.givenName) + first(p.surname)).toLocaleUpperCase();
+}
+
+/**
+ * 950 B, 12.1 KB, 4.5 MB, 1 GB: binary steps (1024) labelled KB/MB/GB, so the 1 GiB quota reads
+ * "1 GB". One decimal below 100. Rounds before choosing the unit: 1,048,575 B is "1 MB", never
+ * "1024 KB".
+ */
+export function formatBytes(n: number): string {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const show = (v: number, i: number) =>
+    i === 0 || v >= 100 ? Math.round(v) : Math.round(v * 10) / 10;
+  let v = n;
+  let i = 0;
+  while (i < units.length - 1 && show(v, i) >= 1024) {
+    v /= 1024;
+    i++;
+  }
+  return `${show(v, i)} ${units[i]}`;
 }

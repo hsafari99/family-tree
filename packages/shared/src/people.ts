@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { type FuzzyDate, fuzzyDateSchema, sortYear } from './fuzzy-date.js';
+import { photoSchema, photoUsageSchema } from './photos.js';
 import { NAME_MAX, personSummarySchema, SEXES } from './trees.js';
 
 export const PLACE_MAX = 200;
@@ -12,6 +13,7 @@ export const HISTORY_ACTION_PREFIXES = [
   'union.',
   'link.',
   'residence.',
+  'photo.',
   'trash.',
 ] as const;
 
@@ -222,6 +224,9 @@ const unionHead = z.object({
 export const personViewSchema = z.object({
   person: personDetailSchema,
   residences: z.array(residenceSchema),
+  /** Primary first, then newest. */
+  photos: z.array(photoSchema),
+  photoUsage: photoUsageSchema,
   relations: z.object({
     /** One entry per parent union the person is a child of. */
     parents: z.array(
@@ -292,6 +297,9 @@ export const AUDIT_ACTIONS = [
   'residence.create',
   'residence.update',
   'residence.delete',
+  'photo.create',
+  'photo.primary',
+  'photo.delete',
   'trash.restore',
   'trash.erase',
   'member.join',
@@ -310,6 +318,7 @@ export const AUDIT_ENTITIES = [
   'union',
   'link',
   'residence',
+  'photo',
   'batch',
   'member',
   'grant',
