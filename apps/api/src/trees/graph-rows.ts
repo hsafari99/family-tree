@@ -10,10 +10,15 @@ import type {
 } from '@family-tree/shared';
 import { and, eq, isNull } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
-import { parentChild, persons, unions } from '../db/schema.js';
+import { parentChild, persons, photos, unions } from '../db/schema.js';
 import { summaryColumns } from './people.js';
 
-export type GraphPersonRow = PersonSummary & { sex: Sex; siblingOrder: number | null };
+export type GraphPersonRow = PersonSummary & {
+  sex: Sex;
+  siblingOrder: number | null;
+  /** The primary photo's thumbnail object key; signed in the route, never sent as is. */
+  photoThumbKey: string | null;
+};
 export type GraphUnionRow = Pick<GraphUnionView, 'id' | 'partnerAId' | 'partnerBId'> & {
   type: UnionType;
   status: UnionStatus;
@@ -37,8 +42,14 @@ export function loadGraphRows(db: Db, treeId: string): Promise<GraphRows> {
   return db.transaction(
     async (tx) => {
       const people = await tx
-        .select({ ...summaryColumns, sex: persons.sex, siblingOrder: persons.siblingOrder })
+        .select({
+          ...summaryColumns,
+          sex: persons.sex,
+          siblingOrder: persons.siblingOrder,
+          photoThumbKey: photos.storageKeyThumb,
+        })
         .from(persons)
+        .leftJoin(photos, and(eq(photos.personId, persons.id), eq(photos.isPrimary, true)))
         .where(and(eq(persons.treeId, treeId), isNull(persons.deletedAt)));
       const live = new Set(people.map((p) => p.id));
       const liveOrNull = (id: string | null) => (id !== null && live.has(id) ? id : null);

@@ -16,6 +16,7 @@ import { loadConfig } from '../config.js';
 import { eq } from 'drizzle-orm';
 import { auditLog, parentChild, persons, unions } from '../db/schema.js';
 import { createDeps } from '../deps.js';
+import { addPhotoRow } from '../../test/photo-helpers.js';
 
 const config = loadConfig();
 const deps = createDeps(config);
@@ -382,5 +383,34 @@ describe('POST child-order', () => {
     expect((await go(owner.jar, uKp.id, kpIds)).statusCode).toBe(204);
     expect((await go(editor.jar, uKp.id, [y1!.id, y2!.id])).statusCode).toBe(204);
     expect((await go(stranger.jar, uPa.id, paIds)).statusCode).toBe(404);
+  });
+});
+
+describe('GET graph photos', () => {
+  it('signs the primary thumbnail only, identically within a window, and leaks no keys', async () => {
+    const { owner, treeId, p } = await setup();
+    const primary = await addPhotoRow(db, treeId, p.pa!.id, true);
+    await addPhotoRow(db, treeId, p.ma!.id, false);
+    const a = await call(app, 'GET', g(treeId), { jar: owner.jar });
+    const body = parse(a.json());
+    const byName = (n: string) => body.persons.find((x) => x.givenName === n)!;
+    const url = byName('Pa').photoThumbUrl!;
+    expect(url.startsWith(config.S3_PUBLIC_ENDPOINT ?? config.S3_ENDPOINT)).toBe(true);
+    expect(url).toContain(primary.storageKeyThumb);
+    expect(url).toContain('X-Amz-Expires=900');
+    for (const x of body.persons) if (x.givenName !== 'Pa') expect(x.photoThumbUrl).toBeNull();
+    const b = parse((await call(app, 'GET', g(treeId), { jar: owner.jar })).json());
+    expect(b.persons.find((x) => x.givenName === 'Pa')!.photoThumbUrl).toBe(url);
+    const raw = JSON.stringify(a.json());
+    expect(raw).not.toContain('storage_key');
+    expect(raw).not.toContain('photoThumbKey');
+    for (const path of [
+      `/api/v1/trees/${treeId}/disconnected`,
+      `/api/v1/trees/${treeId}/persons/similar?givenName=Pa`,
+    ]) {
+      const r = await call(app, 'GET', path, { jar: owner.jar });
+      expect(r.statusCode).toBe(200);
+      expect(JSON.stringify(r.json())).not.toContain('photoThumbKey');
+    }
   });
 });
