@@ -14,8 +14,9 @@ export async function grantClosure(
   db: Queryable,
   treeId: string,
   isRoot: (g: GrantRow) => boolean,
+  { lock = false } = {},
 ): Promise<GrantRow[]> {
-  const all: GrantRow[] = await db
+  const q = db
     .select({
       id: branchStewards.id,
       userId: branchStewards.userId,
@@ -24,6 +25,7 @@ export async function grantClosure(
     })
     .from(branchStewards)
     .where(eq(branchStewards.treeId, treeId));
+  const all: GrantRow[] = await (lock ? q.for('update') : q);
   const gone = new Set(all.filter(isRoot).map((g) => g.id));
   for (let grew = true; grew;) {
     grew = false;

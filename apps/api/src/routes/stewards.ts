@@ -119,7 +119,9 @@ export const stewardsRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, 
     authorize(access, 'steward.revoke', { kind: 'grant', grantedByUserId: grant.grantedByUserId });
     // Derived grants cascade through parent_grant_id (spec §4).
     await db.transaction(async (tx) => {
-      const doomed = await grantClosure(tx, access.treeId, (g) => g.id === grant.id);
+      const doomed = await grantClosure(tx, access.treeId, (g) => g.id === grant.id, {
+        lock: true,
+      });
       await tx.delete(branchStewards).where(eq(branchStewards.id, grant.id));
       for (const g of doomed) {
         await audit(tx, access, {

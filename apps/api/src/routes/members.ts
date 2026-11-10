@@ -200,10 +200,13 @@ export const membersRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
         .update(treeMembers)
         .set({ role: 'owner' })
         .where(and(eq(treeMembers.treeId, access.treeId), eq(treeMembers.userId, userId)));
-      const ownDoomed = await tx
+      // Derived grants were detached above, so this is the new owner's own grants only.
+      const ownDoomed = await grantClosure(tx, access.treeId, (g) => g.userId === userId, {
+        lock: true,
+      });
+      await tx
         .delete(branchStewards)
-        .where(and(eq(branchStewards.treeId, access.treeId), eq(branchStewards.userId, userId)))
-        .returning({ id: branchStewards.id });
+        .where(and(eq(branchStewards.treeId, access.treeId), eq(branchStewards.userId, userId)));
       await audit(tx, access, {
         action: 'ownership.transfer',
         entityType: 'member',

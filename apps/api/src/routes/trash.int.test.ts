@@ -331,3 +331,97 @@ describe('permissions', () => {
     );
   });
 });
+
+describe('trash review fixes', () => {
+  it('refuses a restore that would leave two live unions of one couple', async () => {
+    const { owner, treeId, leoZoe, p } = await setup();
+    const b = await delUnion(owner.jar, treeId, leoZoe.id);
+    const add = await call(app, 'POST', `${base(treeId)}/persons/${p.leo.id}/relatives`, {
+      jar: owner.jar,
+      body: { personId: p.zoe.id, as: 'partner' },
+    });
+    expect(add.statusCode, add.body).toBe(204);
+    const before = await snapshot(treeId);
+    const res = await call(app, 'POST', `${trash(treeId, b)}/restore`, { jar: owner.jar });
+    expect(res.statusCode).toBe(409);
+    expect(await snapshot(treeId)).toEqual(before);
+  });
+
+  it('restores a relation batch whose link was cascaded away by an erase', async () => {
+    const { owner, treeId, p } = await setup();
+    const [link] = await db.select().from(parentChild).where(eq(parentChild.childId, p.kim.id));
+    const r = await call(app, 'POST', `${base(treeId)}/parent-child/${link!.id}/delete`, {
+      jar: owner.jar,
+    });
+    const rel = r.json().batchId as string;
+    const pb = await delPerson(owner.jar, treeId, p.kim.id);
+    expect((await call(app, 'DELETE', trash(treeId, pb), { jar: owner.jar })).statusCode).toBe(204);
+    const before = await snapshot(treeId);
+    const res = await call(app, 'POST', `${trash(treeId, rel)}/restore`, { jar: owner.jar });
+    expect(res.statusCode, res.body).toBe(204);
+    expect(await snapshot(treeId)).toEqual(before);
+  });
+
+  it('changes nothing outside the batch when erasing, and audits only open invites', async () => {
+    const { owner, treeId, p } = await setup();
+    const mk = (extra: Partial<typeof invites.$inferInsert>) =>
+      db.insert(invites).values({
+        treeId,
+        role: 'viewer',
+        tokenHash: crypto.randomUUID(),
+        createdByUserId: owner.userId,
+        expiresAt: new Date(Date.now() + 86_400_000),
+        targetPersonId: p.kim.id,
+        ...extra,
+      });
+    await mk({});
+    await mk({ revokedAt: new Date() });
+    const joiner = await signUp(app, { name: 'Used' });
+    await mk({ usedAt: new Date(), usedByUserId: joiner.userId });
+    const b = await delPerson(owner.jar, treeId, p.kim.id);
+    const outside = async () => {
+      const live = await snapshot(treeId);
+      const inBatch = new Set(
+        (
+          await db.select({ id: persons.id }).from(persons).where(eq(persons.deletionBatchId, b))
+        ).map((x) => x.id),
+      );
+      return { ...live, p: live.p.filter((x) => !inBatch.has(x.id)) };
+    };
+    const before = await outside();
+    expect((await call(app, 'DELETE', trash(treeId, b), { jar: owner.jar })).statusCode).toBe(204);
+    const after = await outside();
+    // The batch's own union and links are gone; everything else is as it was.
+    const keep = <T extends { id: string }>(a: T[], b2: T[]) =>
+      a.filter((x) => b2.some((y) => y.id === x.id));
+    expect(after.p).toEqual(before.p);
+    expect(after.u).toEqual(keep(before.u, after.u));
+    expect(after.l).toEqual(keep(before.l, after.l));
+    const rows = await db.select().from(auditLog).where(eq(auditLog.treeId, treeId));
+    expect(rows.filter((r) => r.action === 'invite.revoke')).toHaveLength(1);
+    expect(JSON.stringify(rows)).not.toContain(p.kim.id);
+  });
+
+  it('leaves no audit row anywhere naming an erased person', async () => {
+    const { owner, treeId, S, p } = await setup();
+    const joiner = await userWith2fa(app, 'Joiner');
+    const inv = await call(app, 'POST', `${base(treeId)}/invites`, {
+      jar: owner.jar,
+      body: { role: 'viewer', targetPersonId: p.kim.id, stewardAnchorPersonId: p.kim.id },
+    });
+    expect(inv.statusCode, inv.body).toBe(201);
+    const acc = await call(app, 'POST', '/api/v1/invites/accept', {
+      jar: joiner.jar,
+      body: { token: inv.json().token },
+    });
+    expect(acc.statusCode, acc.body).toBe(200);
+    await call(app, 'POST', `${base(treeId)}/stewards`, {
+      jar: owner.jar,
+      body: { userId: S.userId, anchorPersonId: p.kim.id },
+    });
+    const b = await delPerson(owner.jar, treeId, p.kim.id);
+    expect((await call(app, 'DELETE', trash(treeId, b), { jar: owner.jar })).statusCode).toBe(204);
+    const all = await db.select().from(auditLog);
+    expect(JSON.stringify(all.filter((r) => r.treeId === treeId))).not.toContain(p.kim.id);
+  });
+});

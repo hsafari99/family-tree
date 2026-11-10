@@ -19,6 +19,7 @@ import {
 } from '../db/schema.js';
 import { conflict, isUniqueViolation, notFound } from '../errors.js';
 import { audit, type AuditActor } from './audit.js';
+import { grantClosure } from './grants.js';
 import { loadLiveGraph } from './graph.js';
 import { fullName, summaryColumns } from './people.js';
 
@@ -191,7 +192,16 @@ export async function restoreBatch(tx: Tx, actor: AuditActor, batchId: string) {
     throw err;
   }
   // A link revived here may close a loop with links added since (decision 7).
-  if (hasCycle(await loadLiveGraph(tx, treeId))) throw restoreConflict();
+  const live = await loadLiveGraph(tx, treeId);
+  if (hasCycle(live)) throw restoreConflict();
+  // Reviving a union or a slot may leave two live unions of the same couple.
+  const couples = new Set<string>();
+  for (const u of live.unions) {
+    if (u.partnerAId === null || u.partnerBId === null) continue;
+    const key = [u.partnerAId, u.partnerBId].sort().join(':');
+    if (couples.has(key)) throw restoreConflict();
+    couples.add(key);
+  }
   await tx
     .update(deletionBatches)
     .set({ restoredAt: sql`now()` })
@@ -200,7 +210,7 @@ export async function restoreBatch(tx: Tx, actor: AuditActor, batchId: string) {
     action: 'trash.restore',
     entityType: 'batch',
     entityId: b.id,
-    personIds: [...restored.map((r) => r.id), ...b.slots.map((s) => s.personId)],
+    personIds: [...new Set([...restored.map((r) => r.id), ...b.slots.map((s) => s.personId)])],
     after: { mode: b.mode, people: restored.length },
   });
 }
@@ -236,8 +246,23 @@ export async function eraseBatch(tx: Tx, actor: AuditActor, batchId: string) {
           or(inArray(invites.stewardAnchorPersonId, ids), inArray(invites.targetPersonId, ids)),
         ),
       )
-      .returning({ id: invites.id });
+      .returning({ id: invites.id, usedAt: invites.usedAt, revokedAt: invites.revokedAt });
+    // Grants anchored on them, and every grant derived from those.
+    const idSet = new Set(ids);
+    const doomedGrants = await grantClosure(tx, treeId, (g) => idSet.has(g.anchorPersonId), {
+      lock: true,
+    });
+    // Their earlier audit rows hold the erased people in before/after: drop them first, then
+    // write the revoke rows (which name nobody).
+    const entityIds = [...doomedInvites.map((i) => i.id), ...doomedGrants.map((g) => g.id)];
+    if (entityIds.length > 0) {
+      await tx
+        .delete(auditLog)
+        .where(and(eq(auditLog.treeId, treeId), inArray(auditLog.entityId, entityIds)));
+    }
     for (const inv of doomedInvites) {
+      // Only invites that were still open get a revoke row.
+      if (inv.usedAt !== null || inv.revokedAt !== null) continue;
       await audit(tx, actor, {
         action: 'invite.revoke',
         entityType: 'invite',
@@ -245,28 +270,7 @@ export async function eraseBatch(tx: Tx, actor: AuditActor, batchId: string) {
         after: { reason: 'erased' },
       });
     }
-    // Grants anchored on them, and every grant derived from those.
-    const all = await tx
-      .select({
-        id: branchStewards.id,
-        userId: branchStewards.userId,
-        anchorPersonId: branchStewards.anchorPersonId,
-        parentGrantId: branchStewards.parentGrantId,
-      })
-      .from(branchStewards)
-      .where(eq(branchStewards.treeId, treeId));
-    const idSet = new Set(ids);
-    const gone = new Set(all.filter((g) => idSet.has(g.anchorPersonId)).map((g) => g.id));
-    for (let grew = true; grew;) {
-      grew = false;
-      for (const g of all) {
-        if (g.parentGrantId && gone.has(g.parentGrantId) && !gone.has(g.id)) {
-          gone.add(g.id);
-          grew = true;
-        }
-      }
-    }
-    for (const g of all.filter((x) => gone.has(x.id))) {
+    for (const g of doomedGrants) {
       await audit(tx, actor, {
         action: 'steward.revoke',
         entityType: 'grant',
@@ -275,7 +279,14 @@ export async function eraseBatch(tx: Tx, actor: AuditActor, batchId: string) {
         after: { reason: 'erased' },
       });
     }
-    if (gone.size > 0) await tx.delete(branchStewards).where(inArray(branchStewards.id, [...gone]));
+    if (doomedGrants.length > 0) {
+      await tx.delete(branchStewards).where(
+        inArray(
+          branchStewards.id,
+          doomedGrants.map((g) => g.id),
+        ),
+      );
+    }
   }
 
   if (ids.length > 0) {
@@ -323,6 +334,16 @@ export async function eraseBatch(tx: Tx, actor: AuditActor, batchId: string) {
           inArray(auditLog.entityId, erased),
           // Every row that names an erased person (decision 8).
           ids.length > 0 ? arrayOverlaps(auditLog.personIds, ids) : undefined,
+          // Rows that keep an id inside before/after (invite.create, steward.grant, old
+          // member.join ...), whatever their action.
+          ids.length > 0
+            ? sql`exists (select 1 from unnest(array[${sql.join(
+                ids.map((i) => sql`${i}`),
+                sql`, `,
+              )}]::text[]) x
+                where ${auditLog.before}::text like '%' || x || '%'
+                   or ${auditLog.after}::text like '%' || x || '%')`
+            : undefined,
         ),
       ),
     );

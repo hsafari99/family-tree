@@ -12,7 +12,7 @@ import {
 import { buildApp } from '../app.js';
 import { createAuth } from '../auth/auth.js';
 import { loadConfig } from '../config.js';
-import { trees } from '../db/schema.js';
+import { branchStewards, persons, trees } from '../db/schema.js';
 import { createDeps } from '../deps.js';
 
 const config = loadConfig();
@@ -145,6 +145,29 @@ describe('audit of tree, member, steward and invite changes', () => {
     expect(revokes).toHaveLength(2);
   });
 
+  it('audits the new owners own grants on transfer, and keeps derived ones', async () => {
+    const { owner, treeId } = await ownerWithTree(app);
+    const anchor = await addPerson(db, treeId, 'Anchor');
+    const n = await userWith2fa(app, 'New');
+    const m = await userWith2fa(app, 'Mem');
+    await addMember(db, treeId, n.userId, 'viewer', owner.userId);
+    await addMember(db, treeId, m.userId, 'viewer', owner.userId);
+    const own = await addGrant(db, treeId, n.userId, anchor.id, owner.userId);
+    const derived = await addGrant(db, treeId, m.userId, anchor.id, n.userId, own.id);
+    const res = await call(app, 'POST', `/api/v1/trees/${treeId}/transfer`, {
+      jar: owner.jar,
+      body: { userId: n.userId },
+    });
+    expect(res.statusCode, res.body).toBe(204);
+    const rows = await auditRows(db, treeId);
+    const revokes = rows.filter((r) => r.action === 'steward.revoke');
+    expect(revokes.map((r) => r.entityId)).toEqual([own.id]);
+    expect(revokes[0]!.after).toEqual({ reason: 'became owner' });
+    expect(rows.some((r) => r.action === 'ownership.transfer')).toBe(true);
+    const [d] = await db.select().from(branchStewards).where(eq(branchStewards.id, derived.id));
+    expect(d!.parentGrantId).toBeNull();
+  });
+
   it('does not deadlock a root change against a person delete', async () => {
     const { owner, treeId } = await ownerWithTree(app);
     for (let i = 0; i < 20; i++) {
@@ -160,12 +183,10 @@ describe('audit of tree, member, steward and invite changes', () => {
         }),
       ]);
       for (const r of [a, b]) expect(r.statusCode, r.body).toBeLessThan(500);
-      // Put the root back on a live person for the next round.
+      // Whoever won the race, the root must be a live person.
       const [t] = await db.select().from(trees).where(eq(trees.id, treeId));
-      if (t!.rootPersonId === p.id) {
-        const q = await addPerson(db, treeId, `Q${i}`);
-        await db.update(trees).set({ rootPersonId: q.id }).where(eq(trees.id, treeId));
-      }
+      const [root] = await db.select().from(persons).where(eq(persons.id, t!.rootPersonId!));
+      expect(root!.deletedAt).toBeNull();
     }
   });
 });

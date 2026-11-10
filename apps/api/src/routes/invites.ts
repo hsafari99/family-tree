@@ -262,7 +262,7 @@ export const invitesRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, {
           action: 'member.join',
           entityType: 'member',
           entityId: userId,
-          after: { role: inv.role, inviteId: inv.id, personId },
+          after: { role: inv.role, inviteId: inv.id },
         });
         if (!existing) {
           await tx.insert(treeMembers).values({

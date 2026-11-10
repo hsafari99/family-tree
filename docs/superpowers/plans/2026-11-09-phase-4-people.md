@@ -99,6 +99,7 @@
    - a recorded partner slot has been filled by someone else since, or
    - restoring would duplicate a live parent–child link (unique index).
    - restoring would create a parent–child **cycle**. Example: the link kid→dad was deleted, and dad was later added as kid's child. After the rows are revived, the live graph is checked with `hasCycle`.
+   - restoring would leave two live unions of the **same partner pair** (for example a union revived after the couple was re-added). The live graph is checked after the rows are revived.
    A slot whose union no longer exists (erased with another batch) is skipped: there is nothing left to put the person back into.
 8. **Erase permanently:**
    - **Before deleting anything:** it nulls `tree_members.person_id`, deletes `invites` whose anchor or target is an erased person, and deletes `branch_stewards` anchored on them, along with grants derived from those. Each removed grant and invite gets an audit row.
