@@ -147,12 +147,22 @@ export const unions = pgTable(
     status: unionStatusEnum('status').notNull().default('married'),
     startDate: fuzzyDate('start_date'),
     endDate: fuzzyDate('end_date'),
+    /** Groups siblings whose parents are unknown (brief #11); the only union allowed no partner. */
+    parentsUnknown: boolean('parents_unknown').notNull().default(false),
+    /** Partner a's position for this union among a's partners, left to right (brief #16); null = by start date. */
+    partnerAOrder: integer('partner_a_order'),
+    /** The same for partner b. Each partner orders only their own unions. */
+    partnerBOrder: integer('partner_b_order'),
     ...timestamps(),
     /** The Trash batch that soft-deleted this row (spec §4); null while live. */
     deletionBatchId: uuid('deletion_batch_id'),
   },
   (t) => [
-    check('unions_has_partner', sql`${t.partnerAId} is not null or ${t.partnerBId} is not null`),
+    // A union needs a partner, unless it groups siblings whose parents are unknown (brief #11).
+    check(
+      'unions_has_partner',
+      sql`${t.partnerAId} is not null or ${t.partnerBId} is not null or ${t.parentsUnknown}`,
+    ),
     check(
       'unions_distinct_partners',
       sql`${t.partnerAId} is null or ${t.partnerBId} is null or ${t.partnerAId} <> ${t.partnerBId}`,

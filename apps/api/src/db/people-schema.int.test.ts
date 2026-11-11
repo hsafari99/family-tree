@@ -82,6 +82,20 @@ const newBatch = async (treeId: string, deletedByUserId?: string) => {
 };
 
 describe('people schema', () => {
+  it('allows a partnerless union only when parents_unknown is set', async () => {
+    const tree = await newTree();
+    await expect(
+      db.insert(unions).values({ treeId: tree.id, partnerAId: null, partnerBId: null }),
+    ).rejects.toMatchObject({ cause: { constraint_name: 'unions_has_partner' } });
+    const [u] = await db
+      .insert(unions)
+      .values({ treeId: tree.id, partnerAId: null, partnerBId: null, parentsUnknown: true })
+      .returning();
+    expect(u!.parentsUnknown).toBe(true);
+    expect(u!.partnerAOrder).toBeNull();
+    expect(u!.partnerBOrder).toBeNull();
+  });
+
   it('requires the right root on a deletion batch', async () => {
     const tree = await newTree();
     const insert = (v: Partial<typeof deletionBatches.$inferInsert>) =>
