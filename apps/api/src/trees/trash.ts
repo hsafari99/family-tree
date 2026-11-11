@@ -4,7 +4,7 @@ import {
   type TrashBatchDetail,
   type TrashRoot,
 } from '@family-tree/shared';
-import { and, arrayOverlaps, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, arrayOverlaps, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import type { Queryable, Tx } from '../db/client.js';
 import {
   auditLog,
@@ -48,7 +48,11 @@ async function rootOf(db: Queryable, b: BatchRow, m: Map<string, string>): Promi
   if (b.rootPersonId) return { kind: 'person', name: m.get(b.rootPersonId) ?? '' };
   if (b.rootUnionId) {
     const [u] = await db.select().from(unions).where(eq(unions.id, b.rootUnionId));
-    return { kind: 'union', partners: u ? names(m, [u.partnerAId, u.partnerBId]) : [] };
+    return {
+      kind: 'union',
+      partners: u ? names(m, [u.partnerAId, u.partnerBId]) : [],
+      ...(u?.parentsUnknown ? { parentsUnknown: true } : {}),
+    };
   }
   const [l] = await db
     .select({ childId: parentChild.childId, a: unions.partnerAId, b: unions.partnerBId })
@@ -136,7 +140,11 @@ export async function trashBatchDetail(
   return {
     batch,
     people,
-    unions: us.map((u) => ({ id: u.id, partners: names(m, [u.partnerAId, u.partnerBId]) })),
+    unions: us.map((u) => ({
+      id: u.id,
+      partners: names(m, [u.partnerAId, u.partnerBId]),
+      ...(u.parentsUnknown ? { parentsUnknown: true } : {}),
+    })),
     links: ls.map((l) => ({
       id: l.id,
       child: m.get(l.childId) ?? null,
@@ -188,6 +196,26 @@ export async function restoreBatch(tx: Tx, actor: AuditActor, batchId: string) {
       .where(eq(persons.deletionBatchId, b.id))
       .returning({ id: persons.id });
     await tx.update(unions).set(clear).where(eq(unions.deletionBatchId, b.id));
+    // A link revived here may need a parents-unknown union that went into a later batch with the
+    // last live sibling (brief #11): bring it back, so the link isn't left pointing at a trashed
+    // union. The later batch keeps its other rows.
+    await tx
+      .update(unions)
+      .set(clear)
+      .where(
+        and(
+          eq(unions.treeId, treeId),
+          eq(unions.parentsUnknown, true),
+          isNotNull(unions.deletedAt),
+          inArray(
+            unions.id,
+            tx
+              .select({ id: parentChild.unionId })
+              .from(parentChild)
+              .where(eq(parentChild.deletionBatchId, b.id)),
+          ),
+        ),
+      );
     await tx.update(parentChild).set(clear).where(eq(parentChild.deletionBatchId, b.id));
   } catch (err) {
     if (isUniqueViolation(err)) throw restoreConflict();
@@ -295,13 +323,14 @@ export async function eraseBatch(tx: Tx, actor: AuditActor, batchId: string) {
     // Unions outside this batch that still hold an erased person next to someone else (for
     // example a union restored from another batch): empty that slot, or the partner FK's
     // ON DELETE CASCADE would destroy a union that may be live. A union whose only partner is
-    // erased goes with them.
+    // erased goes with them, unless it is a parents-unknown union.
     const outside = await tx
       .select({
         id: unions.id,
         a: unions.partnerAId,
         b: unions.partnerBId,
         batch: unions.deletionBatchId,
+        parentsUnknown: unions.parentsUnknown,
       })
       .from(unions)
       .where(
@@ -315,10 +344,29 @@ export async function eraseBatch(tx: Tx, actor: AuditActor, batchId: string) {
       if (u.batch === b.id) continue;
       const aGone = u.a !== null && erasedSet.has(u.a);
       const bGone = u.b !== null && erasedSet.has(u.b);
+      if (u.parentsUnknown) {
+        // Siblings with unknown parents stay together: empty every erased slot instead of letting
+        // the partner FK's ON DELETE CASCADE take the union and its links (the CHECK allows it).
+        if (aGone || bGone)
+          await tx
+            .update(unions)
+            .set({
+              ...(aGone ? { partnerAId: null, partnerAOrder: null } : {}),
+              ...(bGone ? { partnerBId: null, partnerBOrder: null } : {}),
+            })
+            .where(eq(unions.id, u.id));
+        continue;
+      }
       if (aGone && !bGone && u.b !== null)
-        await tx.update(unions).set({ partnerAId: null }).where(eq(unions.id, u.id));
+        await tx
+          .update(unions)
+          .set({ partnerAId: null, partnerAOrder: null })
+          .where(eq(unions.id, u.id));
       if (bGone && !aGone && u.a !== null)
-        await tx.update(unions).set({ partnerBId: null }).where(eq(unions.id, u.id));
+        await tx
+          .update(unions)
+          .set({ partnerBId: null, partnerBOrder: null })
+          .where(eq(unions.id, u.id));
     }
   }
 

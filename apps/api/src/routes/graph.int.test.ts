@@ -196,6 +196,35 @@ describe('GET graph', () => {
     const order = (n: string) => body.persons.find((x) => x.givenName === n)!.siblingOrder;
     expect([order('Olive'), order('Sis')]).toEqual([2, 1]);
   });
+
+  it('includes a parents-unknown union with both its links (brief #11)', async () => {
+    const { owner, treeId } = await ownerWithTree(app);
+    const [ann, ben] = await Promise.all(['Ann', 'Ben'].map((n) => addPerson(db, treeId, n)));
+    const res = await call(app, 'POST', `/api/v1/trees/${treeId}/persons/${ann!.id}/relatives`, {
+      jar: owner.jar,
+      body: { as: 'sibling', personId: ben!.id },
+    });
+    expect(res.statusCode, res.body).toBe(204);
+    const body = parse((await call(app, 'GET', g(treeId, 'mode=full'), { jar: owner.jar })).json());
+    const u = body.unions.find((x) => x.parentsUnknown);
+    expect(u).toMatchObject({
+      partnerAId: null,
+      partnerBId: null,
+      parentsUnknown: true,
+      partnerAOrder: null,
+      partnerBOrder: null,
+      childCount: 2,
+      canEdit: true,
+    });
+    expect(
+      body.links
+        .filter((l) => l.unionId === u!.id)
+        .map((l) => l.childId)
+        .sort(),
+    ).toEqual([ann!.id, ben!.id].sort());
+    // A parents-unknown union isn't a recorded parent.
+    expect(body.persons.find((p) => p.id === ann!.id)!.hasParents).toBe(false);
+  });
 });
 
 describe('GET disconnected', () => {

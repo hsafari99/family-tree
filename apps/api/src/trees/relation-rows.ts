@@ -41,4 +41,5 @@ export const unionFieldsOf = (u: UnionRow) => ({
   status: u.status,
   startDate: u.startDate,
   endDate: u.endDate,
+  parentsUnknown: u.parentsUnknown,
 });

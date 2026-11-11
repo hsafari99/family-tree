@@ -76,7 +76,10 @@ export const searchRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
       const byId = new Map(rows.persons.map((p) => [p.id, p]));
       if (!byId.has(from) || !byId.has(to)) throw notFound();
       const steps = relationshipPath(rows, from, to);
-      const people = [from, ...(steps ?? []).map((s) => s.personId)].map((id) => byId.get(id)!);
+      // Virtual steps (a parents-unknown union, brief #11) name a union, not a person.
+      const people = [from, ...(steps ?? []).filter((s) => !s.virtual).map((s) => s.personId)].map(
+        (id) => byId.get(id)!,
+      );
       const urls = await signThumbs(
         storage,
         people.map((p) => p.photoThumbKey),

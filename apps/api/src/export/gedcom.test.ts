@@ -85,6 +85,9 @@ function sample(): ExportData {
         status: 'divorced',
         startDate: exact('1972-06-01'),
         endDate: exact('1990'),
+        parentsUnknown: false,
+        partnerAOrder: null,
+        partnerBOrder: null,
       },
       {
         id: id(12),
@@ -94,6 +97,9 @@ function sample(): ExportData {
         status: 'married',
         startDate: null,
         endDate: null,
+        parentsUnknown: false,
+        partnerAOrder: null,
+        partnerBOrder: null,
       },
     ],
     parentChild: [

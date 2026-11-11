@@ -14,7 +14,7 @@ export interface LoadedExport {
 
 /**
  * The live tree in a stable order (created_at, id), with the same "live" rules as the graph: a
- * partner who isn't live is an empty slot, a union with no live partner is left out, and so are
+ * partner who isn't live is an empty slot, a union with no live partner is left out (unless it is a parents-unknown union), and so are
  * links, residences and photos of people who aren't live. Call inside one snapshot transaction
  * after the access check (decision 4).
  */
@@ -61,6 +61,9 @@ export async function loadExport(db: Queryable, treeId: string, now: Date): Prom
       status: unions.status,
       startDate: unions.startDate,
       endDate: unions.endDate,
+      parentsUnknown: unions.parentsUnknown,
+      partnerAOrder: unions.partnerAOrder,
+      partnerBOrder: unions.partnerBOrder,
     })
     .from(unions)
     .where(and(eq(unions.treeId, treeId), isNull(unions.deletedAt)))
@@ -71,7 +74,7 @@ export async function loadExport(db: Queryable, treeId: string, now: Date): Prom
       partnerAId: liveOrNull(u.partnerAId),
       partnerBId: liveOrNull(u.partnerBId),
     }))
-    .filter((u) => u.partnerAId !== null || u.partnerBId !== null);
+    .filter((u) => u.partnerAId !== null || u.partnerBId !== null || u.parentsUnknown);
   const unionIds = new Set(liveUnions.map((u) => u.id));
 
   const links = (

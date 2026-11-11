@@ -26,8 +26,8 @@ export const kinStepSchema = z.object({
   unionType: z.enum(UNION_TYPES).nullable(),
   unionStatus: z.enum(UNION_STATUSES).nullable(),
   /**
-   * Parent/child steps through a parents-unknown union (brief #11): personId is the union's id,
-   * not a person.
+   * A parent step onto a parents-unknown union (brief #11): personId is the union's id, not a
+   * person. The child step that follows it is an ordinary one.
    */
   virtual: z.boolean().optional(),
 });
@@ -72,9 +72,9 @@ function kinEdges(graph: KinGraph): Map<string, KinStep[]> {
         kind: l.kind,
         unionType: null,
         unionStatus: null,
-        virtual: true,
       };
-      add(l.childId, { move: 'parent', personId: u.id, sex: 'unknown', ...link });
+      // Only the step onto the union is virtual; the step down from it lands on a person.
+      add(l.childId, { move: 'parent', personId: u.id, sex: 'unknown', ...link, virtual: true });
       add(u.id, { move: 'child', personId: l.childId, sex: childSex, ...link });
       continue;
     }

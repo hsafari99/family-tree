@@ -513,3 +513,134 @@ describe('Trash erase and photos', () => {
     }
   });
 });
+
+describe('parents-unknown unions in deletion and Trash (brief #11)', () => {
+  const newPerson = async (jar: CookieJar, treeId: string, givenName: string, attach?: object) => {
+    const r = await call(app, 'POST', `${base(treeId)}/persons`, {
+      jar,
+      body: { person: { givenName }, ...(attach ? { attach } : {}) },
+    });
+    expect(r.statusCode, r.body).toBe(201);
+    return r.json().id as string;
+  };
+  const restore = (jar: CookieJar, treeId: string, b: string) =>
+    call(app, 'POST', `${trash(treeId, b)}/restore`, { jar });
+  const graph = async (jar: CookieJar, treeId: string) =>
+    (await call(app, 'GET', `${base(treeId)}/graph?mode=full`, { jar })).json() as {
+      unions: { id: string }[];
+      links: { unionId: string; childId: string }[];
+    };
+  const pu = async (treeId: string) =>
+    (await db.select().from(unions).where(eq(unions.treeId, treeId))).find(
+      (u) => u.parentsUnknown,
+    )!;
+  async function sibs() {
+    const { owner, treeId } = await ownerWithTree(app);
+    const ann = await newPerson(owner.jar, treeId, 'Ann');
+    const ben = await newPerson(owner.jar, treeId, 'Ben', { to: ann, as: 'sibling' });
+    const u0 = await pu(treeId);
+    const links = await db.select().from(parentChild).where(eq(parentChild.unionId, u0.id));
+    const linkOf = (id: string) => links.find((l) => l.childId === id)!.id;
+    return { owner, treeId, ann, ben, u0, linkOf };
+  }
+
+  it('deleting one sibling keeps the union; the last one takes it, and restore brings it back', async () => {
+    const { owner, treeId, ann, ben, u0 } = await sibs();
+    const b1 = await delPerson(owner.jar, treeId, ben);
+    expect((await pu(treeId)).deletedAt).toBeNull();
+    expect((await restore(owner.jar, treeId, b1)).statusCode).toBe(204);
+    const b2 = await delPerson(owner.jar, treeId, ann);
+    expect((await pu(treeId)).deletionBatchId).toBeNull(); // Ben still holds it
+    const b3 = await delPerson(owner.jar, treeId, ben);
+    expect((await pu(treeId)).deletionBatchId).toBe(b3);
+    expect((await restore(owner.jar, treeId, b3)).statusCode).toBe(204);
+    expect((await restore(owner.jar, treeId, b2)).statusCode).toBe(204);
+    const g = await graph(owner.jar, treeId);
+    expect(g.links.filter((l) => l.unionId === u0.id)).toHaveLength(2);
+  });
+
+  it('removing the last sibling link takes the union in the same batch', async () => {
+    const { owner, treeId, ann, ben, u0, linkOf } = await sibs();
+    const del = (id: string) =>
+      call(app, 'POST', `${base(treeId)}/parent-child/${id}/delete`, { jar: owner.jar });
+    const r1 = await del(linkOf(ann));
+    expect(r1.statusCode).toBe(200);
+    expect((await pu(treeId)).deletedAt).toBeNull();
+    const r2 = await del(linkOf(ben));
+    const b2 = r2.json().batchId as string;
+    const list = (await call(app, 'GET', trash(treeId), { jar: owner.jar })).json().batches as {
+      id: string;
+      unions: number;
+    }[];
+    expect(list.find((x) => x.id === b2)!.unions).toBe(1);
+    expect((await restore(owner.jar, treeId, b2)).statusCode).toBe(204);
+    expect((await restore(owner.jar, treeId, r1.json().batchId)).statusCode).toBe(204);
+    const g = await graph(owner.jar, treeId);
+    expect(g.links.filter((l) => l.unionId === u0.id)).toHaveLength(2);
+  });
+
+  it('removing the union takes both links, labels the batch, and needs every sibling in scope', async () => {
+    const { owner, treeId, ann, u0 } = await sibs();
+    const S = await userWith2fa(app, 'Sam');
+    await addMember(db, treeId, S.userId, 'viewer', owner.userId);
+    await addGrant(db, treeId, S.userId, ann, owner.userId);
+    // The grant on Ann covers Ben too (they share a branch), so scope it with a stranger instead.
+    const loner = await newPerson(owner.jar, treeId, 'Loner');
+    const T = await userWith2fa(app, 'Tia');
+    await addMember(db, treeId, T.userId, 'viewer', owner.userId);
+    await addGrant(db, treeId, T.userId, loner, owner.userId);
+    const denied = await call(app, 'POST', `${base(treeId)}/unions/${u0.id}/delete`, {
+      jar: T.jar,
+    });
+    expect(denied.statusCode).toBe(403);
+
+    const b = await delUnion(owner.jar, treeId, u0.id);
+    const [row] = await db.select().from(unions).where(eq(unions.id, u0.id));
+    expect(row!.deletionBatchId).toBe(b);
+    const links = await db.select().from(parentChild).where(eq(parentChild.unionId, u0.id));
+    expect(links.every((l) => l.deletionBatchId === b)).toBe(true);
+    const list = (await call(app, 'GET', trash(treeId), { jar: owner.jar })).json();
+    expect(list.batches[0].root).toEqual({ kind: 'union', partners: [], parentsUnknown: true });
+    const detail = (await call(app, 'GET', trash(treeId, b), { jar: owner.jar })).json();
+    expect(detail.unions[0].parentsUnknown).toBe(true);
+  });
+
+  it('erasing the only partner of an outside parents-unknown union empties the slot', async () => {
+    const { owner, treeId, ann, ben, u0 } = await sibs();
+    const pat = await newPerson(owner.jar, treeId, 'Pat', { to: ann, as: 'parent' });
+    expect((await pu(treeId)).partnerAId).toBe(pat);
+    const b = await delPerson(owner.jar, treeId, pat);
+    // Restore puts Pat back; to model "outside the batch" put Pat back in the slot by hand, as the
+    // existing erase test does through a restore of another batch.
+    await db.update(unions).set({ partnerAId: pat }).where(eq(unions.id, u0.id));
+    expect((await call(app, 'DELETE', trash(treeId, b), { jar: owner.jar })).statusCode).toBe(204);
+    const [u] = await db.select().from(unions).where(eq(unions.id, u0.id));
+    expect(u).toMatchObject({ deletedAt: null, partnerAId: null, parentsUnknown: true });
+    const g = await graph(owner.jar, treeId);
+    expect(
+      g.links
+        .filter((l) => l.unionId === u0.id)
+        .map((l) => l.childId)
+        .sort(),
+    ).toEqual([ann, ben].sort());
+  });
+
+  it('restoring a sibling revives the parents-unknown union that went with the last child', async () => {
+    const { owner, treeId, ann, ben, u0 } = await sibs();
+    const b = await delPerson(owner.jar, treeId, ben);
+    const d = await delPerson(owner.jar, treeId, ann);
+    expect((await db.select().from(unions).where(eq(unions.id, u0.id)))[0]!.deletionBatchId).toBe(
+      d,
+    );
+    expect((await restore(owner.jar, treeId, b)).statusCode).toBe(204);
+    const [row] = await db.select().from(unions).where(eq(unions.id, u0.id));
+    expect(row).toMatchObject({ deletedAt: null, deletionBatchId: null });
+    const g = await graph(owner.jar, treeId);
+    expect(g.unions.map((u) => u.id)).toContain(u0.id);
+    expect(g.links.filter((l) => l.unionId === u0.id).map((l) => l.childId)).toEqual([ben]);
+    expect((await restore(owner.jar, treeId, d)).statusCode).toBe(204);
+    expect((await graph(owner.jar, treeId)).links.filter((l) => l.unionId === u0.id)).toHaveLength(
+      2,
+    );
+  });
+});

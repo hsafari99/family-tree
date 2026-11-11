@@ -58,6 +58,28 @@ async function exportOf(jar: unknown, treeId: string) {
 }
 
 describe('GET export', () => {
+  it('writes siblings with unknown parents as a FAM with only CHIL lines (brief #11)', async () => {
+    const { owner, treeId } = await ownerWithTree(app, 'Export sibs');
+    const root = await rootOf(treeId);
+    const r = await call(app, 'POST', `/api/v1/trees/${treeId}/persons`, {
+      jar: owner.jar,
+      body: { person: { givenName: 'Sis' }, attach: { to: root, as: 'sibling' } },
+    });
+    expect(r.statusCode, r.body).toBe(201);
+    const { ged, json } = await exportOf(owner.jar, treeId);
+    expect(json.unions).toHaveLength(1);
+    expect(json.unions[0]).toMatchObject({
+      partnerAId: null,
+      partnerBId: null,
+      parentsUnknown: true,
+      partnerAOrder: null,
+      partnerBOrder: null,
+    });
+    const fam = ged.split('\r\n0 ').find((rec) => /^@\w+@ FAM/.test(rec))!;
+    expect(fam.match(/\r\n1 CHIL /g)).toHaveLength(2);
+    expect(fam).not.toMatch(/HUSB|WIFE/);
+  });
+
   it('streams a ZIP with tree.ged, tree.json and the full photos', async () => {
     const { owner, treeId } = await ownerWithTree(app, 'Export tree');
     const root = await rootOf(treeId);
@@ -280,7 +302,18 @@ describe('GET export', () => {
       ].sort(),
     );
     expect(keys(first('unions'))).toEqual(
-      ['id', 'partnerAId', 'partnerBId', 'type', 'status', 'startDate', 'endDate'].sort(),
+      [
+        'id',
+        'partnerAId',
+        'partnerBId',
+        'type',
+        'status',
+        'startDate',
+        'endDate',
+        'parentsUnknown',
+        'partnerAOrder',
+        'partnerBOrder',
+      ].sort(),
     );
     expect(keys(first('parentChild'))).toEqual(['id', 'unionId', 'childId', 'kind'].sort());
     expect(keys(first('residences'))).toEqual(

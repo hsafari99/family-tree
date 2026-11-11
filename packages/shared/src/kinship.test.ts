@@ -296,7 +296,7 @@ describe('siblings with unknown parents (brief #11)', () => {
     };
     const steps = relationshipPath(g, A, B)!;
     expect(steps.map((s) => s.move)).toEqual(['parent', 'child']);
-    expect(steps[0]!.virtual).toBe(true);
+    expect(steps.map((s) => s.virtual)).toEqual([true, undefined]);
     expect(steps[0]!.personId).toBe(U);
     expect(kinshipTerm(steps)).toBe('sister');
     expect(kinshipTerm(relationshipPath(g, B, A)!)).toBe('brother');

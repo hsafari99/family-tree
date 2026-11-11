@@ -32,7 +32,7 @@ export const relationsRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app,
       if (!live(subjectId)) throw notFound();
       if (!live(input.personId)) throw invalid('personId', 'Choose a person in this tree');
       if (input.personId === subjectId) throw invalid('personId', 'Choose someone else');
-      const ends = [...relativeEnds(graph, subjectId, input), input.personId];
+      const ends = [...relativeEnds(graph, subjectId, input, input.personId), input.personId];
       authorize(access, 'relation.add', { kind: 'relation', ends });
       await attachRelative(tx, access, graph, subjectId, input.personId, input);
     });
@@ -42,6 +42,9 @@ export const relationsRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app,
   app.patch('/api/v1/trees/:treeId/unions/:unionId', async (req, reply) => {
     const access = await loadAccess(db, idParam(req.params, 'treeId'), req.user!.id);
     const u = await requireLiveUnion(db, access.treeId, idParam(req.params, 'unionId'));
+    if (u.parentsUnknown && u.partners.length === 0) {
+      throw invalid('type', 'Unknown parents have no relationship details to edit');
+    }
     authorize(access, 'relation.edit', { kind: 'relation', ends: u.partners });
     const input = parseBody(updateUnionSchema, req.body);
     // Drop absent keys first: spreading `undefined` over the row would read as "cleared".

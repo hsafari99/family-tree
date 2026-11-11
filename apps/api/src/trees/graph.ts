@@ -5,7 +5,8 @@ import { parentChild, persons, unions } from '../db/schema.js';
 
 /**
  * The tree's live skeleton (ids only), for the planners in packages/shared. A partner that isn't
- * live reads as an empty slot; a union with no live partner, and links whose union or child
+ * live reads as an empty slot; a union with no live partner (unless it is a parents-unknown union,
+ * brief #11), and links whose union or child
  * isn't live, are left out. Fine for family-sized trees (one row per person/union/link).
  */
 export async function loadLiveGraph(db: Queryable, treeId: string): Promise<LiveGraph> {
@@ -16,7 +17,12 @@ export async function loadLiveGraph(db: Queryable, treeId: string): Promise<Live
   const live = new Set(people.map((p) => p.id));
   const liveOrNull = (id: string | null) => (id !== null && live.has(id) ? id : null);
   const rawUnions = await db
-    .select({ id: unions.id, partnerAId: unions.partnerAId, partnerBId: unions.partnerBId })
+    .select({
+      id: unions.id,
+      partnerAId: unions.partnerAId,
+      partnerBId: unions.partnerBId,
+      parentsUnknown: unions.parentsUnknown,
+    })
     .from(unions)
     .where(and(eq(unions.treeId, treeId), isNull(unions.deletedAt)));
   const liveUnions = rawUnions
@@ -24,8 +30,9 @@ export async function loadLiveGraph(db: Queryable, treeId: string): Promise<Live
       id: u.id,
       partnerAId: liveOrNull(u.partnerAId),
       partnerBId: liveOrNull(u.partnerBId),
+      parentsUnknown: u.parentsUnknown,
     }))
-    .filter((u) => u.partnerAId !== null || u.partnerBId !== null);
+    .filter((u) => u.partnerAId !== null || u.partnerBId !== null || u.parentsUnknown);
   const unionIds = new Set(liveUnions.map((u) => u.id));
   const links = await db
     .select({ id: parentChild.id, unionId: parentChild.unionId, childId: parentChild.childId })

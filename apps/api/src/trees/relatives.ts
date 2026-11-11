@@ -1,5 +1,7 @@
 import {
+  ancestorsOf,
   type ChildKind,
+  descendantsOf,
   type GraphUnion,
   type LiveGraph,
   partnersOf,
@@ -25,7 +27,7 @@ const childrenOf = (graph: LiveGraph, unionId: string) =>
   graph.parentChild.filter((l) => l.unionId === unionId).map((l) => l.childId);
 
 /** The existing union the new link uses (decision 11), or null when a new union is needed. */
-function chooseUnion(graph: LiveGraph, subjectId: string, spec: Spec): GraphUnion | null {
+export function targetUnion(graph: LiveGraph, subjectId: string, spec: Spec): GraphUnion | null {
   switch (spec.as) {
     case 'partner':
       return null;
@@ -45,7 +47,9 @@ function chooseUnion(graph: LiveGraph, subjectId: string, spec: Spec): GraphUnio
       );
     }
     case 'parent': {
-      const open = parentUnionsOf(graph, subjectId).filter((u) => partnersOf(u).length === 1);
+      // Open: a slot is free, including a parents-unknown union with none filled (brief #11).
+      const open = parentUnionsOf(graph, subjectId).filter((u) => partnersOf(u).length < 2);
+      if (spec.unionId === null) return null; // "start a new pair of parents" (brief #9)
       if (spec.unionId) {
         const u = open.find((x) => x.id === spec.unionId);
         if (!u) throw invalid('unionId', 'Choose parents with a missing partner');
@@ -55,7 +59,7 @@ function chooseUnion(graph: LiveGraph, subjectId: string, spec: Spec): GraphUnio
     }
     case 'sibling': {
       const all = parentUnionsOf(graph, subjectId);
-      if (all.length === 0) throw invalid('as', 'Add a parent first');
+      if (all.length === 0) return null; // a new parents-unknown union holds both (brief #11)
       if (spec.unionId) {
         const u = all.find((x) => x.id === spec.unionId);
         if (!u) throw invalid('unionId', 'Choose one of their sets of parents');
@@ -67,12 +71,34 @@ function chooseUnion(graph: LiveGraph, subjectId: string, spec: Spec): GraphUnio
   }
 }
 
-/** The people a relation of this shape connects: the can() ends for person.add / relation.add. */
-export function relativeEnds(graph: LiveGraph, subjectId: string, spec: Spec): string[] {
+/** sibling, when the subject has no parents: the relative's only parent union, or null when they have none. */
+export function siblingJoinUnion(graph: LiveGraph, relativeId: string): GraphUnion | null {
+  const theirs = parentUnionsOf(graph, relativeId);
+  if (theirs.length > 1) {
+    throw invalid(
+      'personId',
+      'They have more than one set of parents; add the sibling from their page and choose which',
+    );
+  }
+  return theirs[0] ?? null;
+}
+
+/**
+ * The people a relation of this shape connects: the can() ends for person.add / relation.add.
+ * `relativeId` is the existing relative, if any: a parentless subject joins their parents.
+ */
+export function relativeEnds(
+  graph: LiveGraph,
+  subjectId: string,
+  spec: Spec,
+  relativeId?: string,
+): string[] {
   if (!graph.persons.some((p) => p.id === subjectId)) {
     throw invalid('to', 'Choose a person in this tree');
   }
-  const u = chooseUnion(graph, subjectId, spec);
+  const u =
+    targetUnion(graph, subjectId, spec) ??
+    (spec.as === 'sibling' && relativeId ? siblingJoinUnion(graph, relativeId) : null);
   // A parent filling a slot also becomes a parent of the union's other children.
   const kids = u && spec.as === 'parent' ? childrenOf(graph, u.id) : [];
   return [...new Set([subjectId, ...(u ? partnersOf(u) : []), ...kids])];
@@ -90,7 +116,7 @@ export async function attachRelative(
   relativeId: string,
   spec: Spec,
 ): Promise<void> {
-  const u = chooseUnion(graph, subjectId, spec);
+  const u = targetUnion(graph, subjectId, spec);
   const noCycle = (parents: string[], children: string[]) => {
     if (wouldCycle(graph, parents, children)) {
       throw invalid('personId', 'That would make someone their own ancestor');
@@ -124,12 +150,16 @@ export async function attachRelative(
     case 'parent': {
       if (u) {
         if (partnersOf(u).includes(relativeId)) throw conflict('They are already related this way');
-        const other = partnersOf(u)[0]!;
-        const pair = [relativeId, other];
-        if (
-          graph.unions.some((x) => x.id !== u.id && pair.every((id) => partnersOf(x).includes(id)))
-        ) {
-          throw conflict('They are already partners');
+        const other = partnersOf(u)[0];
+        if (other !== undefined) {
+          const pair = [relativeId, other];
+          if (
+            graph.unions.some(
+              (x) => x.id !== u.id && pair.every((id) => partnersOf(x).includes(id)),
+            )
+          ) {
+            throw conflict('They are already partners');
+          }
         }
         const kids = childrenOf(graph, u.id);
         noCycle([relativeId], kids);
@@ -142,11 +172,64 @@ export async function attachRelative(
       return;
     }
     case 'sibling': {
-      const union = u!; // chooseUnion throws when there is no parent union
-      noCycle(partnersOf(union), [relativeId]);
+      // A sibling of any child of the union can't be that child's ancestor or descendant. This is
+      // the whole check for an empty parents-unknown union, where noCycle(partnersOf(u), …) checks
+      // nothing.
+      const notLineal = (kids: readonly string[], id: string) => {
+        if (kids.some((c) => ancestorsOf(graph, c).has(id) || descendantsOf(graph, c).has(id))) {
+          throw invalid('personId', 'A parent or child can’t also be a sibling');
+        }
+      };
+      if (u) {
+        const kids = childrenOf(graph, u.id);
+        if (kids.includes(relativeId)) throw conflict('They are already related this way');
+        notLineal(kids, relativeId);
+        noCycle(partnersOf(u), [relativeId]);
+        await createLink(tx, actor, u, relativeId, spec.kind);
+        return;
+      }
+      // The subject has no parents. If the relative has one set, the subject joins it rather than
+      // starting a second, parents-unknown union beside it.
+      const join = siblingJoinUnion(graph, relativeId);
+      if (join) {
+        notLineal(childrenOf(graph, join.id), subjectId);
+        noCycle(partnersOf(join), [subjectId]);
+        await createLink(tx, actor, join, subjectId, 'biological');
+        return;
+      }
+      notLineal([subjectId], relativeId);
+      const union = await createParentsUnknownUnion(tx, actor, [subjectId, relativeId]);
+      await createLink(tx, actor, union, subjectId, 'biological');
       await createLink(tx, actor, union, relativeId, spec.kind);
     }
   }
+}
+
+/** A union with no partners that holds siblings whose parents aren't recorded (brief #11). */
+async function createParentsUnknownUnion(
+  tx: Tx,
+  actor: AuditActor,
+  childIds: string[],
+): Promise<GraphUnion> {
+  const [row] = await tx
+    .insert(unions)
+    .values({
+      treeId: actor.treeId,
+      partnerAId: null,
+      partnerBId: null,
+      parentsUnknown: true,
+      type: 'partnership',
+      status: 'partners',
+    })
+    .returning();
+  await audit(tx, actor, {
+    action: 'union.create',
+    entityType: 'union',
+    entityId: row!.id,
+    personIds: childIds, // so it shows in the siblings' History
+    after: unionFieldsOf(row!),
+  });
+  return { id: row!.id, partnerAId: null, partnerBId: null, parentsUnknown: true };
 }
 
 async function createUnion(
@@ -204,7 +287,12 @@ async function fillSlot(
   const slot = u.partnerAId === null ? 'partnerAId' : 'partnerBId';
   const [row] = await tx
     .update(unions)
-    .set(slot === 'partnerAId' ? { partnerAId: personId } : { partnerBId: personId })
+    // A newly filled slot starts with no saved union order (brief #16).
+    .set(
+      slot === 'partnerAId'
+        ? { partnerAId: personId, partnerAOrder: null }
+        : { partnerBId: personId, partnerBOrder: null },
+    )
     .where(
       and(
         eq(unions.treeId, actor.treeId),

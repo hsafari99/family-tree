@@ -7,6 +7,7 @@ import {
   type ParsedGraphQuery,
   partnersOf,
   type TreeGraph,
+  unionEnds,
   visibleRelations,
   withHiddenRelatives,
 } from '@family-tree/shared';
@@ -60,9 +61,16 @@ export function buildTreeGraph(rows: GraphRows, access: Access, q: ParsedGraphQu
 
   const { unionIds, linkIds } = visibleRelations(rows, ids);
   const hidden = withHiddenRelatives(kin, ids);
-  const hasParents = new Set(rows.parentChild.map((l) => l.childId));
-  const childCount = new Map<string, number>();
-  for (const l of rows.parentChild) childCount.set(l.unionId, (childCount.get(l.unionId) ?? 0) + 1);
+  const unionById = new Map(rows.unions.map((u) => [u.id, u]));
+  const kidsOf = new Map<string, string[]>();
+  for (const l of rows.parentChild)
+    kidsOf.set(l.unionId, [...(kidsOf.get(l.unionId) ?? []), l.childId]);
+  // Has a recorded parent: a link to a union with at least one partner (brief #11).
+  const hasParents = new Set(
+    rows.parentChild
+      .filter((l) => partnersOf(unionById.get(l.unionId)!).length > 0)
+      .map((l) => l.childId),
+  );
 
   return {
     mode: q.mode,
@@ -84,8 +92,11 @@ export function buildTreeGraph(rows: GraphRows, access: Access, q: ParsedGraphQu
       .filter((u) => unionIds.has(u.id))
       .map((u) => ({
         ...u,
-        childCount: childCount.get(u.id) ?? 0,
-        canEdit: can(access, 'relation.edit', { kind: 'relation', ends: partnersOf(u) }),
+        childCount: kidsOf.get(u.id)?.length ?? 0,
+        canEdit: can(access, 'relation.edit', {
+          kind: 'relation',
+          ends: unionEnds(u, kidsOf.get(u.id) ?? []),
+        }),
       })),
     links: rows.parentChild.filter((l) => linkIds.has(l.id)),
   };

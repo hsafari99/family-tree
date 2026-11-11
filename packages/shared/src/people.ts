@@ -338,7 +338,12 @@ export const historySchema = z.object({ entries: z.array(historyEntrySchema) });
 
 export const trashRootSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('person'), name: z.string() }),
-  z.object({ kind: z.literal('union'), partners: z.array(z.string()) }),
+  z.object({
+    kind: z.literal('union'),
+    partners: z.array(z.string()),
+    /** Siblings with unknown parents (brief #11). */
+    parentsUnknown: z.boolean().optional(),
+  }),
   z.object({ kind: z.literal('link'), child: z.string().nullable(), parents: z.array(z.string()) }),
 ]);
 export type TrashRoot = z.infer<typeof trashRootSchema>;
@@ -359,7 +364,13 @@ export const trashListSchema = z.object({ batches: z.array(trashBatchSchema) });
 export const trashBatchDetailSchema = z.object({
   batch: trashBatchSchema,
   people: z.array(personSummarySchema),
-  unions: z.array(z.object({ id: z.uuid(), partners: z.array(z.string()) })),
+  unions: z.array(
+    z.object({
+      id: z.uuid(),
+      partners: z.array(z.string()),
+      parentsUnknown: z.boolean().optional(),
+    }),
+  ),
   links: z.array(
     z.object({ id: z.uuid(), child: z.string().nullable(), parents: z.array(z.string()) }),
   ),

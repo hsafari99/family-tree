@@ -24,6 +24,9 @@ export type GraphUnionRow = Pick<GraphUnionView, 'id' | 'partnerAId' | 'partnerB
   status: UnionStatus;
   startDate: FuzzyDate | null;
   endDate: FuzzyDate | null;
+  parentsUnknown: boolean;
+  partnerAOrder: number | null;
+  partnerBOrder: number | null;
 };
 export type GraphLinkRow = Pick<GraphLinkView, 'id' | 'unionId' | 'childId'> & { kind: ChildKind };
 /** A LiveGraph (structurally) with the columns the canvas shows. */
@@ -36,7 +39,7 @@ export interface GraphRows {
 /**
  * The tree's live people, unions and links in one snapshot (decision 6). Same liveness rules as
  * loadLiveGraph: a partner that isn't live is an empty slot, a union without a live partner is
- * dropped, and so are links whose union or child isn't live.
+ * dropped (unless it is a parents-unknown union, brief #11), and so are links whose union or child isn't live.
  */
 export function loadGraphRows(db: Db, treeId: string): Promise<GraphRows> {
   return db.transaction(
@@ -62,6 +65,9 @@ export function loadGraphRows(db: Db, treeId: string): Promise<GraphRows> {
           status: unions.status,
           startDate: unions.startDate,
           endDate: unions.endDate,
+          parentsUnknown: unions.parentsUnknown,
+          partnerAOrder: unions.partnerAOrder,
+          partnerBOrder: unions.partnerBOrder,
         })
         .from(unions)
         .where(and(eq(unions.treeId, treeId), isNull(unions.deletedAt)));
@@ -71,7 +77,7 @@ export function loadGraphRows(db: Db, treeId: string): Promise<GraphRows> {
           partnerAId: liveOrNull(u.partnerAId),
           partnerBId: liveOrNull(u.partnerBId),
         }))
-        .filter((u) => u.partnerAId !== null || u.partnerBId !== null);
+        .filter((u) => u.partnerAId !== null || u.partnerBId !== null || u.parentsUnknown);
       const unionIds = new Set(liveUnions.map((u) => u.id));
       const links = await tx
         .select({

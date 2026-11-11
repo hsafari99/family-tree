@@ -72,6 +72,7 @@ describe('loadLiveGraph', () => {
       id: f.u1.id,
       partnerAId: f.a.id,
       partnerBId: null,
+      parentsUnknown: false,
     });
   });
 

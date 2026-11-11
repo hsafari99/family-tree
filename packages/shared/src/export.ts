@@ -53,6 +53,11 @@ export const exportDataSchema = z.strictObject({
       status: z.enum(UNION_STATUSES),
       startDate: date,
       endDate: date,
+      /** Siblings whose parents are unknown: no partners on purpose (brief #11). */
+      parentsUnknown: z.boolean(),
+      /** Each partner's saved position for this union among their partners (brief #16). */
+      partnerAOrder: z.number().int().nullable(),
+      partnerBOrder: z.number().int().nullable(),
     }),
   ),
   parentChild: z.array(

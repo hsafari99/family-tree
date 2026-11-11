@@ -78,7 +78,7 @@ export type RelationshipPerson = z.infer<typeof relationshipPersonSchema>;
 export const relationshipSchema = z.object({
   /** [] for the same person, null when not connected. */
   steps: z.array(kinStepSchema).nullable(),
-  /** `from`, then each step's person, in path order. */
+  /** `from`, then each non-virtual step's person, in path order (virtual steps name a union). */
   persons: z.array(relationshipPersonSchema),
 });
 export type Relationship = z.infer<typeof relationshipSchema>;

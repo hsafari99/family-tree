@@ -224,6 +224,23 @@ describe('GET relationship', () => {
     expect(body.persons).toHaveLength(1);
   });
 
+  it('words siblings with unknown parents, listing only the two people (brief #11)', async () => {
+    const { owner, treeId } = await ownerWithTree(app);
+    const root = await rootOf(treeId);
+    const res0 = await call(app, 'POST', `/api/v1/trees/${treeId}/persons`, {
+      jar: owner.jar,
+      body: { person: { givenName: 'Sis', sex: 'female' }, attach: { to: root, as: 'sibling' } },
+    });
+    expect(res0.statusCode, res0.body).toBe(201);
+    const sis = res0.json().id as string;
+    const res = await call(app, 'GET', rel(treeId, root, sis), { jar: owner.jar });
+    expect(res.statusCode).toBe(200);
+    const body = relationshipSchema.parse(res.json());
+    expect(body.steps!.map((x) => x.virtual)).toEqual([true, undefined]);
+    expect(kinshipTerm(body.steps!)).toBe('sister');
+    expect(body.persons.map((p) => p.id)).toEqual([root, sis]);
+  });
+
   it('404s for deleted or foreign people, 400s for malformed ids, 200 for viewers', async () => {
     const { owner, treeId, id } = await setup();
     const leo = await id('Leo');

@@ -68,6 +68,7 @@ async function load(graph: (typeof BRANCH_CASES)[number]['graph']) {
         treeId,
         partnerAId: u.partnerAId === null ? null : pid.get(u.partnerAId)!,
         partnerBId: u.partnerBId === null ? null : pid.get(u.partnerBId)!,
+        parentsUnknown: u.parentsUnknown ?? false,
       })
       .returning();
     uid.set(u.id, row!.id);

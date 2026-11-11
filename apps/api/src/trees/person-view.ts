@@ -1,4 +1,10 @@
-import { compareSiblings, type PersonSummary, type PersonView } from '@family-tree/shared';
+import {
+  compareSiblings,
+  type FuzzyDate,
+  type PersonSummary,
+  type PersonView,
+  sortYear,
+} from '@family-tree/shared';
 import { and, asc, eq, isNull } from 'drizzle-orm';
 import type { Queryable } from '../db/client.js';
 import { parentChild, persons, residences, unions, users } from '../db/schema.js';
@@ -8,6 +14,32 @@ import type { ObjectStore } from '../storage/objects.js';
 import { can } from '../permissions/can.js';
 import type { Access } from './access.js';
 import { isLivePerson, summaryColumns, toPersonDetail } from './people.js';
+
+type OrderedUnion = {
+  id: string;
+  partnerAId: string | null;
+  partnerAOrder: number | null;
+  partnerBOrder: number | null;
+  startDate: FuzzyDate | null;
+  createdAt?: Date;
+};
+/**
+ * A person's unions in their own order (brief #16): their slot's saved order (nulls last), then
+ * start year (undated last), then creation, then id. `Infinity - Infinity` is NaN, which is falsy, so two nulls
+ * fall through to the next key.
+ */
+export const byOwnOrder = (personId: string) => (x: OrderedUnion, y: OrderedUnion) => {
+  const own = (u: OrderedUnion) =>
+    (u.partnerAId === personId ? u.partnerAOrder : u.partnerBOrder) ?? Infinity;
+  const year = (u: OrderedUnion) => (u.startDate ? sortYear(u.startDate) : Infinity);
+  const made = (u: OrderedUnion) => u.createdAt?.getTime() ?? 0;
+  return (
+    own(x) - own(y) ||
+    year(x) - year(y) ||
+    made(x) - made(y) ||
+    (x.id < y.id ? -1 : x.id > y.id ? 1 : 0)
+  );
+};
 
 /** Everything the person panel shows. Relations only use live unions, links and people. */
 export async function loadPersonView(
@@ -65,6 +97,10 @@ export async function loadPersonView(
       status: unions.status,
       startDate: unions.startDate,
       endDate: unions.endDate,
+      parentsUnknown: unions.parentsUnknown,
+      partnerAOrder: unions.partnerAOrder,
+      partnerBOrder: unions.partnerBOrder,
+      createdAt: unions.createdAt,
     })
     .from(unions)
     .where(and(eq(unions.treeId, treeId), isNull(unions.deletedAt)));
@@ -103,6 +139,7 @@ export async function loadPersonView(
     .map((l) => ({ unionId: l.unionId, kind: l.kind, person: people.get(l.childId)! }));
   const own = liveUnions
     .filter((u) => u.partnerAId === personId || u.partnerBId === personId)
+    .sort(byOwnOrder(personId))
     .map((u) => ({
       id: u.id,
       type: u.type,

@@ -6,7 +6,10 @@ import type { Queryable } from '../db/client.js';
  * packages/shared; both are tested against BRANCH_CASES.
  *  1–3: the anchor's ancestors and all their descendants, via live parent_child links of live
  *       unions between live people (any kind: biological, adoptive, step, foster);
- *  4:   partners (in live unions) of those people, unless the partner has parents recorded;
+ *       A parents-unknown union is a virtual parent of its children, so siblings with unknown
+ *       parents share a branch; `core` joins persons, so the union ids drop out there;
+ *  4:   partners (in live unions) of those people, unless the partner has parents recorded
+ *       (recorded siblings count: that partner is on their own side);
  *  5:   live people the steward created.
  * UNION (not UNION ALL) in the recursive parts makes cycles in bad data terminate.
  */
@@ -21,6 +24,13 @@ export function branchQuery(treeId: string, anchorId: string, stewardUserId: str
         join persons cp on cp.id = pc.child_id and cp.deleted_at is null
         join persons pp on pp.id = p.parent_id and pp.deleted_at is null
         where pc.tree_id = ${treeId} and pc.deleted_at is null and p.parent_id is not null
+        union all
+        -- A parents-unknown union is its children's shared (virtual) parent (brief #11).
+        select pc.child_id, u.id
+        from parent_child pc
+        join unions u on u.id = pc.union_id and u.deleted_at is null and u.parents_unknown
+        join persons cp on cp.id = pc.child_id and cp.deleted_at is null
+        where pc.tree_id = ${treeId} and pc.deleted_at is null
       ),
       ancestors(id) as (
         select ${anchorId}::uuid

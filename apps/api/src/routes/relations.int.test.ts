@@ -110,11 +110,12 @@ describe('adding relatives', () => {
   it('adds siblings', async () => {
     const { owner, treeId, root } = await setup();
     const orphan = await newPerson(owner.jar, treeId, 'Orphan');
+    // No parents: they share a new parents-unknown union (brief #11).
     const noParent = await call(app, 'POST', `/api/v1/trees/${treeId}/persons`, {
       jar: owner.jar,
       body: { person: { givenName: 'Sib' }, attach: { to: orphan, as: 'sibling' } },
     });
-    expect(noParent.statusCode).toBe(400);
+    expect(noParent.statusCode).toBe(201);
 
     const kid = await newPerson(owner.jar, treeId, 'Kid', { to: root, as: 'child' });
     await newPerson(owner.jar, treeId, 'Sib', { to: kid, as: 'sibling' });
@@ -399,5 +400,132 @@ describe('outsiders and stewards', () => {
       body: { as: 'parent', personId: newParent.id },
     });
     expect(via.statusCode).toBe(204);
+  });
+});
+
+describe('siblings with unknown parents (brief #11)', () => {
+  const allUnions = (treeId: string) => db.select().from(unions).where(eq(unions.treeId, treeId));
+  const allLinks = (treeId: string) =>
+    db.select().from(parentChild).where(eq(parentChild.treeId, treeId));
+
+  it('adds a sibling to someone with no parents through one parents-unknown union', async () => {
+    const { owner, treeId, root } = await setup();
+    const sis = await newPerson(owner.jar, treeId, 'Sis', { to: root, as: 'sibling' });
+    const rows = await allUnions(treeId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ partnerAId: null, partnerBId: null, parentsUnknown: true });
+    const v = await view(owner.jar, treeId, root);
+    expect(v.relations.siblings.map((s) => s.person.id)).toEqual([sis]);
+    expect(v.relations.parents).toHaveLength(1);
+    expect(v.relations.parents[0]!.parents).toEqual([]);
+    const actions = (await auditRows(db, treeId)).map((r) => r.action);
+    expect(actions.filter((a) => a === 'union.create')).toHaveLength(1);
+    expect(actions.filter((a) => a === 'link.create')).toHaveLength(2);
+    const un = (await auditRows(db, treeId)).find((r) => r.action === 'union.create')!;
+    expect([...un.personIds].sort()).toEqual([root, sis].sort());
+  });
+
+  it('a second sibling joins the same union', async () => {
+    const { owner, treeId, root } = await setup();
+    await newPerson(owner.jar, treeId, 'Sis', { to: root, as: 'sibling' });
+    await newPerson(owner.jar, treeId, 'Bro', { to: root, as: 'sibling' });
+    expect(await allUnions(treeId)).toHaveLength(1);
+    expect(await allLinks(treeId)).toHaveLength(3);
+  });
+
+  it('a parent added to one of them becomes everyone’s parent', async () => {
+    const { owner, treeId, root } = await setup();
+    const sis = await newPerson(owner.jar, treeId, 'Sis', { to: root, as: 'sibling' });
+    const mum = await newPerson(owner.jar, treeId, 'Mum', { to: root, as: 'parent' });
+    const [u] = await allUnions(treeId).then((r) => r.filter((x) => x.parentsUnknown));
+    expect(u).toMatchObject({ partnerAId: mum, partnerBId: null });
+    const v = await view(owner.jar, treeId, sis);
+    expect(v.relations.parents.map((p) => p.parents.map((x) => x.id))).toEqual([[mum]]);
+  });
+
+  it('refuses a parent or child as a sibling', async () => {
+    const { owner, treeId, root } = await setup();
+    const kid = await newPerson(owner.jar, treeId, 'Kid', { to: root, as: 'child' });
+    const res = await call(app, 'POST', relatives(treeId, root), {
+      jar: owner.jar,
+      body: { as: 'sibling', personId: kid },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('VALIDATION');
+  });
+
+  it('refuses a descendant of a sibling already in an empty parents-unknown union', async () => {
+    const { owner, treeId, root } = await setup();
+    const sis = await newPerson(owner.jar, treeId, 'Sis', { to: root, as: 'sibling' });
+    const kid = await newPerson(owner.jar, treeId, 'Kid', { to: sis, as: 'child' });
+    const before = await allLinks(treeId);
+    const res = await call(app, 'POST', relatives(treeId, root), {
+      jar: owner.jar,
+      body: { as: 'sibling', personId: kid },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.details.personId).toBeDefined();
+    expect(await allLinks(treeId)).toHaveLength(before.length);
+    const again = await call(app, 'POST', relatives(treeId, root), {
+      jar: owner.jar,
+      body: { as: 'sibling', personId: sis },
+    });
+    expect(again.statusCode).toBe(409);
+  });
+
+  it('a subject with no parents joins the relative’s only parent union', async () => {
+    const { owner, treeId } = await setup();
+    const ben = await newPerson(owner.jar, treeId, 'Ben');
+    const mum = await newPerson(owner.jar, treeId, 'Mum', { to: ben, as: 'parent' });
+    const loner = await newPerson(owner.jar, treeId, 'Loner');
+    const before = await allUnions(treeId);
+    const res = await call(app, 'POST', relatives(treeId, loner), {
+      jar: owner.jar,
+      body: { as: 'sibling', personId: ben },
+    });
+    expect(res.statusCode, res.body).toBe(204);
+    expect(await allUnions(treeId)).toHaveLength(before.length);
+    const v = await view(owner.jar, treeId, loner);
+    expect(v.relations.parents.map((p) => p.parents.map((x) => x.id))).toEqual([[mum]]);
+    expect(v.relations.siblings.map((s) => s.person.id)).toEqual([ben]);
+  });
+
+  it('refuses to join the relative’s parents when that would make a cycle', async () => {
+    const { owner, treeId } = await setup();
+    const gran = await newPerson(owner.jar, treeId, 'Gran');
+    const mum = await newPerson(owner.jar, treeId, 'Mum', { to: gran, as: 'child' });
+    const ben = await newPerson(owner.jar, treeId, 'Ben', { to: mum, as: 'child' });
+    const res = await call(app, 'POST', relatives(treeId, gran), {
+      jar: owner.jar,
+      body: { as: 'sibling', personId: ben },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('refuses to PATCH a parents-unknown union', async () => {
+    const { owner, treeId, root } = await setup();
+    await newPerson(owner.jar, treeId, 'Sis', { to: root, as: 'sibling' });
+    const [u] = await allUnions(treeId);
+    const res = await call(app, 'PATCH', `/api/v1/trees/${treeId}/unions/${u!.id}`, {
+      jar: owner.jar,
+      body: { status: 'divorced' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.details.type).toBeDefined();
+  });
+
+  it('a steward with one sibling in scope may add another sibling', async () => {
+    const { owner, treeId } = await setup();
+    const ann = await addPerson(db, treeId, 'Ann');
+    const steward = await userWith2fa(app, 'Sam');
+    await addMember(db, treeId, steward.userId, 'viewer', owner.userId);
+    await addGrant(db, treeId, steward.userId, ann.id, owner.userId);
+    const res = await call(app, 'POST', `/api/v1/trees/${treeId}/persons`, {
+      jar: steward.jar,
+      body: { person: { givenName: 'Ben' }, attach: { to: ann.id, as: 'sibling' } },
+    });
+    expect(res.statusCode, res.body).toBe(201);
+    const v = await view(owner.jar, treeId, ann.id);
+    expect(v.relations.siblings.map((s) => s.person.givenName)).toEqual(['Ben']);
   });
 });
