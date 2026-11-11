@@ -5,6 +5,7 @@ import { Page } from '../components/Page';
 import { HealthStatus } from '../HealthStatus';
 import { MyTrees } from './MyTrees';
 
+/** Home: the signed-in user's trees. RequireAuth sends everyone else to sign in. */
 export function HomePage() {
   const { user, loadError, signOut } = useAuth();
   const [error, setError] = useState<string | null>(null);
@@ -25,9 +26,7 @@ export function HomePage() {
           Can’t reach the server right now
         </p>
       )}
-      {user === 'loading' ? (
-        <p>Loading…</p>
-      ) : user ? (
+      {user && user !== 'loading' && (
         <>
           <p>Signed in as {user.name}</p>
           <div className="actions">
@@ -39,11 +38,6 @@ export function HomePage() {
           <h2>Your trees</h2>
           <MyTrees />
         </>
-      ) : (
-        <div className="actions">
-          <Link to="/sign-in">Sign in</Link>
-          <Link to="/sign-up">Create an account</Link>
-        </div>
       )}
       {error && (
         <p role="alert" className="error">

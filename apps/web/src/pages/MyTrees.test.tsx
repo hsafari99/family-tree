@@ -72,12 +72,11 @@ describe('MyTrees', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(MESSAGES.notFound);
   });
 
-  it('signed out, shows Sign in and Create an account and no trees', async () => {
+  it('signed out, goes to sign in and lists no trees', async () => {
     const trees = new FakeTreesApi();
     trees.addTree({ name: 'Hale family' });
     renderAt('/', { trees });
-    expect(await screen.findByRole('link', { name: 'Sign in' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Create an account' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
     expect(screen.queryByText('Hale family')).not.toBeInTheDocument();
     expect(trees.callsTo('listTrees')).toHaveLength(0);
   });

@@ -129,3 +129,19 @@ test('dates with a calendar and a precision, and a death place on a living perso
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(details).toContainText('March 2001');
 });
+
+test('home sends a signed-out visitor to sign in, and shows a signed-in user their trees', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await expect(page).toHaveURL(/\/sign-in$/);
+  await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+  // ?next= still brings a visitor back to the page they asked for.
+  await page.goto('/account');
+  await expect(page).toHaveURL(/\/sign-in\?next=%2Faccount$/);
+
+  await signUpViaUi(page, 'Home Visitor');
+  await page.goto('/');
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole('heading', { name: 'Your trees' })).toBeVisible();
+});

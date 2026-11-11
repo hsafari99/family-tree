@@ -133,11 +133,12 @@ describe('AuthProvider error handling', () => {
     expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
   });
 
-  it('home shows a notice when the server cannot be reached', async () => {
+  it('when the server cannot be reached, home goes to sign in, which says so', async () => {
     const api = new FakeAuthApi();
     api.failNext('getMe', { code: 'NETWORK', message: MESSAGES.network });
     renderAt('/', { auth: api });
-    expect(await screen.findByText('Can’t reach the server right now')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
+    expect(screen.getByText('Can’t reach the server right now')).toBeInTheDocument();
   });
 });
 
@@ -163,6 +164,28 @@ describe('RequireAuth', () => {
     expect(
       await screen.findByText(`at:/sign-in?next=${encodeURIComponent('/account?tab=2fa')}`),
     ).toBeInTheDocument();
+    expect(screen.queryByText('secret')).not.toBeInTheDocument();
+  });
+
+  it('sends a signed-out visitor from home to plain sign-in (home is the default next)', async () => {
+    render(
+      <AuthProvider api={new FakeAuthApi()}>
+        <MemoryRouter initialEntries={['/']}>
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <RequireAuth>
+                  <p>secret</p>
+                </RequireAuth>
+              }
+            />
+            <Route path="/sign-in" element={<ShowLocation />} />
+          </Routes>
+        </MemoryRouter>
+      </AuthProvider>,
+    );
+    expect(await screen.findByText('at:/sign-in')).toBeInTheDocument();
     expect(screen.queryByText('secret')).not.toBeInTheDocument();
   });
 
@@ -208,23 +231,27 @@ describe('routes', () => {
     expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeInTheDocument();
   });
 
-  it('home shows sign-in and sign-up links when signed out', async () => {
+  it('home sends a signed-out visitor to sign in, with no flash of the home page', async () => {
     renderAt('/');
-    expect(await screen.findByRole('link', { name: 'Sign in' })).toHaveAttribute(
-      'href',
-      '/sign-in',
-    );
+    expect(screen.getByText('Loading…')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
+    expect(screen.queryByText('Your trees')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Create an account' })).toHaveAttribute(
       'href',
       '/sign-up',
     );
-    expect(await screen.findByText('All systems operational')).toBeInTheDocument();
   });
 
-  it('home greets a signed-in user and signs out', async () => {
+  it('home greets a signed-in user and signs out to sign in', async () => {
     renderAt('/', { auth: signedInApi() });
     expect(await screen.findByText('Signed in as Ada')).toBeInTheDocument();
+    expect(await screen.findByText('All systems operational')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
-    expect(await screen.findByRole('link', { name: 'Sign in' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
+  });
+
+  it('sign-in with ?next= still goes back there once signed in', async () => {
+    renderAt(`/sign-in?next=${encodeURIComponent('/account')}`, { auth: signedInApi() });
+    expect(await screen.findByRole('heading', { name: 'Account' })).toBeInTheDocument();
   });
 });

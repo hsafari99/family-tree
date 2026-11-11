@@ -9,7 +9,7 @@ import { GoogleSignIn } from '../components/GoogleSignIn';
 import { Page } from '../components/Page';
 
 export function SignInPage() {
-  const { api, user, refresh } = useAuth();
+  const { api, user, loadError, refresh } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const next = safeNext(params.get('next'));
@@ -48,6 +48,12 @@ export function SignInPage() {
 
   return (
     <Page title="Sign in">
+      {/* A first load that failed lands here (as signed out): say why. */}
+      {loadError && (
+        <p role="status" className="notice">
+          Can’t reach the server right now
+        </p>
+      )}
       <FormError>{googleError}</FormError>
       <form onSubmit={onSubmit} noValidate>
         <Field

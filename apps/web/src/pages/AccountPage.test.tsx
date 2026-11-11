@@ -232,7 +232,7 @@ describe('AccountPage', () => {
       await screen.findByText('ada@example.com');
       typePassword('correct-horse');
       confirm();
-      expect(await screen.findByRole('link', { name: 'Sign in' })).toBeInTheDocument();
+      expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
       expect(api.users.size).toBe(0);
     });
 

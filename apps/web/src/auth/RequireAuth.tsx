@@ -10,7 +10,9 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   if (user === 'loading') return <p className="status">Loading…</p>;
   if (user === null) {
     const next = `${location.pathname}${location.search}`;
-    return <Navigate to={`/sign-in?next=${encodeURIComponent(next)}`} replace />;
+    // Home is where sign-in goes anyway, so it needs no `next`.
+    const to = next === '/' ? '/sign-in' : `/sign-in?next=${encodeURIComponent(next)}`;
+    return <Navigate to={to} replace />;
   }
   return <>{children}</>;
 }

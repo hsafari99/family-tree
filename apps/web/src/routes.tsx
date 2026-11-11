@@ -18,7 +18,14 @@ import { VerifyTwoFactorPage } from './pages/VerifyTwoFactorPage';
 export function AppRoutes() {
   return (
     <Routes>
-      <Route path="/" element={<HomePage />} />
+      <Route
+        path="/"
+        element={
+          <RequireAuth>
+            <HomePage />
+          </RequireAuth>
+        }
+      />
       <Route path="/sign-up" element={<SignUpPage />} />
       <Route path="/sign-in" element={<SignInPage />} />
       <Route path="/sign-in/verify" element={<VerifyTwoFactorPage />} />
