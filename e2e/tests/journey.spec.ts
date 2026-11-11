@@ -16,7 +16,13 @@ test('spec §9: family, steward invite, steward edits and deletes, owner restore
 
   // 2. Parents, a partner and two children, all from the card "+" buttons.
   await addRelative(owner, 'Olive Owner', 'parent', { given: 'Paul', surname: 'Owner' });
-  await addRelative(owner, 'Olive Owner', 'parent', { given: 'Mary', surname: 'Owner' }, /Paul/);
+  await addRelative(
+    owner,
+    'Olive Owner',
+    'parent',
+    { given: 'Mary', surname: 'Owner' },
+    /^Partner of Paul/,
+  );
   await addRelative(owner, 'Olive Owner', 'partner', { given: 'Pete', surname: 'Partner' });
   await addRelative(owner, 'Olive Owner', 'child', { given: 'Cleo', surname: 'Owner' }, /Pete/);
   await addRelative(owner, 'Olive Owner', 'child', { given: 'Dan', surname: 'Owner' }, /Pete/);

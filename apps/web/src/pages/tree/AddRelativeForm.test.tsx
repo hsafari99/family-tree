@@ -1,5 +1,6 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+import { MESSAGES } from '../../auth/api';
 import { FakeAuthApi } from '../../test/fake-auth';
 import { FakeTreesApi, fakePerson, fakePersonView } from '../../test/fake-trees';
 import { renderAt } from '../../test/render';
@@ -215,5 +216,125 @@ describe('AddRelativeForm duplicate check', () => {
     fireEvent.change(screen.getByLabelText('First name'), { target: { value: 'Adah' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
     await waitFor(() => expect(s.trees.callsTo('findSimilar')).toHaveLength(2));
+  });
+});
+
+describe('AddRelativeForm: adding a parent (brief #9)', () => {
+  const mum = fakePerson({ givenName: 'Mia', surname: 'Hale' });
+  const ben = fakePerson({ givenName: 'Ben', surname: 'Hale' });
+  const U1 = crypto.randomUUID();
+  const U2 = crypto.randomUUID();
+  const LINK = crypto.randomUUID();
+  function parentSetup(o: { known?: boolean; moveTo?: boolean; unknown?: boolean } = {}) {
+    const auth = new FakeAuthApi();
+    auth.addUser({ email: 'a@example.com', name: 'A', twoFactorEnabled: true }, { signedIn: true });
+    const trees = new FakeTreesApi();
+    const id = trees.addTree({ persons: [{ ...root }, { ...subject }, { ...mum }, { ...ben }] });
+    const view = fakePersonView(subject);
+    if (o.known || o.unknown) {
+      view.relations.parents.push({
+        linkId: LINK,
+        kind: 'biological',
+        union: { id: U1, type: 'partnership', status: 'partners' },
+        parents: o.known ? [mum] : [],
+        moveTo: o.moveTo ? [{ unionId: U2, parents: [mum, ben] }] : [],
+      });
+    }
+    trees.trees.get(id)!.people.set(subject.id, view);
+    return { auth, trees, id };
+  }
+
+  it('offers "Partner of X" or a separate parent, and sends unionId null for the latter', async () => {
+    const s = parentSetup({ known: true });
+    await open(s, 'Add parent');
+    const which = screen.getByLabelText('Which parents');
+    expect([...which.querySelectorAll('option')].map((o) => o.textContent)).toEqual([
+      'Partner of Mia Hale (parents together)',
+      'Not Mia Hale’s partner (a separate parent)',
+    ]);
+    fireEvent.change(which, { target: { value: '' } });
+    fireEvent.change(screen.getByLabelText('First name'), { target: { value: 'Zoe' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    await waitFor(() => expect(s.trees.callsTo('createPerson')).toHaveLength(1));
+    expect(s.trees.callsTo('createPerson')[0]).toMatchObject({
+      input: { attach: { as: 'parent', unionId: null } },
+    });
+  });
+
+  it('offers the siblings’ parents for a parents-unknown entry', async () => {
+    const s = parentSetup({ unknown: true });
+    await open(s, 'Add parent');
+    const which = screen.getByLabelText('Which parents');
+    expect([...which.querySelectorAll('option')].map((o) => o.textContent)).toEqual([
+      'Parent of them and their siblings',
+      'Only their parent',
+    ]);
+  });
+
+  it('re-links to the couple with "Add as child of X and Y"', async () => {
+    const s = parentSetup({ known: true, moveTo: true });
+    await open(s, 'Add parent');
+    expect(
+      screen.getByRole('group', { name: 'Is the other parent already in the tree?' }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Add as child of Mia Hale and Ben Hale' }));
+    await waitFor(() => expect(s.trees.callsTo('reparentLink')).toHaveLength(1));
+    expect(s.trees.callsTo('reparentLink')[0]).toMatchObject({ linkId: LINK, unionId: U2 });
+    await waitFor(() => expect(screen.queryByRole('form', { name: 'Add parent' })).toBeNull());
+  });
+
+  it('shows the fixed message when the child is already in that couple', async () => {
+    const s = parentSetup({ known: true, moveTo: true });
+    s.trees.failNext('reparentLink', { code: 'CONFLICT', message: MESSAGES.alreadyChild });
+    await open(s, 'Add parent');
+    fireEvent.click(screen.getByRole('button', { name: 'Add as child of Mia Hale and Ben Hale' }));
+    expect(await screen.findByText(MESSAGES.alreadyChild)).toBeInTheDocument();
+  });
+
+  it('adds both parents in one request', async () => {
+    const s = parentSetup();
+    await open(s, 'Add parent');
+    expect(screen.queryByLabelText('Which parents')).toBeNull();
+    fireEvent.change(screen.getByLabelText('First name'), { target: { value: 'Mum' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Add a second parent too' }));
+    const second = within(screen.getByRole('group', { name: 'Second parent' }));
+    fireEvent.change(second.getByLabelText('First name'), { target: { value: 'Dad' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    await waitFor(() => expect(s.trees.callsTo('createPerson')).toHaveLength(1));
+    expect(s.trees.callsTo('createPerson')[0]).toMatchObject({
+      input: {
+        person: { givenName: 'Mum' },
+        attach: { to: subject.id, as: 'parent' },
+        coParent: { person: { givenName: 'Dad' } },
+      },
+    });
+  });
+
+  it('needs the second parent’s name, and points at it', async () => {
+    const s = parentSetup();
+    await open(s, 'Add parent');
+    fireEvent.change(screen.getByLabelText('First name'), { target: { value: 'Mum' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Add a second parent too' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    const second = within(screen.getByRole('group', { name: 'Second parent' }));
+    await waitFor(() =>
+      expect(second.getByLabelText('First name')).toHaveAttribute('aria-invalid', 'true'),
+    );
+    expect(s.trees.callsTo('createPerson')).toHaveLength(0);
+  });
+
+  it('uses an existing first parent with a new second one', async () => {
+    const s = parentSetup();
+    await open(s, 'Add parent');
+    fireEvent.click(screen.getByRole('radio', { name: 'Someone already in the tree' }));
+    fireEvent.change(screen.getByLabelText('Person'), { target: { value: mum.id } });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Add a second parent too' }));
+    const second = within(screen.getByRole('group', { name: 'Second parent' }));
+    fireEvent.change(second.getByLabelText('First name'), { target: { value: 'Dad' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    await waitFor(() => expect(s.trees.callsTo('createPerson')).toHaveLength(1));
+    expect(s.trees.callsTo('createPerson')[0]).toMatchObject({
+      input: { person: { givenName: 'Dad' }, coParent: { personId: mum.id } },
+    });
   });
 });

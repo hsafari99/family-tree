@@ -99,6 +99,8 @@ export interface TreesApi {
     input: { kind: ChildKind },
   ): Promise<Result<void>>;
   deleteParentChild(treeId: string, linkId: string): Promise<Result<{ batchId: string }>>;
+  /** Moves a child's link to other parents (brief #13). */
+  reparentLink(treeId: string, linkId: string, unionId: string): Promise<Result<void>>;
   addResidence(
     treeId: string,
     personId: string,
@@ -163,6 +165,7 @@ export const TREES_API_METHODS = Object.keys({
   deleteUnion: true,
   updateParentChild: true,
   deleteParentChild: true,
+  reparentLink: true,
   addResidence: true,
   updateResidence: true,
   deleteResidence: true,
@@ -337,6 +340,15 @@ export function createTreesApi({ baseUrl }: { baseUrl: string }): TreesApi {
       request('POST', `${t(id)}/parent-child/${enc(l)}/delete`, {}, batchIdSchema, 'session', {
         FORBIDDEN: MESSAGES.deleteNotAllowed,
       }),
+    reparentLink: (id, l, unionId) =>
+      request(
+        'POST',
+        `${t(id)}/parent-child/${enc(l)}/reparent`,
+        { unionId },
+        undefined,
+        'session',
+        { CONFLICT: MESSAGES.alreadyChild, NOT_FOUND: MESSAGES.itemGone },
+      ),
     addResidence: (id, p, input) =>
       request('POST', `${t(id)}/persons/${enc(p)}/residences`, input, createdIdSchema),
     updateResidence: (id, r, input) => request('PATCH', `${t(id)}/residences/${enc(r)}`, input),

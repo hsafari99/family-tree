@@ -110,6 +110,7 @@ export const MESSAGES = {
   restoreConflict:
     'This can’t be restored because the family has changed since it was deleted. You can erase it instead.',
   alreadyRelated: 'They are already related this way',
+  alreadyChild: 'They are already a child of those parents.',
   trashOwnerOnly: 'Only the tree owner can open the Trash',
   photoType: 'Use a JPEG, PNG or WebP photo.',
   photoTooLarge: 'Photos can be at most 10 MB.',

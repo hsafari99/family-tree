@@ -854,6 +854,28 @@ export class FakeTreesApi implements TreesApi {
     return ok({ batchId });
   }
 
+  async reparentLink(treeId: string, linkId: string, unionId: string) {
+    const forced = await this.enter('reparentLink', { treeId, linkId, unionId });
+    if (forced) return { ok: false as const, error: forced };
+    const t = this.find(treeId);
+    if (!t) return notFound();
+    const child = this.views(t).find((v) => v.relations.parents.some((p) => p.linkId === linkId));
+    if (!child) return notFound();
+    if (!this.mayEdit(t)) return forbidden();
+    if (child.relations.parents.some((p) => p.union.id === unionId)) {
+      return fail('CONFLICT', MESSAGES.alreadyChild);
+    }
+    const entry = child.relations.parents.find((p) => p.linkId === linkId)!;
+    const target = entry.moveTo.find((m) => m.unionId === unionId);
+    if (!target) return this.invalid();
+    Object.assign(entry, {
+      union: { ...entry.union, id: unionId },
+      parents: target.parents,
+      moveTo: [],
+    });
+    return ok(undefined);
+  }
+
   private findResidence(t: FakeTree, residenceId: string) {
     for (const v of this.views(t)) {
       const r = v.residences.find((x) => x.id === residenceId);
