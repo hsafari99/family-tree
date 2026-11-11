@@ -2,14 +2,7 @@ import { eq, inArray } from 'drizzle-orm';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { loadConfig } from '../config.js';
 import { createDeps } from '../deps.js';
-import {
-  accounts,
-  resetLinks,
-  sessions,
-  twoFactorMoves,
-  twoFactors,
-  users,
-} from './schema.js';
+import { accounts, resetLinks, sessions, twoFactorMoves, twoFactors, users } from './schema.js';
 
 const deps = createDeps(loadConfig());
 const { db } = deps;
