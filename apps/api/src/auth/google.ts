@@ -1,6 +1,12 @@
-import { APIError, createAuthMiddleware, getOAuthState } from 'better-auth/api';
+import { and, eq } from 'drizzle-orm';
+import { APIError, createAuthMiddleware, getOAuthState, getSessionFromCtx } from 'better-auth/api';
 import { deleteSessionCookie } from 'better-auth/cookies';
 import { generateRandomString } from 'better-auth/crypto';
+import type { Db } from '../db/client.js';
+import { accounts } from '../db/schema.js';
+import { verifyAndConsumeSecondFactor } from './totp-reset.js';
+
+export const GOOGLE_PROVIDER_ID = 'google';
 
 /** The context Better Auth hands to `hooks.before` / `hooks.after`. */
 export type HookContext = Parameters<Parameters<typeof createAuthMiddleware>[0]>[0];
@@ -93,4 +99,64 @@ export async function challengeSocialSignIn(ctx: HookContext, webOrigin: string)
   const state = await getOAuthState();
   const next = safeWebPath(state?.callbackURL, webOrigin) ?? '/';
   throw ctx.redirect(`${webOrigin}/sign-in/verify?next=${encodeURIComponent(next)}`);
+}
+
+const fail = (status: 'BAD_REQUEST' | 'CONFLICT' | 'FORBIDDEN', code: string, message: string) =>
+  APIError.from(status, { code, message });
+
+/**
+ * "Connect Google" (POST /link-social) re-authenticates first: the current password, plus an
+ * authenticator or recovery code when 2FA is on, so a borrowed or stolen session can't attach
+ * an attacker's Google account as a back door. One Google account per user.
+ * Better Auth then runs the round trip and links on the callback; its own checks (the session
+ * that started the link is still live, the Google account isn't someone else's) still apply.
+ */
+export async function confirmLink(ctx: HookContext, db: Db): Promise<void> {
+  if (ctx.path !== '/link-social') return;
+  // No session: let the endpoint answer 401 itself.
+  const session = await getSessionFromCtx(ctx);
+  if (!session) return;
+  const userId = session.user.id;
+  const body = (ctx.body ?? {}) as { password?: unknown; code?: unknown };
+
+  const linked = await db
+    .select({ id: accounts.id })
+    .from(accounts)
+    .where(and(eq(accounts.userId, userId), eq(accounts.providerId, GOOGLE_PROVIDER_ID)));
+  if (linked.length > 0) {
+    throw fail('CONFLICT', 'GOOGLE_ALREADY_CONNECTED', 'Google is already connected');
+  }
+
+  if (typeof body.password !== 'string' || body.password === '') {
+    throw fail('BAD_REQUEST', 'PASSWORD_REQUIRED', 'Enter your password');
+  }
+  const credential = await ctx.context.internalAdapter.findCredentialAccount(userId);
+  const valid =
+    credential?.password != null &&
+    (await ctx.context.password.verify({ hash: credential.password, password: body.password }));
+  if (!valid) throw fail('BAD_REQUEST', 'INVALID_PASSWORD', 'Invalid password');
+
+  if (session.user.twoFactorEnabled) {
+    if (typeof body.code !== 'string' || body.code.trim() === '') {
+      throw fail('BAD_REQUEST', 'TWO_FACTOR_CODE_REQUIRED', 'Enter your authenticator code');
+    }
+    const ok = await verifyAndConsumeSecondFactor(
+      db,
+      ctx.context.secretConfig,
+      userId,
+      body.code.trim(),
+    );
+    if (!ok) throw fail('BAD_REQUEST', 'INVALID_CODE', 'Invalid code');
+  }
+}
+
+/**
+ * Better Auth's /unlink-account removes any account, including the password login, leaving
+ * Google as the only way in (and it requires a session under a day old). The app unlinks
+ * through POST /api/v1/account/google/disconnect instead, so this one is closed.
+ */
+export function blockUnlinkEndpoint(ctx: HookContext): void {
+  if (ctx.path === '/unlink-account') {
+    throw fail('FORBIDDEN', 'UNLINK_DISABLED', 'Use Account settings to disconnect Google');
+  }
 }

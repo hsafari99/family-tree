@@ -9,7 +9,12 @@ import { safeError } from '../errors.js';
 import { accounts, sessions, twoFactors, users, verifications } from '../db/schema.js';
 import { CLIENT_IP_HEADER } from './fastify-adapter.js';
 import { holdsTwoFactorRole, ownsLiveTree } from '../trees/roles.js';
-import { challengeSocialSignIn, checkSocialStart } from './google.js';
+import {
+  blockUnlinkEndpoint,
+  challengeSocialSignIn,
+  checkSocialStart,
+  confirmLink,
+} from './google.js';
 import { hashPassword, verifyPassword } from './password.js';
 
 type AuthLogLevel = 'debug' | 'info' | 'warn' | 'error';
@@ -152,6 +157,8 @@ export function createAuth({ config, db, rateLimitEnabled, log }: AuthOptions) {
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
         checkSocialStart(ctx, config.WEB_ORIGIN);
+        blockUnlinkEndpoint(ctx);
+        await confirmLink(ctx, db);
         // Without a password Better Auth deletes any session younger than a day unchecked.
         if (ctx.path === '/delete-user' || ctx.path === '/delete-user/callback') {
           const password = (ctx.body as { password?: unknown } | undefined)?.password;

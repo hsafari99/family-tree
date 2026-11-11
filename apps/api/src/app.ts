@@ -13,6 +13,7 @@ import { membersRoutes } from './routes/members.js';
 import { stewardsRoutes } from './routes/stewards.js';
 import { meRoutes } from './routes/me.js';
 import { authProvidersRoutes } from './routes/auth-providers.js';
+import { accountRoutes } from './routes/account.js';
 import { personsRoutes } from './routes/persons.js';
 import { relationsRoutes } from './routes/relations.js';
 import { residencesRoutes } from './routes/residences.js';
@@ -130,6 +131,7 @@ export function buildApp({
     app.register(authRoutes, { auth });
     app.register(meRoutes, { auth, db });
     app.register(authProvidersRoutes, { auth });
+    app.register(accountRoutes, { auth, db });
     app.register(passwordResetRoutes, { auth, db });
     app.register(treesRoutes, { auth, db, config, storage: store! });
     app.register(membersRoutes, { auth, db, config, storage: store! });

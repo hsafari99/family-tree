@@ -18,6 +18,9 @@ interface FakeUser {
   recoveryCodes: string[];
   /** Set to make deleteAccount fail with OWNS_TREES. */
   ownsTrees?: boolean;
+  /** False for an account that only ever signed in with Google. */
+  hasPassword: boolean;
+  googleConnected: boolean;
 }
 
 type Method = keyof AuthApi;
@@ -58,6 +61,8 @@ export class FakeAuthApi implements AuthApi {
       requiresTwoFactor: false,
       twoFactorPending: false,
       recoveryCodes: [],
+      hasPassword: true,
+      googleConnected: false,
       ...input,
     };
     if (user.twoFactorEnabled && user.recoveryCodes.length === 0) {
@@ -109,6 +114,8 @@ export class FakeAuthApi implements AuthApi {
       email: u.email,
       twoFactorEnabled: u.twoFactorEnabled,
       requiresTwoFactor: u.requiresTwoFactor,
+      hasPassword: u.hasPassword,
+      googleConnected: u.googleConnected,
     };
   }
 
