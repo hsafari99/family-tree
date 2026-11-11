@@ -98,6 +98,19 @@ export function createAuth({ config, db, rateLimitEnabled, log }: AuthOptions) {
         twoFactor: twoFactors,
       },
     }),
+    // Spec §5: Google sign-in, only when the OAuth client is configured. Google's defaults are
+    // exactly openid, email and profile; include_granted_scopes is off so no earlier grant to
+    // this client is folded in.
+    socialProviders: config.google
+      ? {
+          google: {
+            clientId: config.google.clientId,
+            clientSecret: config.google.clientSecret,
+            includeGrantedScopes: false,
+            prompt: 'select_account',
+          },
+        }
+      : {},
     emailAndPassword: {
       enabled: true,
       minPasswordLength: PASSWORD_MIN,
