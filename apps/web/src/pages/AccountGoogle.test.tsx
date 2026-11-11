@@ -90,17 +90,44 @@ describe('Account settings: Google', () => {
     expect(await within(await section()).findByRole('alert')).toHaveTextContent(message);
   });
 
-  it('disconnects in two steps when a password remains', async () => {
+  it('disconnects in two steps after the password is re-entered', async () => {
     const { api, user } = account({ googleConnected: true });
     renderAt('/account', { auth: api });
     const google = await section();
+    expect(within(google).queryByLabelText('Authenticator or recovery code')).toBeNull();
     fireEvent.click(within(google).getByRole('button', { name: 'Disconnect Google' }));
+    fireEvent.click(within(google).getByRole('button', { name: 'Yes, disconnect' }));
+    expect(await within(google).findByText('Enter your password')).toBeInTheDocument();
     expect(api.callsTo('disconnectGoogle')).toEqual([]);
+
+    type('Your password, to disconnect Google', 'wrong-password');
+    fireEvent.click(within(google).getByRole('button', { name: 'Disconnect Google' }));
+    fireEvent.click(within(google).getByRole('button', { name: 'Yes, disconnect' }));
+    expect(await within(google).findByRole('alert')).toHaveTextContent(MESSAGES.badPassword);
+    expect(user.googleConnected).toBe(true);
+
+    type('Your password, to disconnect Google', 'correct-horse');
+    fireEvent.click(within(google).getByRole('button', { name: 'Disconnect Google' }));
     fireEvent.click(within(google).getByRole('button', { name: 'Yes, disconnect' }));
     expect(await within(google).findByRole('status')).toHaveTextContent('Google disconnected');
     expect(user.googleConnected).toBe(false);
     expect(within(google).getByText('Not connected')).toBeInTheDocument();
     expect(within(google).getByRole('heading', { name: 'Google' })).toHaveFocus();
+  });
+
+  it('also wants a code to disconnect when two-step verification is on', async () => {
+    const { api } = account({ googleConnected: true, twoFactorEnabled: true });
+    renderAt('/account', { auth: api });
+    const google = await section();
+    type('Your password, to disconnect Google', 'correct-horse');
+    type('Authenticator or recovery code', FAKE_TOTP);
+    fireEvent.click(within(google).getByRole('button', { name: 'Disconnect Google' }));
+    fireEvent.click(within(google).getByRole('button', { name: 'Yes, disconnect' }));
+    await waitFor(() =>
+      expect(api.callsTo('disconnectGoogle')).toEqual([
+        { password: 'correct-horse', code: FAKE_TOTP },
+      ]),
+    );
   });
 
   it('offers no disconnect when Google is the only way in; a password unlocks it', async () => {

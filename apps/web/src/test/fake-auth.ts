@@ -299,14 +299,20 @@ export class FakeAuthApi implements AuthApi {
     return ok(undefined);
   }
 
-  async disconnectGoogle() {
-    const forced = await this.enter('disconnectGoogle');
+  async disconnectGoogle(input: { password: string; code?: string }) {
+    const forced = await this.enter('disconnectGoogle', input);
     if (forced) return { ok: false as const, error: forced };
     const u = this.me();
     if (!u) return fail(SESSION_EXPIRED, MESSAGES.sessionExpired);
     if (!u.googleConnected) return fail('GOOGLE_NOT_CONNECTED', MESSAGES.googleNotConnected);
     if (!u.hasPassword) {
       return fail('PASSWORD_REQUIRED_TO_DISCONNECT', MESSAGES.passwordRequiredToDisconnect);
+    }
+    const checked = this.checkPassword(input.password);
+    if (!checked.ok) return checked;
+    if (u.twoFactorEnabled) {
+      if (!input.code) return fail('TWO_FACTOR_CODE_REQUIRED', MESSAGES.codeRequired);
+      if (input.code !== FAKE_TOTP) return fail('INVALID_CODE', MESSAGES.badCode);
     }
     u.googleConnected = false;
     return ok(undefined);

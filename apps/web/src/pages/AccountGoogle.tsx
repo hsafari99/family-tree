@@ -62,7 +62,11 @@ export function GoogleSection({
       )}
       {!notice && <FormError>{returned.error}</FormError>}
       {user.googleConnected ? (
-        <DisconnectGoogle hasPassword={user.hasPassword} onDone={disconnected} />
+        <DisconnectGoogle
+          hasPassword={user.hasPassword}
+          twoFactorEnabled={user.twoFactorEnabled}
+          onDone={disconnected}
+        />
       ) : (
         <ConnectGoogle twoFactorEnabled={user.twoFactorEnabled} />
       )}
@@ -138,14 +142,20 @@ function ConnectGoogle({ twoFactorEnabled }: { twoFactorEnabled: boolean }) {
 
 function DisconnectGoogle({
   hasPassword,
+  twoFactorEnabled,
   onDone,
 }: {
   hasPassword: boolean;
+  twoFactorEnabled: boolean;
   onDone: () => Promise<void>;
 }) {
   const { api } = useAuth();
+  const [values, setValues] = useState({ password: '', code: '' });
+  const [errors, setErrors] = useState<FieldErrors>({});
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const set = (key: keyof typeof values) => (value: string) =>
+    setValues((v) => ({ ...v, [key]: value }));
 
   if (!hasPassword) {
     return (
@@ -158,8 +168,17 @@ function DisconnectGoogle({
 
   async function onConfirm() {
     setError(null);
+    const next: FieldErrors = {};
+    if (values.password === '') next.password = MESSAGES.passwordRequired;
+    const code = twoFactorEnabled ? validate(resetCodeSchema, values.code) : null;
+    if (code && !code.ok) next.code = code.errors[''];
+    setErrors(next);
+    if (Object.keys(next).length > 0) return;
     setPending(true);
-    const res = await api.disconnectGoogle();
+    const res = await api.disconnectGoogle({
+      password: values.password,
+      ...(code?.ok ? { code: code.data } : {}),
+    });
     setPending(false);
     if (!res.ok) {
       setError(res.error.message);
@@ -170,7 +189,32 @@ function DisconnectGoogle({
 
   return (
     <>
-      <p>You can sign in with Google or with your email and password.</p>
+      <p>
+        You can sign in with Google or with your email and password. To disconnect Google, confirm
+        it&apos;s you.
+      </p>
+      <Field
+        label="Your password, to disconnect Google"
+        name="disconnectPassword"
+        type="password"
+        autoComplete="current-password"
+        value={values.password}
+        onChange={set('password')}
+        error={errors.password}
+      />
+      {twoFactorEnabled && (
+        <Field
+          label="Authenticator or recovery code"
+          name="disconnectCode"
+          hint="The 6-digit code from your authenticator app, or one of your recovery codes."
+          autoComplete="one-time-code"
+          autoCapitalize="none"
+          spellCheck={false}
+          value={values.code}
+          onChange={set('code')}
+          error={errors.code}
+        />
+      )}
       <FormError>{error}</FormError>
       <ConfirmButton
         label="Disconnect Google"

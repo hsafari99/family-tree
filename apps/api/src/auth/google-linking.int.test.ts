@@ -168,8 +168,10 @@ describe('Connect Google', () => {
 });
 
 describe('Disconnect Google', () => {
-  const disconnect = (jar?: CookieJar) =>
-    call(app, 'POST', '/api/v1/account/google/disconnect', { jar });
+  const disconnect = (
+    jar?: CookieJar,
+    body: Record<string, unknown> = { password: TEST_PASSWORD },
+  ) => call(app, 'POST', '/api/v1/account/google/disconnect', { jar, body });
 
   it('unlinks when the account still has a password', async () => {
     const user = await signUp(app);
@@ -182,6 +184,32 @@ describe('Disconnect Google', () => {
     // That Google account is a stranger again: it would create a new user, not sign in here.
     const viaGoogle = await googleSignIn(app, profile);
     expect((await me(viaGoogle.jar)).id).not.toBe(user.userId);
+  });
+
+  it('re-checks the password, and the code when 2FA is on', async () => {
+    const user = await signUp(app);
+    await connect(user.jar, googleProfile(), { password: TEST_PASSWORD });
+    const none = await disconnect(user.jar, {});
+    expect(none.statusCode).toBe(400);
+    expect(none.json().error.code).toBe('PASSWORD_REQUIRED');
+    const wrong = await disconnect(user.jar, { password: 'not the password' });
+    expect(wrong.statusCode).toBe(400);
+    expect(wrong.json().error.code).toBe('INVALID_PASSWORD');
+    expect(await providersOf(user.userId)).toEqual(['credential', 'google']);
+
+    const tf = await userWith2fa(app);
+    await connect(tf.jar, googleProfile(), {
+      password: TEST_PASSWORD,
+      code: await totpNow(tf.rawSecret),
+    });
+    const noCode = await disconnect(tf.jar);
+    expect(noCode.json().error.code).toBe('TWO_FACTOR_CODE_REQUIRED');
+    const badCode = await disconnect(tf.jar, { password: TEST_PASSWORD, code: '000000' });
+    expect(badCode.json().error.code).toBe('INVALID_CODE');
+    expect(await providersOf(tf.userId)).toEqual(['credential', 'google']);
+    const ok = await disconnect(tf.jar, { password: TEST_PASSWORD, code: tf.backupCodes[0] });
+    expect(ok.statusCode).toBe(204);
+    expect(await providersOf(tf.userId)).toEqual(['credential']);
   });
 
   it('refuses when Google is the only way in', async () => {
@@ -229,9 +257,11 @@ describe('Set a password (Google-only accounts)', () => {
 
     const { res } = await signIn(app, { email: user.email, password: 'a brand new password' });
     expect(res.statusCode).toBe(200);
-    expect((await call(app, 'POST', '/api/v1/account/google/disconnect', { jar })).statusCode).toBe(
-      204,
-    );
+    const disconnected = await call(app, 'POST', '/api/v1/account/google/disconnect', {
+      jar,
+      body: { password: 'a brand new password' },
+    });
+    expect(disconnected.statusCode).toBe(204);
   });
 
   it('needs a sign-in from the last 10 minutes', async () => {

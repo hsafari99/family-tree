@@ -47,7 +47,8 @@ export interface AuthApi {
   startGoogleSignIn(input: { next: string }): Promise<Result<void>>;
   /** Re-authenticates, then leaves for Google to connect it; comes back to /account. */
   connectGoogle(input: { password: string; code?: string }): Promise<Result<void>>;
-  disconnectGoogle(): Promise<Result<void>>;
+  /** Re-authenticates like connectGoogle; refused while Google is the only way in. */
+  disconnectGoogle(input: { password: string; code?: string }): Promise<Result<void>>;
   /** Gives a Google-only account a password. */
   setPassword(input: { newPassword: string }): Promise<Result<void>>;
 }
@@ -378,7 +379,7 @@ export function createAuthApi({ baseUrl }: { baseUrl: string }): AuthApi {
         errorCallbackURL: `${here}/account`,
       });
     },
-    disconnectGoogle: () => v1Post('/account/google/disconnect', {}, 'session'),
+    disconnectGoogle: (input) => v1Post('/account/google/disconnect', input, 'session'),
     setPassword: (input) => v1Post('/account/password', input, 'session'),
   };
 }

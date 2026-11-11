@@ -349,8 +349,12 @@ describe('Google', () => {
       { status: 204 },
     );
     const api = createAuthApi({ baseUrl: BASE });
-    await expect(api.disconnectGoogle()).resolves.toEqual({ ok: true, data: undefined });
-    await expect(api.disconnectGoogle()).resolves.toEqual({
+    await expect(api.disconnectGoogle({ password: 'pw', code: '123456' })).resolves.toEqual({
+      ok: true,
+      data: undefined,
+    });
+    expect(bodyOf(fetchMock)).toEqual({ password: 'pw', code: '123456' });
+    await expect(api.disconnectGoogle({ password: 'pw' })).resolves.toEqual({
       ok: false,
       error: {
         code: 'PASSWORD_REQUIRED_TO_DISCONNECT',

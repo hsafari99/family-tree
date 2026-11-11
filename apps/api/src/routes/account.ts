@@ -4,7 +4,7 @@ import { fromNodeHeaders } from 'better-auth/node';
 import { and, eq, isNotNull, ne } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 import type { Auth } from '../auth/auth.js';
-import { GOOGLE_PROVIDER_ID } from '../auth/google.js';
+import { GOOGLE_PROVIDER_ID, reauthenticate } from '../auth/google.js';
 import { requireSession } from '../auth/session-guard.js';
 import type { Db } from '../db/client.js';
 import { accounts, sessions } from '../db/schema.js';
@@ -13,7 +13,8 @@ import { AppError, parseBody } from '../errors.js';
 /** Setting a password on a Google-only account needs a sign-in at most this old. */
 export const RECENT_SIGN_IN_MS = 10 * 60 * 1000;
 
-const ACCOUNT_LIMIT = { rateLimit: { max: 10, timeWindow: '15 minutes' } };
+// Both routes check a password or a code, like Better Auth's /link-social (5 per 15 minutes).
+const ACCOUNT_LIMIT = { rateLimit: { max: 5, timeWindow: '15 minutes' } };
 
 /** Account settings for sign-in methods: disconnect Google, give a Google-only account a password. */
 export const accountRoutes: FastifyPluginAsync<{ auth: Auth; db: Db }> = async (
@@ -28,6 +29,21 @@ export const accountRoutes: FastifyPluginAsync<{ auth: Auth; db: Db }> = async (
     { config: ACCOUNT_LIMIT, preHandler: requireSession(auth) },
     async (req, reply) => {
       const userId = req.user!.id;
+      const [credential] = await db
+        .select({ id: accounts.id })
+        .from(accounts)
+        .where(
+          and(
+            eq(accounts.userId, userId),
+            eq(accounts.providerId, 'credential'),
+            isNotNull(accounts.password),
+          ),
+        );
+      // Only re-check what exists: a Google-only account gets the answer below instead.
+      if (credential) {
+        const failure = await reauthenticate(await auth.$context, db, req.user!, req.body);
+        if (failure) throw new AppError(failure.code, 400, failure.message);
+      }
       await db.transaction(async (tx) => {
         const owned = await tx
           .select({ providerId: accounts.providerId, password: accounts.password })
