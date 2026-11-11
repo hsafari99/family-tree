@@ -111,6 +111,20 @@ export function createAuth({ config, db, rateLimitEnabled, log }: AuthOptions) {
           },
         }
       : {},
+    account: {
+      accountLinking: {
+        // Spec §5: emails are never verified, so anyone could pre-register a victim's address.
+        // A Google sign-in must never attach itself to an existing account by email; linking
+        // happens only from Account settings, signed in (see google.ts).
+        disableImplicitLinking: true,
+        // Linking is explicit and re-authenticated, so the Google address may differ from the
+        // login name (which is only a name here).
+        allowDifferentEmails: true,
+        updateUserInfoOnLink: false,
+      },
+    },
+    // OAuth failures land on the web sign-in page (?error=<code>), which shows a fixed message.
+    onAPIError: { errorURL: `${config.WEB_ORIGIN}/sign-in` },
     emailAndPassword: {
       enabled: true,
       minPasswordLength: PASSWORD_MIN,

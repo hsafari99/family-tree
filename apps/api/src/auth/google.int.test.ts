@@ -1,6 +1,13 @@
+import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { call, WEB_ORIGIN } from '../../test/auth-helpers.js';
-import { startGoogle, TEST_GOOGLE } from '../../test/google-helpers.js';
+import { call, type CookieJar, signUp, WEB_ORIGIN } from '../../test/auth-helpers.js';
+import {
+  googleProfile,
+  googleSignIn,
+  startGoogle,
+  TEST_GOOGLE,
+} from '../../test/google-helpers.js';
+import { accounts, users } from '../db/schema.js';
 import { buildApp } from '../app.js';
 import { loadConfig } from '../config.js';
 import { createDeps } from '../deps.js';
@@ -16,6 +23,14 @@ const authWithoutGoogle = createAuth({
   db,
   rateLimitEnabled: false,
 });
+
+const me = (jar: CookieJar) => call(app, 'GET', '/api/v1/me', { jar });
+const googleAccounts = (userId: string) =>
+  db
+    .select()
+    .from(accounts)
+    .where(and(eq(accounts.userId, userId), eq(accounts.providerId, 'google')));
+const EMAIL_TAKEN_REDIRECT = `${WEB_ORIGIN}/sign-in?error=account_not_linked`;
 
 let app: ReturnType<typeof buildApp>;
 beforeEach(() => {
@@ -68,5 +83,64 @@ describe('provider wiring', () => {
       headers: { origin: WEB_ORIGIN },
     });
     expect(res.statusCode).toBe(200);
+  });
+});
+
+describe('signing in with Google', () => {
+  it('creates a new user named from the Google profile and signs them in', async () => {
+    const profile = googleProfile({ name: 'Ada Lovelace', email: `Ada-${Date.now()}@Gmail.com` });
+    const { res, location, jar, google } = await googleSignIn(app, profile);
+    expect(res.statusCode).toBe(302);
+    expect(location).toBe(`${WEB_ORIGIN}/`);
+    expect(google.tokenRequests).toHaveLength(1);
+    expect(google.tokenRequests[0]!.get('redirect_uri')).toBe(
+      `${config.AUTH_BASE_URL}/api/auth/callback/google`,
+    );
+
+    const session = await me(jar);
+    expect(session.statusCode).toBe(200);
+    const user = session.json().user;
+    expect(user.name).toBe('Ada Lovelace');
+    expect(user.email).toBe(profile.email.toLowerCase());
+    const linked = await googleAccounts(user.id);
+    expect(linked.map((a) => a.accountId)).toEqual([profile.sub]);
+  });
+
+  it('signs the same Google account into the same user next time', async () => {
+    const profile = googleProfile();
+    const first = await googleSignIn(app, profile);
+    const firstId = (await me(first.jar)).json().user.id;
+    const again = await googleSignIn(app, { ...profile, name: 'Renamed At Google' });
+    const user = (await me(again.jar)).json().user;
+    expect(user.id).toBe(firstId);
+    expect(user.name).toBe(profile.name);
+    expect(await googleAccounts(firstId)).toHaveLength(1);
+  });
+
+  it('refuses a Google email that matches a password account, without linking', async () => {
+    const existing = await signUp(app, { email: `taken-${Date.now()}@gmail.com` });
+    const profile = googleProfile({ email: existing.email.toUpperCase() });
+    const { res, location, jar } = await googleSignIn(app, profile);
+    expect(res.statusCode).toBe(302);
+    expect(location).toBe(EMAIL_TAKEN_REDIRECT);
+    expect((await me(jar)).statusCode).toBe(401);
+    expect(await googleAccounts(existing.userId)).toEqual([]);
+  });
+
+  it('refuses even when the local email is marked verified', async () => {
+    const existing = await signUp(app);
+    await db.update(users).set({ emailVerified: true }).where(eq(users.id, existing.userId));
+    const { location, jar } = await googleSignIn(app, googleProfile({ email: existing.email }));
+    expect(location).toBe(EMAIL_TAKEN_REDIRECT);
+    expect((await me(jar)).statusCode).toBe(401);
+    expect(await googleAccounts(existing.userId)).toEqual([]);
+  });
+
+  it('sends callback failures to the web sign-in page, not an API error page', async () => {
+    const res = await call(app, 'GET', '/api/auth/callback/google?code=x', {
+      headers: { origin: undefined },
+    });
+    expect(res.statusCode).toBe(302);
+    expect(String(res.headers.location)).toBe(`${WEB_ORIGIN}/sign-in?error=state_not_found`);
   });
 });
