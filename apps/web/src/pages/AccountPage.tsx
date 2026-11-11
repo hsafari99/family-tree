@@ -6,10 +6,12 @@ import { useAuth } from '../auth/AuthContext';
 import { ConfirmButton } from '../components/ConfirmButton';
 import { Field, type FieldErrors, FormError, Success, validate } from '../components/forms';
 import { Page } from '../components/Page';
+import { GoogleSection, SetPassword } from './AccountGoogle';
 import { TwoFactorSetup } from './TwoFactorSetup';
 
 export function AccountPage() {
   const { user, refresh } = useAuth();
+  const [passwordSet, setPasswordSet] = useState(false);
   // Joining a tree can change whether 2FA is required; don't trust a stale session.
   useEffect(() => {
     void refresh();
@@ -27,13 +29,32 @@ export function AccountPage() {
         <dt>Two-step verification</dt>
         <dd>{user.twoFactorEnabled ? 'On' : 'Off'}</dd>
       </dl>
-      <ChangePassword />
-      <TwoFactorSetup
-        enabled={user.twoFactorEnabled}
-        canDisable={!user.requiresTwoFactor}
-        onChanged={refresh}
-      />
-      <DeleteAccount />
+      {passwordSet && (
+        <Success>
+          <p>Password set. You can now sign in with your email too.</p>
+        </Success>
+      )}
+      {user.hasPassword ? (
+        <ChangePassword />
+      ) : (
+        <SetPassword
+          onDone={async () => {
+            await refresh();
+            setPasswordSet(true);
+          }}
+        />
+      )}
+      <GoogleSection user={user} onChanged={refresh} />
+      {user.hasPassword && (
+        <>
+          <TwoFactorSetup
+            enabled={user.twoFactorEnabled}
+            canDisable={!user.requiresTwoFactor}
+            onChanged={refresh}
+          />
+          <DeleteAccount />
+        </>
+      )}
       <p>
         <Link to="/">Back to home</Link>
       </p>
