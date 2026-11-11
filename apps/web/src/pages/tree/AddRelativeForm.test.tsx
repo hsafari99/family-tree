@@ -32,9 +32,15 @@ function setup(withUnion = true) {
   return { auth, trees, id };
 }
 
+/** "Add child" -> the "Add relative" menu's "Child" item (brief #12). */
+const addVia = async (button: string) => {
+  fireEvent.click(await screen.findByRole('button', { name: 'Add relative' }));
+  const item = button.replace(/^Add /, '');
+  fireEvent.click(screen.getByRole('menuitem', { name: item[0]!.toUpperCase() + item.slice(1) }));
+};
 const open = async (s: ReturnType<typeof setup>, button: string) => {
   renderAt(`/trees/${s.id}/people/${subject.id}?tab=relations`, s);
-  fireEvent.click(await screen.findByRole('button', { name: button }));
+  await addVia(button);
 };
 
 describe('AddRelativeForm', () => {
@@ -100,7 +106,8 @@ describe('AddRelativeForm', () => {
   it('offers Add sibling with no parents recorded (brief #11)', async () => {
     const s = setup(false);
     renderAt(`/trees/${s.id}/people/${subject.id}?tab=relations`, s);
-    expect(await screen.findByRole('button', { name: 'Add sibling' })).toBeEnabled();
+    fireEvent.click(await screen.findByRole('button', { name: 'Add relative' }));
+    expect(screen.getByRole('menuitem', { name: 'Sibling' })).toBeEnabled();
     expect(screen.queryByText('Add a parent first')).toBeNull();
   });
 
@@ -125,8 +132,12 @@ describe('AddRelativeForm duplicate check', () => {
   async function openForm(s: ReturnType<typeof setup>) {
     renderAt(`/trees/${s.id}/people/${subject.id}?tab=relations`, s);
     await waitFor(() => {
-      const button = screen.getByRole('button', { name: 'Add child' });
-      if (!screen.queryByLabelText('First name')) fireEvent.click(button);
+      if (!screen.queryByLabelText('First name')) {
+        if (!screen.queryByRole('menu')) {
+          fireEvent.click(screen.getByRole('button', { name: 'Add relative' }));
+        }
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Child' }));
+      }
       expect(screen.getByLabelText('First name')).toBeInTheDocument();
     });
   }

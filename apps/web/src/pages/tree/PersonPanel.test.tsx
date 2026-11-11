@@ -281,6 +281,7 @@ describe('PersonPanel', () => {
             kind: 'biological',
             union: { id: parentUnion, type: 'marriage', status: 'married' },
             parents: [mom],
+            moveTo: [],
           },
         ],
         unions: [
@@ -309,9 +310,7 @@ describe('PersonPanel', () => {
       );
       expect(screen.getByText('Unknown parent', { exact: false })).toBeInTheDocument();
       expect(screen.getByRole('link', { name: 'Pat Moss' })).toBeInTheDocument();
-      expect(screen.getByText(/Marriage/).closest('p')).toHaveTextContent(
-        'Marriage from 1970 (married)',
-      );
+      expect(screen.getByText(/Marriage/)).toHaveTextContent('Marriage from 1970 (married)');
       expect(screen.getByRole('link', { name: 'Mia King' })).toBeInTheDocument();
       expect(screen.getByRole('link', { name: 'Sib King' })).toBeInTheDocument();
     });
@@ -319,7 +318,12 @@ describe('PersonPanel', () => {
     it('edits a union status', async () => {
       const s = withRelations();
       open(s);
-      fireEvent.click(await screen.findByRole('button', { name: 'Edit relationship' }));
+      fireEvent.click(
+        await screen.findByRole('button', {
+          name: 'More actions for the relationship with Pat Moss',
+        }),
+      );
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Edit relationship' }));
       fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'divorced' } });
       fireEvent.click(screen.getByRole('button', { name: 'Save relationship' }));
       await waitFor(() => expect(s.trees.callsTo('updateUnion')).toHaveLength(1));
@@ -333,7 +337,9 @@ describe('PersonPanel', () => {
     it('changes a child link kind', async () => {
       const s = withRelations();
       open(s);
-      fireEvent.change(await screen.findByLabelText('Link kind for Mia King'), {
+      fireEvent.click(await screen.findByRole('button', { name: 'More actions for Mia King' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Change link kind…' }));
+      fireEvent.change(screen.getByLabelText('Link kind for Mia King'), {
         target: { value: 'step' },
       });
       await waitFor(() => expect(s.trees.callsTo('updateParentChild')).toHaveLength(1));
@@ -347,7 +353,12 @@ describe('PersonPanel', () => {
     it('removes a relationship only after two clicks', async () => {
       const s = withRelations();
       open(s);
-      fireEvent.click(await screen.findByRole('button', { name: 'Remove relationship' }));
+      fireEvent.click(
+        await screen.findByRole('button', {
+          name: 'More actions for the relationship with Pat Moss',
+        }),
+      );
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Remove relationship' }));
       expect(s.trees.callsTo('deleteUnion')).toEqual([]);
       fireEvent.click(screen.getByRole('button', { name: 'Yes, move to Trash' }));
       expect(await screen.findByText('Moved to Trash.')).toBeInTheDocument();
@@ -382,7 +393,8 @@ describe('PersonPanel add parameter', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     await waitFor(() => expect(screen.queryByRole('form', { name: 'Add child' })).toBeNull());
     // The parameter is gone too: opening another role starts clean.
-    fireEvent.click(screen.getByRole('button', { name: 'Add partner' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add relative' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Partner' }));
     expect(await screen.findByRole('form', { name: 'Add partner' })).toBeInTheDocument();
     expect(screen.queryByRole('form', { name: 'Add child' })).toBeNull();
   });
@@ -441,7 +453,8 @@ describe('PersonPanel reorder children', () => {
     const s = family();
     renderAt(at(s, '?tab=relations'), s);
     const before = s.trees.callsTo('getPerson').length;
-    fireEvent.click(await screen.findByRole('button', { name: 'Move Leo King later' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'More actions for Leo King' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Move later' }));
     await waitFor(() => expect(s.trees.callsTo('reorderChildren')).toHaveLength(1));
     expect(s.trees.callsTo('reorderChildren')[0]).toEqual({
       treeId: s.id,
@@ -455,10 +468,16 @@ describe('PersonPanel reorder children', () => {
   it('has no Move earlier on the first or Move later on the last', async () => {
     const s = family();
     renderAt(at(s, '?tab=relations'), s);
-    await screen.findByRole('button', { name: 'Move Leo King later' });
-    expect(screen.queryByRole('button', { name: 'Move Leo King earlier' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Move Mia King later' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Move Mia King earlier' })).toBeInTheDocument();
+    const items = async (who: string) => {
+      fireEvent.click(await screen.findByRole('button', { name: `More actions for ${who}` }));
+      const labels = screen.getAllByRole('menuitem').map((m) => m.textContent);
+      fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+      return labels;
+    };
+    expect(await items('Leo King')).toEqual(['Change link kind…', 'Move later', 'Remove link']);
+    expect(await items('Mia King')).toEqual(['Change link kind…', 'Move earlier', 'Remove link']);
+    // Nothing to move outside a menu.
+    expect(screen.queryByRole('button', { name: /^Move / })).toBeNull();
   });
 
   it('shows viewers neither button', async () => {
@@ -466,7 +485,7 @@ describe('PersonPanel reorder children', () => {
     s.view.capabilities = { edit: false, addRelative: false, delete: false };
     renderAt(at(s, '?tab=relations'), s);
     await screen.findByRole('heading', { name: /Ada King/ });
-    expect(screen.queryByRole('button', { name: /^Move / })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Move |^More actions/ })).toBeNull();
   });
 
   it('shows the main photo in the header', async () => {
