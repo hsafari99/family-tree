@@ -129,6 +129,21 @@ describe('AccountPage', () => {
       const profile = await screen.findByRole('region', { name: 'Profile' });
       expect(within(profile).getByRole('img', { name: 'Ada' })).toHaveTextContent('A');
       expect(within(profile).queryByRole('button', { name: 'Remove picture' })).toBeNull();
+      // Details first (left column), then the picture, shown large, with its controls under it.
+      const picture = within(profile).getByRole('img', { name: 'Ada' });
+      expect(picture).toHaveStyle({ width: '160px', height: '160px' });
+      // Compact icon controls, named for assistive tech and titled for a tooltip.
+      const choose = within(profile).getByLabelText('Upload a picture');
+      expect(choose.closest('label')).toHaveAttribute('title', 'Upload a picture');
+      expect(choose.closest('label')).toHaveClass('icon-button');
+      const details = within(profile).getByText('ada@example.com').closest('dl')!;
+      expect(
+        details.compareDocumentPosition(picture) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(
+        picture.compareDocumentPosition(within(profile).getByLabelText('Upload a picture')) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
 
       pick('Upload a picture', image());
       expect(await within(profile).findByText('Profile picture added.')).toBeInTheDocument();
@@ -140,7 +155,13 @@ describe('AccountPage', () => {
       expect(await within(profile).findByText('Profile picture replaced.')).toBeInTheDocument();
       expect(within(profile).getByRole('img', { name: 'Ada' })).not.toHaveAttribute('src', first);
 
-      fireEvent.click(within(profile).getByRole('button', { name: 'Remove picture' }));
+      const removeButton = within(profile).getByRole('button', { name: 'Remove picture' });
+      expect(removeButton).toHaveAttribute('title', 'Remove picture');
+      expect(removeButton).toHaveTextContent('');
+      expect(removeButton.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+      fireEvent.click(removeButton);
+      // The confirm step stays.
+      expect(user.avatarUrl).not.toBeNull();
       fireEvent.click(within(profile).getByRole('button', { name: 'Yes, remove' }));
       expect(await within(profile).findByText('Profile picture removed.')).toBeInTheDocument();
       expect(user.avatarUrl).toBeNull();

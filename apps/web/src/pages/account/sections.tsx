@@ -10,6 +10,7 @@ import { MESSAGES, type SessionUser } from '../../auth/api';
 import { useAuth } from '../../auth/AuthContext';
 import { Avatar } from '../../components/Avatar';
 import { ConfirmButton } from '../../components/ConfirmButton';
+import { CameraIcon, TrashIcon } from '../../components/icons';
 import {
   ErrorSummary,
   Field,
@@ -36,16 +37,22 @@ export function ProfileSection({ user, refresh }: SectionProps) {
       <h2 id="profile-heading" tabIndex={-1}>
         Profile
       </h2>
-      <ProfilePicture user={user} refresh={refresh} />
-      <dl className="details">
-        <dt>Name</dt>
-        <dd>{user.name}</dd>
-        <dt>Email</dt>
-        <dd>{user.email}</dd>
-      </dl>
+      {/* Two columns: the details, then the picture with its controls under it. */}
+      <div className="profile-layout">
+        <dl className="details profile-details">
+          <dt>Name</dt>
+          <dd>{user.name}</dd>
+          <dt>Email</dt>
+          <dd>{user.email}</dd>
+        </dl>
+        <ProfilePicture user={user} refresh={refresh} />
+      </div>
     </section>
   );
 }
+
+/** The profile picture's size in Account > Profile, in CSS pixels. */
+export const PROFILE_AVATAR_SIZE = 160;
 
 /** Upload, replace or remove the profile picture; the server crops it to a square. */
 function ProfilePicture({ user, refresh }: SectionProps) {
@@ -55,6 +62,7 @@ function ProfilePicture({ user, refresh }: SectionProps) {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const has = user.avatarUrl !== null;
+  const chooseLabel = has ? 'Replace picture' : 'Upload a picture';
 
   async function choose(file: File | undefined) {
     setError(null);
@@ -86,15 +94,19 @@ function ProfilePicture({ user, refresh }: SectionProps) {
 
   return (
     <div className="profile-picture">
-      <Avatar name={user.name} url={user.avatarUrl} size={96} />
+      <Avatar name={user.name} url={user.avatarUrl} size={PROFILE_AVATAR_SIZE} />
       <div className="profile-picture-actions">
-        <div className="actions">
-          <label className={pending ? 'button-like is-disabled' : 'button-like'}>
-            {pending ? 'Saving…' : has ? 'Replace picture' : 'Upload a picture'}
+        <div className="actions icon-actions">
+          <label
+            className={pending ? 'icon-button is-disabled' : 'icon-button'}
+            title={pending ? 'Saving…' : chooseLabel}
+          >
+            <CameraIcon />
             <input
               ref={input}
               type="file"
               className="sr-only"
+              aria-label={chooseLabel}
               accept={PHOTO_MEDIA_TYPES.join(',')}
               disabled={pending}
               onChange={(e) => void choose(e.target.files?.[0])}
@@ -105,12 +117,13 @@ function ProfilePicture({ user, refresh }: SectionProps) {
               label="Remove picture"
               confirmLabel="Yes, remove"
               danger
+              icon={<TrashIcon />}
               pending={pending}
               onConfirm={() => void remove()}
             />
           )}
         </div>
-        <p className="hint">JPEG, PNG or WebP, at most 5 MB. It is cropped to a square.</p>
+        <p className="hint">JPEG, PNG or WebP, at most 5 MB. Cropped to a square.</p>
         <FormError>{error}</FormError>
         {done && (
           <Success>
