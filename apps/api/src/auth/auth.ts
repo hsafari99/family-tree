@@ -17,6 +17,8 @@ import {
   guardLinkRace,
 } from './google.js';
 import { hashPassword, verifyPassword } from './password.js';
+import { TWO_FACTOR_LOCK_SECONDS, TWO_FACTOR_MAX_FAILED_ATTEMPTS } from './totp-reset.js';
+import { RECOVERY_CODE_COUNT, TWO_FACTOR_ISSUER } from './two-factor-move.js';
 
 type AuthLogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -31,11 +33,6 @@ export interface AuthOptions {
   /** Better Auth logs here instead of the console. */
   log?: AuthLogSink;
 }
-
-/** Spec §5: lock 2FA sign-in after this many consecutive failures. */
-export const TWO_FACTOR_MAX_FAILED_ATTEMPTS = 5;
-/** Better Auth's default lock duration (accountLockout.durationSeconds), stated explicitly. */
-export const TWO_FACTOR_LOCK_SECONDS = 15 * 60;
 
 /**
  * A sink that forwards to a logger attached later. The auth instance is built before the
@@ -221,8 +218,8 @@ export function createAuth({ config, db, rateLimitEnabled, log }: AuthOptions) {
     // Spec §5: lock 2FA for 15 minutes after 5 consecutive failures (Better Auth's default is 10).
     plugins: [
       twoFactor({
-        issuer: 'Family Tree',
-        backupCodeOptions: { amount: 8 },
+        issuer: TWO_FACTOR_ISSUER,
+        backupCodeOptions: { amount: RECOVERY_CODE_COUNT },
         accountLockout: {
           maxFailedAttempts: TWO_FACTOR_MAX_FAILED_ATTEMPTS,
           durationSeconds: TWO_FACTOR_LOCK_SECONDS,

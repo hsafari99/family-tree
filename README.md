@@ -3,7 +3,7 @@
 An open-source, self-hostable web app for building a family tree together with your relatives.
 Each side of the family is completed by the people who know it.
 
-> Status: all seven planned phases are built. Two spec items are still open: moving 2FA to a new device (spec §5) and the single message catalog (spec §6). Not deployed yet.
+> Status: all seven planned phases are built. One spec item is still open: the single message catalog (spec §6). Not deployed yet.
 
 ## Local development
 
@@ -36,6 +36,13 @@ pnpm test:int         # integration tests (needs `pnpm dev` or `docker compose u
 
 - Create an account at http://localhost:5173/sign-up. No email is ever sent, so there is no verification step.
 - Turn on two-step verification under **Account**: scan the QR code with any authenticator app (Google Authenticator, Authy, 1Password…) and save the 8 recovery codes it shows once.
+- New phone? **Account → Move to a new phone** moves two-step verification to it without ever
+  turning it off. Confirm it's you with your password (a Google-only account signs in with
+  Google again instead, if its last sign-in is over 10 minutes old) and a code from your current
+  phone, or a recovery code if you've lost it. Scan the new QR code and enter a code from the
+  new phone within 10 minutes. Only then does the new phone take over: the old phone and the old
+  recovery codes stop working, you get 8 new recovery codes, and your other devices are signed
+  out. Cancel, a wrong code or running out of time leaves the current phone in use.
 - Forgot your password? Use **Forgot password?** with your email plus a current authenticator code or a recovery code.
 - No authenticator? In development, print a one-time reset link (valid 24 hours) with:
 
@@ -184,8 +191,6 @@ stack on this machine only, with a local certificate authority and SeaweedFS sta
 - **Rate limits live in memory.** Both Fastify's and Better Auth's rate-limit counters are kept in
   the API process, so they reset on restart and are not shared between instances. The API is
   meant to run as a single instance; a second one would need a shared store first.
-- **Moving 2FA to a new device** isn't available yet; an owner who loses their phone signs in
-  with a recovery code.
 - **Sibling order is per person:** a child of two unions has one position.
 - **Photos in Trash count towards the quota** until the Trash is erased.
 - **The upload waiter cap** (8 waiting, then 503) doesn't count request bodies that are still
@@ -207,8 +212,9 @@ stack on this machine only, with a local certificate authority and SeaweedFS sta
   every Google sign-in, as with passwords (the app never offers it).
 - **Wrong 2FA codes on Connect or Disconnect Google don't count toward the 2FA lockout.** Those
   routes are capped at 5 attempts per 15 minutes instead.
-- **Connecting or disconnecting Google isn't in an audit log.** The audit log is per tree; a
-  disconnect is only written to the API log (user id, no email).
+- **Connecting or disconnecting Google, and moving 2FA to a new phone, aren't in an audit log.**
+  The audit log is per tree; these are only written to the API log (user id, no email, never a
+  secret or code).
 - **One Google account per user** (a database constraint enforces it).
 
 ## License

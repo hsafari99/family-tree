@@ -224,6 +224,11 @@ minor upgrade, change the image tag in `compose.prod.yml`. A major upgrade means
   `docker compose --env-file .env.production -f compose.prod.yml exec api node dist/trees/purge-cli.js --sweep`.
 - **Rate limits** are in memory, which is right for one API instance.
 - **Owner continuity:** transfer ownership to a successor you trust (spec section 5).
+- **A user with a new or lost phone** moves two-step verification themselves, under **Account →
+  Move to a new phone**, with their password and a current or recovery code. 2FA stays on
+  throughout, so owners and stewards keep their powers; the API log shows
+  `two_factor_move_started`, `two_factor_moved` (other sessions signed out) and
+  `two_factor_move_failed`. Wrong codes there count toward the 15-minute 2FA lockout.
 
 ## 16. Security checklist
 
@@ -303,8 +308,8 @@ button.
   the account has a password. An account that only uses Google can set a password there first,
   within 10 minutes of a Google sign-in; that signs out its other sessions.
 - **Wrong codes on Connect or Disconnect Google are capped by those routes' rate limit** (5
-  attempts per 15 minutes), not by the two-step verification lockout, which only counts failed
-  sign-ins.
+  attempts per 15 minutes), not by the two-step verification lockout, which counts failed
+  sign-ins and failed codes when moving to a new phone.
 - **Two-step verification still applies.** A user with 2FA who signs in with Google gets no
   session until they enter an authenticator or recovery code, so owners and stewards keep their
   guarantee. Google sign-ins never offer "trust this device": the code is asked every time.

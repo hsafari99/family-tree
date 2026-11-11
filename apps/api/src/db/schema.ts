@@ -392,6 +392,28 @@ export const twoFactors = pgTable('two_factors', {
   lockedUntil: timestamp('locked_until', { withTimezone: true }),
 });
 
+// Spec §5: moving 2FA to a new phone. The new authenticator secret waits here, encrypted exactly
+// like two_factors.secret, until a code from the new phone confirms it; then it replaces the real
+// one in a single transaction, so 2FA is never off. One per user, tied to the session that
+// started it, and only good until expires_at (10 minutes).
+export const twoFactorMoves = pgTable(
+  'two_factor_moves',
+  {
+    id: id(),
+    userId: uuid('user_id')
+      .notNull()
+      .unique()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => sessions.id, { onDelete: 'cascade' }),
+    secret: text('secret').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('two_factor_moves_session_id_idx').on(t.sessionId)],
+);
+
 // One-time password-reset links issued by an owner. Only a hash of the token is stored.
 // tree_id is set when a tree owner issued the link; null for the dev CLI.
 export const resetLinks = pgTable(

@@ -21,9 +21,11 @@ import {
   invites,
   persons,
   photos,
+  sessions,
   storageDeletions,
   treeMembers,
   trees,
+  twoFactorMoves,
 } from '../db/schema.js';
 import { createDeps } from '../deps.js';
 import { drainStorageDeletions } from '../storage/deletions.js';
@@ -126,6 +128,37 @@ describe('startPurgeJob', () => {
       expect(await db.select().from(trees).where(eq(trees.id, a.treeId))).toHaveLength(0);
       expect(log.info).toHaveBeenCalledWith({ count: expect.any(Number) }, expect.any(String));
     });
+    await stop();
+    expect(log.error).not.toHaveBeenCalled();
+  });
+});
+
+describe('expired 2FA moves in the purge job', () => {
+  it('deletes expired pending moves and keeps live ones', async () => {
+    const pendingMove = async (expiresInMs: number) => {
+      const u = await userWith2fa(app);
+      const [s] = await db
+        .select({ id: sessions.id })
+        .from(sessions)
+        .where(eq(sessions.userId, u.userId));
+      await db.insert(twoFactorMoves).values({
+        userId: u.userId,
+        sessionId: s!.id,
+        secret: 'encrypted',
+        expiresAt: new Date(Date.now() + expiresInMs),
+      });
+      return u.userId;
+    };
+    const expired = await pendingMove(-1000);
+    const live = await pendingMove(600_000);
+    const log = { info: vi.fn(), error: vi.fn() };
+    const stop = startPurgeJob(db, log, 60_000);
+    const left = () =>
+      db
+        .select({ userId: twoFactorMoves.userId })
+        .from(twoFactorMoves)
+        .where(inArray(twoFactorMoves.userId, [expired, live]));
+    await vi.waitFor(async () => expect(await left()).toEqual([{ userId: live }]));
     await stop();
     expect(log.error).not.toHaveBeenCalled();
   });

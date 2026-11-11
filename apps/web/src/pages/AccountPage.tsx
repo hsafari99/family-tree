@@ -7,6 +7,7 @@ import { ConfirmButton } from '../components/ConfirmButton';
 import { Field, type FieldErrors, FormError, Success, validate } from '../components/forms';
 import { Page } from '../components/Page';
 import { GoogleSection, SetPassword } from './AccountGoogle';
+import { TwoFactorMove } from './TwoFactorMove';
 import { TwoFactorSetup } from './TwoFactorSetup';
 
 export function AccountPage() {
@@ -46,15 +47,15 @@ export function AccountPage() {
       )}
       <GoogleSection user={user} onChanged={refresh} />
       {user.hasPassword && (
-        <>
-          <TwoFactorSetup
-            enabled={user.twoFactorEnabled}
-            canDisable={!user.requiresTwoFactor}
-            onChanged={refresh}
-          />
-          <DeleteAccount />
-        </>
+        <TwoFactorSetup
+          enabled={user.twoFactorEnabled}
+          canDisable={!user.requiresTwoFactor}
+          onChanged={refresh}
+        />
       )}
+      {/* Also for a Google-only account that has 2FA: it confirms with a fresh sign-in. */}
+      {user.twoFactorEnabled && <TwoFactorMove user={user} onChanged={refresh} />}
+      {user.hasPassword && <DeleteAccount />}
       <p>
         <Link to="/">Back to home</Link>
       </p>

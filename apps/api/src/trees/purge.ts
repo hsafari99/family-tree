@@ -1,5 +1,6 @@
 import { TREE_RESTORE_DAYS } from '@family-tree/shared';
 import { inArray, sql } from 'drizzle-orm';
+import { purgeExpiredMoves } from '../auth/two-factor-move.js';
 import type { Db } from '../db/client.js';
 import { photos, trees } from '../db/schema.js';
 import { safeError } from '../errors.js';
@@ -59,7 +60,7 @@ interface JobLog {
 }
 
 /**
- * Runs the purge now and then every `intervalMs`. The returned function stops the timer and
+ * Runs the purge now and then every `intervalMs`, also dropping expired pending 2FA moves. The returned function stops the timer and
  * resolves once any run in flight has finished.
  */
 export function startPurgeJob(
@@ -78,6 +79,12 @@ export function startPurgeJob(
     current = purgeDeletedTrees(db)
       .then(async ({ ids }) => {
         if (ids.length > 0) log.info({ count: ids.length }, 'purged deleted trees');
+        try {
+          const moves = await purgeExpiredMoves(db);
+          if (moves > 0) log.info({ moves }, 'removed expired 2FA moves');
+        } catch (err: unknown) {
+          log.error({ err: safeError(err) }, 'expired 2FA move cleanup failed');
+        }
         if (!store) return;
         for (;;) {
           const { deleted, failed } = await drainStorageDeletions(db, store, { log });

@@ -60,6 +60,18 @@ export const meResponseSchema = z.object({
     googleConnected: z.boolean(),
   }),
 });
+// Spec §5: moving 2FA to a new phone. Start re-checks the password (none for a Google-only
+// account, which needs a recent sign-in instead) and a current authenticator or recovery code;
+// the server says which one is missing or wrong. Confirm takes a code from the new phone.
+export const twoFactorMoveStartSchema = z.object({
+  password: z.string().max(PASSWORD_MAX).optional(),
+  code: z.string().max(64).optional(),
+});
+export const twoFactorMoveConfirmSchema = z.object({ code: totpCodeSchema });
+export const twoFactorMoveStartedSchema = z.object({
+  totpURI: z.string().startsWith('otpauth://totp/'),
+});
+export const twoFactorMovedSchema = z.object({ backupCodes: z.array(z.string()).min(1) });
 export const setPasswordSchema = z.object({ newPassword: passwordSchema });
 export const authProvidersSchema = z.object({ google: z.boolean() });
 export type AuthProviders = z.infer<typeof authProvidersSchema>;

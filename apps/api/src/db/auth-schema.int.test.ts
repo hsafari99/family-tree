@@ -1,8 +1,8 @@
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { loadConfig } from '../config.js';
 import { createDeps } from '../deps.js';
-import { accounts, resetLinks, sessions, twoFactors, users } from './schema.js';
+import { accounts, resetLinks, sessions, twoFactorMoves, twoFactors, users } from './schema.js';
 
 const deps = createDeps(loadConfig());
 const { db } = deps;
@@ -85,5 +85,42 @@ describe('auth tables', () => {
     const [after] = await db.select().from(resetLinks).where(eq(resetLinks.id, link!.id));
     expect(after).toBeDefined();
     expect(after!.createdByUserId).toBeNull();
+  });
+
+  it('keeps one pending 2FA move per user, gone with its user or its session', async () => {
+    const user = await newUser();
+    const [session] = await db
+      .insert(sessions)
+      .values({ userId: user.id, token: crypto.randomUUID(), expiresAt: inOneDay() })
+      .returning();
+    const move = { userId: user.id, sessionId: session!.id, secret: 'enc', expiresAt: inOneDay() };
+    await db.insert(twoFactorMoves).values(move);
+    await expect(db.insert(twoFactorMoves).values(move)).rejects.toMatchObject({
+      cause: { constraint_name: 'two_factor_moves_user_id_unique' },
+    });
+
+    await db.delete(sessions).where(eq(sessions.id, session!.id));
+    expect(
+      await db.select().from(twoFactorMoves).where(eq(twoFactorMoves.userId, user.id)),
+    ).toHaveLength(0);
+
+    const [again] = await db
+      .insert(sessions)
+      .values({ userId: user.id, token: crypto.randomUUID(), expiresAt: inOneDay() })
+      .returning();
+    await db.insert(twoFactorMoves).values({ ...move, sessionId: again!.id });
+    await db.delete(users).where(eq(users.id, user.id));
+    expect(
+      await db.select().from(twoFactorMoves).where(eq(twoFactorMoves.userId, user.id)),
+    ).toHaveLength(0);
+  });
+
+  it('indexes two_factor_moves.session_id, for the session cascade', async () => {
+    const rows = (await db.execute(sql`
+      select indexdef from pg_indexes
+      where tablename = 'two_factor_moves' and indexname = 'two_factor_moves_session_id_idx'
+    `)) as unknown as { indexdef: string }[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.indexdef).toContain('(session_id)');
   });
 });
