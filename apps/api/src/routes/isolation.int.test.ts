@@ -97,6 +97,7 @@ const routes = (t: string, ids: Ids): Route[] => [
   ['POST', `/api/v1/trees/${t}/unions/${ids.union}/delete`],
   ['PATCH', `/api/v1/trees/${t}/parent-child/${ids.link}`, { kind: 'step' }],
   ['POST', `/api/v1/trees/${t}/parent-child/${ids.link}/delete`],
+  ['POST', `/api/v1/trees/${t}/parent-child/${ids.link}/reparent`, { unionId: ids.union }],
   ['POST', `/api/v1/trees/${t}/persons/${ids.person}/delete-preview`, { mode: 'person' }],
   ['POST', `/api/v1/trees/${t}/persons/${ids.person}/delete`, { mode: 'person' }],
   ['GET', `/api/v1/trees/${t}/trash`],

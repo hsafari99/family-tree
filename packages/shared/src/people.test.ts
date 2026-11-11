@@ -138,3 +138,29 @@ describe('relation inputs', () => {
     });
   });
 });
+
+describe('createPersonSchema coParent (brief #9)', () => {
+  const to = '00000000-0000-4000-8000-000000000001';
+  it('needs a parent attach', () => {
+    for (const attach of [undefined, { to, as: 'child' }]) {
+      const r = createPersonSchema.safeParse({
+        person: { givenName: 'Mum' },
+        ...(attach ? { attach } : {}),
+        coParent: { person: { givenName: 'Dad' } },
+      });
+      expect(r.success).toBe(false);
+      expect(r.error!.issues[0]!.path).toEqual(['coParent']);
+    }
+  });
+  it('accepts a new or an existing second parent, and a null unionId', () => {
+    for (const coParent of [{ person: { givenName: 'Dad' } }, { personId: to }]) {
+      expect(
+        createPersonSchema.safeParse({
+          person: { givenName: 'Mum' },
+          attach: { to, as: 'parent', unionId: null },
+          coParent,
+        }).success,
+      ).toBe(true);
+    }
+  });
+});

@@ -17,6 +17,12 @@ export interface Actor {
 type TreeTarget = { kind: 'tree' };
 type RelationTarget = { kind: 'relation'; ends: readonly string[] };
 type PeopleTarget = { kind: 'people'; personIds: readonly string[] };
+type ReparentTarget = {
+  kind: 'reparent';
+  childId: string;
+  fromParents: readonly string[];
+  toParents: readonly string[];
+};
 type MemberTarget = { kind: 'member'; role: Role; invitedByUserId: string | null };
 
 /** What each action is checked against. */
@@ -44,6 +50,12 @@ export interface Targets {
   'person.delete': PeopleTarget;
   /** Both ends of the relation. */
   'relation.delete': PeopleTarget;
+  /**
+   * Moving a child's link to another union (brief #13, decision 3). Keeping every current parent
+   * needs edit scope on the old side; dropping one needs delete rights on it. The new side always
+   * needs add scope.
+   */
+  'link.reparent': ReparentTarget;
   'invite.create': {
     kind: 'invite';
     role: InviteRole;
@@ -93,6 +105,14 @@ const RULES: { [A in Action]: (actor: Actor, target: Targets[A]) => boolean } = 
   'relation.edit': addOrEdit,
   'person.delete': deletePeople,
   'relation.delete': deletePeople,
+  'link.reparent': (a, t) => {
+    const fromEnds = [t.childId, ...t.fromParents];
+    const keepsParents = t.fromParents.every((p) => t.toParents.includes(p));
+    const leave = keepsParents
+      ? addOrEdit(a, { kind: 'relation', ends: fromEnds })
+      : deletePeople(a, { kind: 'people', personIds: fromEnds });
+    return leave && addOrEdit(a, { kind: 'relation', ends: [t.childId, ...t.toParents] });
+  },
   'invite.create': (a, t) =>
     isOwner(a) ||
     (isSteward(a) &&

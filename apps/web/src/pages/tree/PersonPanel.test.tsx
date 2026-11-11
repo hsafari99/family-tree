@@ -525,6 +525,7 @@ describe('PersonPanel add parameter', () => {
             kind: 'biological',
             union: { id: crypto.randomUUID(), type: 'partnership', status: 'partners' },
             parents: [],
+            moveTo: [],
           },
         ],
         unions: [],

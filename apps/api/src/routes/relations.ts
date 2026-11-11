@@ -1,18 +1,28 @@
 import {
   addRelativeSchema,
+  ancestorsOf,
+  descendantsOf,
+  partnersOf,
+  reparentLinkSchema,
   unionDatesError,
   updateParentChildSchema,
   updateUnionSchema,
+  wouldCycle,
 } from '@family-tree/shared';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 import { requireSession } from '../auth/session-guard.js';
-import { parentChild, unions } from '../db/schema.js';
-import { idParam, invalid, notFound, parseBody } from '../errors.js';
+import { deletionBatches, parentChild, unions } from '../db/schema.js';
+import { conflict, idParam, invalid, notFound, parseBody } from '../errors.js';
 import { authorize, loadAccess } from '../trees/access.js';
 import { audit, changedFields } from '../trees/audit.js';
 import { loadLiveGraph, lockTreeGraph } from '../trees/graph.js';
-import { requireLiveLink, requireLiveUnion, UNION_EDIT_FIELDS } from '../trees/relation-rows.js';
+import {
+  requireLiveLink,
+  requireLiveUnion,
+  UNION_EDIT_FIELDS,
+  unionFieldsOf,
+} from '../trees/relation-rows.js';
 import { attachRelative, relativeEnds } from '../trees/relatives.js';
 import type { TreeRouteOptions } from './trees.js';
 
@@ -100,6 +110,102 @@ export const relationsRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app,
         before: { kind: l.kind },
         after: { kind },
       });
+    });
+    return reply.code(204).send();
+  });
+
+  // Re-parent: move a child's link to another union in place (brief #13, decision 3). The link
+  // id and kind stay; nothing goes to Trash.
+  app.post('/api/v1/trees/:treeId/parent-child/:linkId/reparent', async (req, reply) => {
+    const treeId = idParam(req.params, 'treeId');
+    await loadAccess(db, treeId, req.user!.id); // outsiders: 404 before anything else
+    const linkId = idParam(req.params, 'linkId');
+    const { unionId } = parseBody(reparentLinkSchema, req.body);
+    await db.transaction(async (tx) => {
+      await lockTreeGraph(tx, treeId);
+      const access = await loadAccess(tx, treeId, req.user!.id);
+      const graph = await loadLiveGraph(tx, treeId);
+      const link = graph.parentChild.find((l) => l.id === linkId);
+      if (!link) throw notFound();
+      const from = graph.unions.find((u) => u.id === link.unionId)!;
+      const to = graph.unions.find((u) => u.id === unionId);
+      if (!to) throw invalid('unionId', 'Choose parents in this tree');
+      if (to.id === from.id) return;
+      authorize(access, 'link.reparent', {
+        kind: 'reparent',
+        childId: link.childId,
+        fromParents: partnersOf(from),
+        toParents: partnersOf(to),
+      });
+      if (graph.parentChild.some((l) => l.unionId === to.id && l.childId === link.childId)) {
+        throw conflict('They are already a child of those parents');
+      }
+      if (partnersOf(to).includes(link.childId)) {
+        throw invalid('unionId', 'A parent can’t also be the child');
+      }
+      const without = { ...graph, parentChild: graph.parentChild.filter((l) => l.id !== link.id) };
+      if (wouldCycle(without, partnersOf(to), [link.childId])) {
+        throw invalid('unionId', 'That would make someone their own ancestor');
+      }
+      if (partnersOf(to).length === 0) {
+        // Onto a parents-unknown union: its children become siblings, so none may be lineal kin.
+        const kids = without.parentChild.filter((l) => l.unionId === to.id).map((l) => l.childId);
+        const lineal = (c: string) =>
+          ancestorsOf(without, c).has(link.childId) || descendantsOf(without, c).has(link.childId);
+        if (kids.some(lineal))
+          throw invalid('unionId', 'A parent or child can’t also be a sibling');
+      }
+      const [fromRow] = await tx.select().from(unions).where(eq(unions.id, from.id));
+      const [row] = await tx
+        .update(parentChild)
+        .set({ unionId: to.id })
+        .where(
+          and(
+            eq(parentChild.treeId, treeId),
+            eq(parentChild.id, link.id),
+            eq(parentChild.unionId, from.id),
+            isNull(parentChild.deletedAt),
+          ),
+        )
+        .returning({ id: parentChild.id });
+      if (!row) throw conflict('Those parents changed; reload and try again');
+      await audit(tx, access, {
+        action: 'link.reparent',
+        entityType: 'link',
+        entityId: link.id,
+        personIds: [...new Set([link.childId, ...partnersOf(from), ...partnersOf(to)])],
+        before: { unionId: from.id },
+        after: { unionId: to.id },
+      });
+      // A parents-unknown union is never left childless (decision 1).
+      const leftLive = without.parentChild.some((l) => l.unionId === from.id);
+      if (from.parentsUnknown && partnersOf(from).length === 0 && !leftLive) {
+        const trashed = await tx
+          .select({ batch: parentChild.deletionBatchId })
+          .from(parentChild)
+          .innerJoin(deletionBatches, eq(deletionBatches.id, parentChild.deletionBatchId))
+          .where(and(eq(parentChild.unionId, from.id), isNull(deletionBatches.restoredAt)))
+          .orderBy(desc(deletionBatches.createdAt))
+          .limit(1);
+        if (trashed[0]?.batch) {
+          // A trashed sibling still points at it: it goes with the newest such batch, so a
+          // restore brings the siblings back together.
+          await tx
+            .update(unions)
+            .set({ deletedAt: sql`now()`, deletionBatchId: trashed[0].batch })
+            .where(eq(unions.id, from.id));
+        } else {
+          // Nothing refers to it and it holds nothing (no partners, children or details).
+          await tx.delete(unions).where(and(eq(unions.treeId, treeId), eq(unions.id, from.id)));
+        }
+        await audit(tx, access, {
+          action: 'union.delete',
+          entityType: 'union',
+          entityId: from.id,
+          personIds: [link.childId],
+          before: unionFieldsOf(fromRow!),
+        });
+      }
     });
     return reply.code(204).send();
   });

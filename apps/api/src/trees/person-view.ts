@@ -121,6 +121,18 @@ export async function loadPersonView(
   const partnerSummaries = (u: { partnerAId: string | null; partnerBId: string | null }) =>
     [u.partnerAId, u.partnerBId].map(summary).filter((p): p is PersonSummary => p !== null);
 
+  const livePartners = (u: { partnerAId: string | null; partnerBId: string | null }) =>
+    [u.partnerAId, u.partnerBId].filter((p): p is string => p !== null && people.has(p));
+  const childOf = new Set(links.filter((l) => l.childId === personId).map((l) => l.unionId));
+  /** Unions sharing a live partner with `u` that the person could move to (brief #13). */
+  const moveTo = (u: { id: string; partnerAId: string | null; partnerBId: string | null }) => {
+    const mine = livePartners(u);
+    return liveUnions
+      .filter((x) => x.id !== u.id && !childOf.has(x.id))
+      .filter((x) => !livePartners(x).includes(personId))
+      .filter((x) => livePartners(x).some((p) => mine.includes(p)))
+      .map((x) => ({ unionId: x.id, parents: partnerSummaries(x) }));
+  };
   const parents = links
     .filter((l) => l.childId === personId)
     .map((l) => {
@@ -130,6 +142,7 @@ export async function loadPersonView(
         kind: l.kind,
         union: { id: u.id, type: u.type, status: u.status },
         parents: partnerSummaries(u),
+        moveTo: moveTo(u),
       };
     });
   const parentUnionIds = new Set(parents.map((p) => p.union.id));

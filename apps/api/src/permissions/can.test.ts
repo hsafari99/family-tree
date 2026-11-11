@@ -126,3 +126,45 @@ describe('can: rules that depend on who made something', () => {
     }
   });
 });
+
+describe('link.reparent (brief #13, decision 3)', () => {
+  const C = 'c';
+  const X = 'x';
+  const Y = 'y';
+  const keep = { kind: 'reparent', childId: C, fromParents: [X], toParents: [X, Y] } as const;
+  const drop = { kind: 'reparent', childId: C, fromParents: [X], toParents: [Y] } as const;
+  const scoped = (ids: string[]): Actor => ({
+    userId: 's',
+    role: 'viewer',
+    grants: [{ id: 'g', anchorPersonId: ids[0]!, scope: new Set(ids) }],
+  });
+
+  it('lets the owner move anything, and an editor only keep the parents', () => {
+    expect(can(owner, 'link.reparent', keep)).toBe(true);
+    expect(can(owner, 'link.reparent', drop)).toBe(true);
+    expect(can(editor, 'link.reparent', keep)).toBe(true);
+    expect(can(editor, 'link.reparent', drop)).toBe(false);
+    expect(can(viewer, 'link.reparent', keep)).toBe(false);
+  });
+
+  it('needs the whole old side in scope for a steward who drops a parent', () => {
+    expect(can(scoped([C]), 'link.reparent', keep)).toBe(true);
+    expect(can(scoped([C]), 'link.reparent', drop)).toBe(false);
+    expect(can(scoped([C, X]), 'link.reparent', drop)).toBe(true);
+  });
+
+  it('needs an end of the old side in scope even when the parents are kept', () => {
+    expect(can(scoped([Y]), 'link.reparent', keep)).toBe(false);
+  });
+
+  it('treats a parents-unknown side as the child alone', () => {
+    const fromUnknown = {
+      kind: 'reparent',
+      childId: C,
+      fromParents: [],
+      toParents: [X, Y],
+    } as const;
+    expect(can(scoped([C]), 'link.reparent', fromUnknown)).toBe(true);
+    expect(can(scoped([Y]), 'link.reparent', fromUnknown)).toBe(false);
+  });
+});

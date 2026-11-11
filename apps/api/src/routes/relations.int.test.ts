@@ -14,7 +14,7 @@ import {
 import { buildApp } from '../app.js';
 import { createAuth } from '../auth/auth.js';
 import { loadConfig } from '../config.js';
-import { auditLog, parentChild, trees, unions } from '../db/schema.js';
+import { auditLog, parentChild, persons, trees, unions } from '../db/schema.js';
 import { createDeps } from '../deps.js';
 
 const config = loadConfig();
@@ -527,5 +527,321 @@ describe('siblings with unknown parents (brief #11)', () => {
     expect(res.statusCode, res.body).toBe(201);
     const v = await view(owner.jar, treeId, ann.id);
     expect(v.relations.siblings.map((s) => s.person.givenName)).toEqual(['Ben']);
+  });
+});
+
+describe('POST …/parent-child/:linkId/reparent (brief #13)', () => {
+  const reparent = (
+    jar: CookieJar | undefined,
+    treeId: string,
+    linkId: string,
+    body: Record<string, unknown>,
+  ) => call(app, 'POST', `/api/v1/trees/${treeId}/parent-child/${linkId}/reparent`, { jar, body });
+  const linkOf = async (treeId: string, childId: string) =>
+    (
+      await db
+        .select()
+        .from(parentChild)
+        .where(and(eq(parentChild.treeId, treeId), eq(parentChild.childId, childId)))
+    ).filter((l) => l.deletedAt === null);
+  /** root + Pat (U2); Kid is in U1 = {root, null}. */
+  async function couple() {
+    const s = await setup();
+    const pat = await newPerson(s.owner.jar, s.treeId, 'Pat', { to: s.root, as: 'partner' });
+    const u2 = (await view(s.owner.jar, s.treeId, s.root)).relations.unions[0]!.id;
+    const kid = await newPerson(s.owner.jar, s.treeId, 'Kid');
+    const res = await call(app, 'POST', relatives(s.treeId, kid), {
+      jar: s.owner.jar,
+      body: { as: 'parent', personId: s.root, kind: 'adoptive' },
+    });
+    expect(res.statusCode, res.body).toBe(204);
+    const [link] = await linkOf(s.treeId, kid);
+    return { ...s, pat, u2, kid, link: link!, u1: link!.unionId };
+  }
+
+  it('moves a child from a single-parent union onto the couple, keeping the link id and kind', async () => {
+    const { owner, treeId, root, pat, u2, kid, link, u1 } = await couple();
+    expect(u1).not.toBe(u2);
+    const v0 = await view(owner.jar, treeId, kid);
+    expect(v0.relations.parents[0]!.moveTo).toEqual([
+      { unionId: u2, parents: expect.arrayContaining([expect.objectContaining({ id: root })]) },
+    ]);
+    const res = await reparent(owner.jar, treeId, link.id, { unionId: u2 });
+    expect(res.statusCode, res.body).toBe(204);
+    const [after] = await linkOf(treeId, kid);
+    expect(after).toMatchObject({ id: link.id, unionId: u2, kind: 'adoptive' });
+    const v = await view(owner.jar, treeId, kid);
+    expect(v.relations.parents[0]!.parents.map((p) => p.id).sort()).toEqual([root, pat].sort());
+    const audit = (await auditRows(db, treeId)).find((r) => r.action === 'link.reparent')!;
+    expect(audit).toMatchObject({ before: { unionId: u1 }, after: { unionId: u2 } });
+    expect([...audit.personIds].sort()).toEqual([kid, root, pat].sort());
+  });
+
+  it('404 for an outsider, before the body is read', async () => {
+    const { treeId, link } = await couple();
+    const outsider = await signUp(app, { name: 'Out' });
+    expect((await reparent(outsider.jar, treeId, link.id, {})).statusCode).toBe(404);
+  });
+
+  it('404 for a link in another tree, 400 for a union in another tree', async () => {
+    const a = await couple();
+    const b = await couple();
+    expect((await reparent(a.owner.jar, a.treeId, b.link.id, { unionId: a.u2 })).statusCode).toBe(
+      404,
+    );
+    const bad = await reparent(a.owner.jar, a.treeId, a.link.id, { unionId: b.u2 });
+    expect(bad.statusCode).toBe(400);
+    expect(bad.json().error.details.unionId).toBeDefined();
+  });
+
+  it('409 when they are already a child of the target', async () => {
+    const { owner, treeId, kid, link, u2 } = await couple();
+    // Put a second link of Kid into U2 directly, then try to move the first onto it.
+    await db.insert(parentChild).values({ treeId, unionId: u2, childId: kid });
+    expect((await reparent(owner.jar, treeId, link.id, { unionId: u2 })).statusCode).toBe(409);
+  });
+
+  it('400 when it would make someone their own ancestor', async () => {
+    const { owner, treeId, kid, link } = await couple();
+    // Kid + Gk: a union whose child is the grandchild; moving Kid under it is a cycle.
+    const gk = await newPerson(owner.jar, treeId, 'Gk', { to: kid, as: 'child' });
+    const gkUnion = (await linkOf(treeId, gk))[0]!.unionId;
+    const res = await reparent(owner.jar, treeId, link.id, { unionId: gkUnion });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('403 for an editor dropping a parent; 204 for an editor keeping them', async () => {
+    const { owner, treeId, link, u1, u2 } = await couple();
+    const ed = await signUp(app, { name: 'Edie' });
+    await addMember(db, treeId, ed.userId, 'editor', owner.userId);
+    expect((await reparent(ed.jar, treeId, link.id, { unionId: u2 })).statusCode).toBe(204);
+    // Back from {root, Pat} to {root}: drops Pat.
+    expect((await reparent(ed.jar, treeId, link.id, { unionId: u1 })).statusCode).toBe(403);
+  });
+
+  it('a steward needs the old side fully in scope when a parent is dropped', async () => {
+    const { owner, treeId, kid, pat, link, u1, u2 } = await couple();
+    await reparent(owner.jar, treeId, link.id, { unionId: u2 });
+    const S = await userWith2fa(app, 'Sam');
+    await addMember(db, treeId, S.userId, 'viewer', owner.userId);
+    await addGrant(db, treeId, S.userId, kid, owner.userId);
+    // Kid's branch: Kid's ancestors (root, Pat) and their descendants — so everything is in
+    // scope. Narrow it with a stranger's union instead: a lone person Lou and their own union.
+    const lou = await addPerson(db, treeId, 'Lou');
+    const T = await userWith2fa(app, 'Tia');
+    await addMember(db, treeId, T.userId, 'viewer', owner.userId);
+    await addGrant(db, treeId, T.userId, lou.id, owner.userId);
+    expect((await reparent(T.jar, treeId, link.id, { unionId: u1 })).statusCode).toBe(403);
+    expect((await reparent(S.jar, treeId, link.id, { unionId: u1 })).statusCode).toBe(204);
+    void pat;
+  });
+
+  it('moving one of two siblings off a parents-unknown union keeps the union', async () => {
+    const { owner, treeId, root } = await setup();
+    const sis = await newPerson(owner.jar, treeId, 'Sis', { to: root, as: 'sibling' });
+    const [u0] = (await db.select().from(unions).where(eq(unions.treeId, treeId))).filter(
+      (u) => u.parentsUnknown,
+    );
+    const pat = await newPerson(owner.jar, treeId, 'Pat', { to: root, as: 'partner' });
+    const u2 = (await db.select().from(unions).where(eq(unions.partnerBId, pat)))[0]!.id;
+    const sisLink = (await linkOf(treeId, sis))[0]!;
+    expect((await reparent(owner.jar, treeId, sisLink.id, { unionId: u2 })).statusCode).toBe(204);
+    const [row] = await db.select().from(unions).where(eq(unions.id, u0!.id));
+    expect(row!.deletedAt).toBeNull();
+    expect((await linkOf(treeId, root))[0]!.unionId).toBe(u0!.id);
+  });
+
+  it('moving the last child off a parents-unknown union hard-deletes it when nothing refers to it', async () => {
+    const { owner, treeId } = await setup();
+    const ann = await newPerson(owner.jar, treeId, 'Ann');
+    const sis = await newPerson(owner.jar, treeId, 'Sis', { to: ann, as: 'sibling' });
+    const [u0] = (await db.select().from(unions).where(eq(unions.treeId, treeId))).filter(
+      (u) => u.parentsUnknown,
+    );
+    const olive = await newPerson(owner.jar, treeId, 'Olive');
+    const pat = await newPerson(owner.jar, treeId, 'Pat', { to: olive, as: 'partner' });
+    const u2 = (await db.select().from(unions).where(eq(unions.partnerBId, pat)))[0]!.id;
+    for (const c of [sis, ann]) {
+      const l = (await linkOf(treeId, c))[0]!;
+      expect((await reparent(owner.jar, treeId, l.id, { unionId: u2 })).statusCode).toBe(204);
+    }
+    expect(await db.select().from(unions).where(eq(unions.id, u0!.id))).toHaveLength(0);
+    const actions = (await auditRows(db, treeId)).map((r) => r.action);
+    expect(actions).toContain('union.delete');
+  });
+
+  it('moving the last live child off it soft-deletes it into the batch that holds the other sibling', async () => {
+    const { owner, treeId } = await setup();
+    const ann = await newPerson(owner.jar, treeId, 'Ann');
+    const sis = await newPerson(owner.jar, treeId, 'Sis', { to: ann, as: 'sibling' });
+    const [u0] = (await db.select().from(unions).where(eq(unions.treeId, treeId))).filter(
+      (u) => u.parentsUnknown,
+    );
+    const olive = await newPerson(owner.jar, treeId, 'Olive');
+    const pat = await newPerson(owner.jar, treeId, 'Pat', { to: olive, as: 'partner' });
+    const u2 = (await db.select().from(unions).where(eq(unions.partnerBId, pat)))[0]!.id;
+    const del = await call(app, 'POST', `/api/v1/trees/${treeId}/persons/${sis}/delete`, {
+      jar: owner.jar,
+      body: { mode: 'person' },
+    });
+    const b = del.json().batchId as string;
+    const l = (await linkOf(treeId, ann))[0]!;
+    expect((await reparent(owner.jar, treeId, l.id, { unionId: u2 })).statusCode).toBe(204);
+    const [row] = await db.select().from(unions).where(eq(unions.id, u0!.id));
+    expect(row!.deletedAt).not.toBeNull();
+    expect(row!.deletionBatchId).toBe(b);
+    const restore = await call(app, 'POST', `/api/v1/trees/${treeId}/trash/${b}/restore`, {
+      jar: owner.jar,
+    });
+    expect(restore.statusCode).toBe(204);
+    const [back] = await db.select().from(unions).where(eq(unions.id, u0!.id));
+    expect(back).toMatchObject({ deletedAt: null, deletionBatchId: null });
+    expect((await linkOf(treeId, sis))[0]!.unionId).toBe(u0!.id);
+  });
+
+  it('restore revives a parents-unknown union that a revived link needs', async () => {
+    const { owner, treeId } = await setup();
+    const ann = await newPerson(owner.jar, treeId, 'Ann');
+    const sis = await newPerson(owner.jar, treeId, 'Sis', { to: ann, as: 'sibling' });
+    const bro = await newPerson(owner.jar, treeId, 'Bro', { to: ann, as: 'sibling' });
+    const [u0] = (await db.select().from(unions).where(eq(unions.treeId, treeId))).filter(
+      (u) => u.parentsUnknown,
+    );
+    const olive = await newPerson(owner.jar, treeId, 'Olive');
+    const pat = await newPerson(owner.jar, treeId, 'Pat', { to: olive, as: 'partner' });
+    const u2 = (await db.select().from(unions).where(eq(unions.partnerBId, pat)))[0]!.id;
+    const delP = async (id: string) =>
+      (
+        await call(app, 'POST', `/api/v1/trees/${treeId}/persons/${id}/delete`, {
+          jar: owner.jar,
+          body: { mode: 'person' },
+        })
+      ).json().batchId as string;
+    const b = await delP(sis);
+    const c = await delP(bro);
+    const l = (await linkOf(treeId, ann))[0]!;
+    expect((await reparent(owner.jar, treeId, l.id, { unionId: u2 })).statusCode).toBe(204);
+    expect((await db.select().from(unions).where(eq(unions.id, u0!.id)))[0]!.deletionBatchId).toBe(
+      c,
+    );
+    const restore = (id: string) =>
+      call(app, 'POST', `/api/v1/trees/${treeId}/trash/${id}/restore`, { jar: owner.jar });
+    expect((await restore(b)).statusCode).toBe(204);
+    expect((await db.select().from(unions).where(eq(unions.id, u0!.id)))[0]).toMatchObject({
+      deletedAt: null,
+      deletionBatchId: null,
+    });
+    expect((await restore(c)).statusCode).toBe(204);
+    expect((await linkOf(treeId, bro))[0]!.unionId).toBe(u0!.id);
+  });
+
+  it('is rate-limited', async () => {
+    const { owner, treeId, link, u2 } = await couple();
+    const limited = buildApp({ config, checks: deps.checks, auth, db, rateLimitMax: 2 });
+    const hit = () =>
+      call(limited, 'POST', `/api/v1/trees/${treeId}/parent-child/${link.id}/reparent`, {
+        jar: owner.jar,
+        body: { unionId: u2 },
+      });
+    await hit();
+    await hit();
+    const third = await hit();
+    expect(third.statusCode).toBe(429);
+    expect(third.json().error.code).toBe('RATE_LIMITED');
+    await limited.close();
+  });
+});
+
+describe('new pair of parents and both parents in one step (brief #9)', () => {
+  const post = (jar: CookieJar, treeId: string, body: Record<string, unknown>) =>
+    call(app, 'POST', `/api/v1/trees/${treeId}/persons`, { jar, body });
+  const allUnions = (treeId: string) => db.select().from(unions).where(eq(unions.treeId, treeId));
+
+  it('adds Mum and Dad as one couple in one request', async () => {
+    const { owner, treeId, root } = await setup();
+    const res = await post(owner.jar, treeId, {
+      person: { givenName: 'Mum' },
+      attach: { to: root, as: 'parent' },
+      coParent: { person: { givenName: 'Dad' } },
+    });
+    expect(res.statusCode, res.body).toBe(201);
+    const us = await allUnions(treeId);
+    expect(us).toHaveLength(1);
+    expect(us[0]!.partnerAId).not.toBeNull();
+    expect(us[0]!.partnerBId).not.toBeNull();
+    const v = await view(owner.jar, treeId, root);
+    expect(v.relations.parents).toHaveLength(1);
+    expect(v.relations.parents[0]!.parents.map((p) => p.givenName).sort()).toEqual(['Dad', 'Mum']);
+    const actions = (await auditRows(db, treeId)).map((r) => r.action);
+    expect(actions.filter((a) => a === 'person.create').length).toBeGreaterThanOrEqual(2);
+    expect(actions).toEqual(expect.arrayContaining(['union.create', 'union.update']));
+  });
+
+  it('uses an existing person as the second parent', async () => {
+    const { owner, treeId, root } = await setup();
+    const dad = await newPerson(owner.jar, treeId, 'Dad');
+    const res = await post(owner.jar, treeId, {
+      person: { givenName: 'Mum' },
+      attach: { to: root, as: 'parent' },
+      coParent: { personId: dad },
+    });
+    expect(res.statusCode, res.body).toBe(201);
+    const v = await view(owner.jar, treeId, root);
+    expect(v.relations.parents[0]!.parents.map((p) => p.id)).toContain(dad);
+  });
+
+  it('refuses a second parent when one is waiting for a partner, unless unionId is null', async () => {
+    const { owner, treeId, root } = await setup();
+    await newPerson(owner.jar, treeId, 'Mum', { to: root, as: 'parent' });
+    const body = {
+      person: { givenName: 'Step' },
+      coParent: { person: { givenName: 'Stepdad' } },
+    };
+    const bad = await post(owner.jar, treeId, { ...body, attach: { to: root, as: 'parent' } });
+    expect(bad.statusCode).toBe(400);
+    expect(bad.json().error.details.coParent).toBeDefined();
+    const ok = await post(owner.jar, treeId, {
+      ...body,
+      attach: { to: root, as: 'parent', unionId: null },
+    });
+    expect(ok.statusCode, ok.body).toBe(201);
+    expect((await view(owner.jar, treeId, root)).relations.parents).toHaveLength(2);
+  });
+
+  it('starts a new union with unionId null even when an open one exists', async () => {
+    const { owner, treeId, root } = await setup();
+    await newPerson(owner.jar, treeId, 'Mum', { to: root, as: 'parent' });
+    await newPerson(owner.jar, treeId, 'Other', { to: root, as: 'parent', unionId: null });
+    expect(await allUnions(treeId)).toHaveLength(2);
+  });
+
+  it('fills both slots of a parents-unknown union', async () => {
+    const { owner, treeId, root } = await setup();
+    const sis = await newPerson(owner.jar, treeId, 'Sis', { to: root, as: 'sibling' });
+    const res = await post(owner.jar, treeId, {
+      person: { givenName: 'Mum' },
+      attach: { to: root, as: 'parent' },
+      coParent: { person: { givenName: 'Dad' } },
+    });
+    expect(res.statusCode, res.body).toBe(201);
+    const us = await allUnions(treeId);
+    expect(us).toHaveLength(1);
+    expect(us[0]!.parentsUnknown).toBe(true);
+    expect(us[0]!.partnerAId).toBe(res.json().id);
+    expect(us[0]!.partnerBId).not.toBeNull();
+    const v = await view(owner.jar, treeId, sis);
+    expect(v.relations.parents[0]!.parents.map((p) => p.givenName).sort()).toEqual(['Dad', 'Mum']);
+  });
+
+  it('is one transaction: a bad second parent creates no Mum', async () => {
+    const { owner, treeId, root } = await setup();
+    const before = (await db.select().from(persons).where(eq(persons.treeId, treeId))).length;
+    const res = await post(owner.jar, treeId, {
+      person: { givenName: 'Mum' },
+      attach: { to: root, as: 'parent' },
+      coParent: { personId: root },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(await db.select().from(persons).where(eq(persons.treeId, treeId))).toHaveLength(before);
   });
 });

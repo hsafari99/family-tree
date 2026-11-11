@@ -124,19 +124,36 @@ const unionChoice = z.object({
 /** How a relative is attached to a subject person (decision 11). */
 export const relativeLinkSchema = z.object({
   as: z.enum(RELATIVE_ROLES),
-  /** child: one of the subject's unions; parent: a parent union with an empty slot; sibling: a parent union. */
-  unionId: z.uuid().optional(),
+  /**
+   * child: one of the subject's unions; parent: a parent union with an empty slot, or null to
+   * start a new pair of parents (brief #9); sibling: a parent union.
+   */
+  unionId: z.uuid().nullable().optional(),
   kind: z.enum(CHILD_KINDS).default('biological'),
   /** partner only: the new union's type and status. */
   union: unionChoice.optional(),
 });
 export type RelativeLink = z.output<typeof relativeLinkSchema>;
 
-export const createPersonSchema = z.object({
-  person: personFieldsSchema,
-  /** The new person becomes `as` of `to`. */
-  attach: relativeLinkSchema.extend({ to: z.uuid() }).optional(),
-});
+export const createPersonSchema = z
+  .object({
+    person: personFieldsSchema,
+    /** The new person becomes `as` of `to`. */
+    attach: relativeLinkSchema.extend({ to: z.uuid() }).optional(),
+    /** Parent only: a second parent for the same new union, new or existing (brief #9). */
+    coParent: z
+      .union([z.object({ person: personFieldsSchema }), z.object({ personId: z.uuid() })])
+      .optional(),
+  })
+  .superRefine((v, ctx) => {
+    if (v.coParent && v.attach?.as !== 'parent') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['coParent'],
+        message: 'A second parent needs a parent to go with',
+      });
+    }
+  });
 export type CreatePersonInput = z.input<typeof createPersonSchema>;
 
 /** POST …/persons/:subjectId/relatives: the existing `personId` becomes `as` of the subject. */
@@ -169,6 +186,9 @@ export function unionDatesError(u: {
 }
 
 export const updateParentChildSchema = z.object({ kind: z.enum(CHILD_KINDS) });
+/** POST …/parent-child/:linkId/reparent: move the child's link to another union (brief #13). */
+export const reparentLinkSchema = z.object({ unionId: z.uuid() });
+export type ReparentLinkInput = z.infer<typeof reparentLinkSchema>;
 
 export const residenceInputSchema = z.object({
   place: z.string().trim().min(1, 'Enter a place').max(PLACE_MAX, tooLong(PLACE_MAX)),
@@ -235,6 +255,8 @@ export const personViewSchema = z.object({
         kind: z.enum(CHILD_KINDS),
         union: unionHead,
         parents: z.array(personSummarySchema),
+        /** Other parents this child could be moved to: live unions that share a partner with this one (brief #13). */
+        moveTo: z.array(z.object({ unionId: z.uuid(), parents: z.array(personSummarySchema) })),
       }),
     ),
     /** The person's own unions, with the partner (null when unknown) and their children. */
@@ -294,6 +316,7 @@ export const AUDIT_ACTIONS = [
   'link.update',
   'link.delete',
   'link.reorder',
+  'link.reparent',
   'residence.create',
   'residence.update',
   'residence.delete',
