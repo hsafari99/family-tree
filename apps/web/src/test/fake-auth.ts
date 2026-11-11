@@ -1,5 +1,5 @@
 import type { AuthApi, AuthError, Result, SessionUser } from '../auth/api';
-import { MESSAGES } from '../auth/api';
+import { MESSAGES, SESSION_EXPIRED } from '../auth/api';
 
 /** The only TOTP code the fake accepts. */
 export const FAKE_TOTP = '123456';
@@ -45,6 +45,8 @@ export class FakeAuthApi implements AuthApi {
   challenge: string | null = null;
   resetTokens = new Map<string, string>();
   calls: { method: Method; input: unknown }[] = [];
+  /** What getProviders answers. */
+  providers = { google: true };
   private forced = new Map<Method, AuthError>();
   private pending = new Set<Method>();
   private waiting: (() => void)[] = [];
@@ -267,6 +269,55 @@ export class FakeAuthApi implements AuthApi {
     if (checked.data.ownsTrees) return fail('OWNS_TREES', MESSAGES.ownsTrees);
     this.users.delete(checked.data.email);
     this.current = null;
+    return ok(undefined);
+  }
+
+  async getProviders() {
+    const forced = await this.enter('getProviders');
+    if (forced) return { ok: false as const, error: forced };
+    return ok({ ...this.providers });
+  }
+
+  /** The real one leaves the page for Google; the fake only records the call. */
+  async startGoogleSignIn(input: { next: string }) {
+    const forced = await this.enter('startGoogleSignIn', input);
+    if (forced) return { ok: false as const, error: forced };
+    return ok(undefined);
+  }
+
+  async connectGoogle(input: { password: string; code?: string }) {
+    const forced = await this.enter('connectGoogle', input);
+    if (forced) return { ok: false as const, error: forced };
+    const checked = this.checkPassword(input.password);
+    if (!checked.ok) return checked;
+    if (checked.data.twoFactorEnabled) {
+      if (!input.code) return fail('TWO_FACTOR_CODE_REQUIRED', MESSAGES.codeRequired);
+      if (input.code !== FAKE_TOTP) return fail('INVALID_CODE', MESSAGES.badCode);
+    }
+    return ok(undefined);
+  }
+
+  async disconnectGoogle() {
+    const forced = await this.enter('disconnectGoogle');
+    if (forced) return { ok: false as const, error: forced };
+    const u = this.me();
+    if (!u) return fail(SESSION_EXPIRED, MESSAGES.sessionExpired);
+    if (!u.googleConnected) return fail('GOOGLE_NOT_CONNECTED', MESSAGES.googleNotConnected);
+    if (!u.hasPassword) {
+      return fail('PASSWORD_REQUIRED_TO_DISCONNECT', MESSAGES.passwordRequiredToDisconnect);
+    }
+    u.googleConnected = false;
+    return ok(undefined);
+  }
+
+  async setPassword(input: { newPassword: string }) {
+    const forced = await this.enter('setPassword', input);
+    if (forced) return { ok: false as const, error: forced };
+    const u = this.me();
+    if (!u) return fail(SESSION_EXPIRED, MESSAGES.sessionExpired);
+    if (u.hasPassword) return fail('PASSWORD_ALREADY_SET', MESSAGES.passwordAlreadySet);
+    u.password = input.newPassword;
+    u.hasPassword = true;
     return ok(undefined);
   }
 }

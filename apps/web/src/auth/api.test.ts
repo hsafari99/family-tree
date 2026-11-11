@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createAuthApi, MESSAGES, SESSION_EXPIRED, toAuthError } from './api';
+import { createAuthApi, googleErrorMessage, MESSAGES, SESSION_EXPIRED, toAuthError } from './api';
+import { leavePage } from './leave-page';
 
 const BASE = 'https://api.example.com';
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 type Reply = { status: number; body?: unknown };
@@ -33,6 +35,8 @@ const user = {
   email: 'ada@example.com',
   twoFactorEnabled: false,
   requiresTwoFactor: false,
+  hasPassword: true,
+  googleConnected: false,
 };
 
 describe('toAuthError for tree roles', () => {
@@ -246,5 +250,131 @@ describe('createAuthApi', () => {
       ok: false,
       error: { code: 'INVALID_PASSWORD', message: MESSAGES.badPassword },
     });
+  });
+});
+
+describe('Google', () => {
+  const HERE = window.location.origin;
+  const GOOGLE_URL = 'https://accounts.google.com/o/oauth2/v2/auth?client_id=x&state=y';
+  const bodyOf = (mock: ReturnType<typeof stubFetch>) =>
+    JSON.parse((mock.mock.calls[0]![1] as RequestInit).body as string) as Record<string, unknown>;
+
+  it('getProviders reads which buttons to show', async () => {
+    const fetchMock = stubFetch({ status: 200, body: { google: true } });
+    await expect(createAuthApi({ baseUrl: BASE }).getProviders()).resolves.toEqual({
+      ok: true,
+      data: { google: true },
+    });
+    expect(urlOf(fetchMock.mock.calls[0]!)).toBe(`${BASE}/api/v1/auth/providers`);
+  });
+
+  it('getProviders treats a failure as no Google', async () => {
+    stubFetch({ status: 500 });
+    await expect(createAuthApi({ baseUrl: BASE }).getProviders()).resolves.toEqual({
+      ok: true,
+      data: { google: false },
+    });
+  });
+
+  it('startGoogleSignIn sends the return path on this site, then leaves for Google', async () => {
+    const leave = vi.spyOn(leavePage, 'to').mockImplementation(() => {});
+    const fetchMock = stubFetch({ status: 200, body: { url: GOOGLE_URL, redirect: false } });
+    await expect(
+      createAuthApi({ baseUrl: BASE }).startGoogleSignIn({ next: '/invite/abc' }),
+    ).resolves.toEqual({ ok: true, data: undefined });
+    expect(urlOf(fetchMock.mock.calls[0]!)).toBe(`${BASE}/api/auth/sign-in/social`);
+    expect(bodyOf(fetchMock)).toEqual({
+      provider: 'google',
+      callbackURL: `${HERE}/invite/abc`,
+      errorCallbackURL: `${HERE}/sign-in?next=${encodeURIComponent('/invite/abc')}`,
+      disableRedirect: true,
+    });
+    expect(leave).toHaveBeenCalledWith(GOOGLE_URL);
+  });
+
+  it('startGoogleSignIn falls back to / for a return path off this site', async () => {
+    vi.spyOn(leavePage, 'to').mockImplementation(() => {});
+    const fetchMock = stubFetch({ status: 200, body: { url: GOOGLE_URL, redirect: false } });
+    await createAuthApi({ baseUrl: BASE }).startGoogleSignIn({ next: '//evil.example/x' });
+    expect(bodyOf(fetchMock)).toMatchObject({
+      callbackURL: `${HERE}/`,
+      errorCallbackURL: `${HERE}/sign-in`,
+    });
+  });
+
+  it('never leaves for anywhere but Google', async () => {
+    const leave = vi.spyOn(leavePage, 'to').mockImplementation(() => {});
+    stubFetch({ status: 200, body: { url: 'https://evil.example/', redirect: false } });
+    await expect(
+      createAuthApi({ baseUrl: BASE }).startGoogleSignIn({ next: '/' }),
+    ).resolves.toEqual({ ok: false, error: { code: 'HTTP_200', message: MESSAGES.unknown } });
+    expect(leave).not.toHaveBeenCalled();
+  });
+
+  it('connectGoogle re-sends the password and code, and returns to Account settings', async () => {
+    const leave = vi.spyOn(leavePage, 'to').mockImplementation(() => {});
+    const fetchMock = stubFetch({ status: 200, body: { url: GOOGLE_URL, redirect: false } });
+    await expect(
+      createAuthApi({ baseUrl: BASE }).connectGoogle({ password: 'pw', code: '123456' }),
+    ).resolves.toEqual({ ok: true, data: undefined });
+    expect(urlOf(fetchMock.mock.calls[0]!)).toBe(`${BASE}/api/auth/link-social`);
+    expect(bodyOf(fetchMock)).toEqual({
+      provider: 'google',
+      password: 'pw',
+      code: '123456',
+      callbackURL: `${HERE}/account?google=connected`,
+      errorCallbackURL: `${HERE}/account`,
+      disableRedirect: true,
+    });
+    expect(leave).toHaveBeenCalledWith(GOOGLE_URL);
+  });
+
+  it('connectGoogle maps its refusals to fixed messages', async () => {
+    stubFetch({ status: 400, body: { code: 'TWO_FACTOR_CODE_REQUIRED', message: 'x' } });
+    await expect(
+      createAuthApi({ baseUrl: BASE }).connectGoogle({ password: 'pw' }),
+    ).resolves.toEqual({
+      ok: false,
+      error: { code: 'TWO_FACTOR_CODE_REQUIRED', message: MESSAGES.codeRequired },
+    });
+  });
+
+  it('disconnectGoogle and setPassword use the account routes', async () => {
+    const fetchMock = stubFetch(
+      { status: 204 },
+      {
+        status: 409,
+        body: { error: { code: 'PASSWORD_REQUIRED_TO_DISCONNECT', message: 'server text' } },
+      },
+      { status: 204 },
+    );
+    const api = createAuthApi({ baseUrl: BASE });
+    await expect(api.disconnectGoogle()).resolves.toEqual({ ok: true, data: undefined });
+    await expect(api.disconnectGoogle()).resolves.toEqual({
+      ok: false,
+      error: {
+        code: 'PASSWORD_REQUIRED_TO_DISCONNECT',
+        message: MESSAGES.passwordRequiredToDisconnect,
+      },
+    });
+    await expect(api.setPassword({ newPassword: 'a long password' })).resolves.toEqual({
+      ok: true,
+      data: undefined,
+    });
+    expect(fetchMock.mock.calls.map(urlOf)).toEqual([
+      `${BASE}/api/v1/account/google/disconnect`,
+      `${BASE}/api/v1/account/google/disconnect`,
+      `${BASE}/api/v1/account/password`,
+    ]);
+  });
+
+  it('googleErrorMessage maps callback error codes, and nothing else gets through', () => {
+    expect(googleErrorMessage('account_not_linked')).toBe(MESSAGES.googleEmailTaken);
+    expect(googleErrorMessage('account_already_linked_to_different_user')).toBe(
+      MESSAGES.googleLinkedElsewhere,
+    );
+    expect(googleErrorMessage('access_denied')).toBe(MESSAGES.googleCancelled);
+    expect(googleErrorMessage('<script>anything</script>')).toBe(MESSAGES.googleFailed);
+    expect(googleErrorMessage(null)).toBeNull();
   });
 });
