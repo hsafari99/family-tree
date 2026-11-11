@@ -1,4 +1,4 @@
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { loadConfig } from '../config.js';
 import { createDeps } from '../deps.js';
@@ -113,5 +113,14 @@ describe('auth tables', () => {
     expect(
       await db.select().from(twoFactorMoves).where(eq(twoFactorMoves.userId, user.id)),
     ).toHaveLength(0);
+  });
+
+  it('indexes two_factor_moves.session_id, for the session cascade', async () => {
+    const rows = (await db.execute(sql`
+      select indexdef from pg_indexes
+      where tablename = 'two_factor_moves' and indexname = 'two_factor_moves_session_id_idx'
+    `)) as unknown as { indexdef: string }[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.indexdef).toContain('(session_id)');
   });
 });

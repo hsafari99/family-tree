@@ -2248,7 +2248,23 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "two_factor_moves_session_id_idx": {
+          "name": "two_factor_moves_session_id_idx",
+          "columns": [
+            {
+              "expression": "session_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "two_factor_moves_user_id_users_id_fk": {
           "name": "two_factor_moves_user_id_users_id_fk",

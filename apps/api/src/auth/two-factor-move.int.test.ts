@@ -1,6 +1,7 @@
 import { base32 } from '@better-auth/utils/base32';
 import { createOTP } from '@better-auth/utils/otp';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
+import type { LightMyRequestResponse } from 'fastify';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   call,
@@ -28,6 +29,7 @@ import {
   encryptTotpSecret,
   newRecoveryCodes,
   newTotpSecret,
+  purgeExpiredMoves,
 } from './two-factor-move.js';
 
 const config = { ...loadConfig(), google: TEST_GOOGLE };
@@ -102,6 +104,17 @@ async function signInWithRecoveryCode(email: string, code: string) {
   return call(app, 'POST', '/api/auth/two-factor/verify-backup-code', { jar, body: { code } });
 }
 
+/** A jar holding only the trust-device cookie from `res` (or the one already in `prev`). */
+function trustCookieJar(res: LightMyRequestResponse, prev?: CookieJar): CookieJar {
+  const raw = res.headers['set-cookie'];
+  const lines = (raw === undefined ? [] : Array.isArray(raw) ? raw : [raw]).filter((l) =>
+    l.includes('trust_device='),
+  );
+  if (lines.length === 0 && prev) return prev;
+  expect(lines).toHaveLength(1);
+  return new CookieJar().store({ headers: { 'set-cookie': lines } } as LightMyRequestResponse);
+}
+
 const pendingFor = (userId: string) =>
   db.select().from(twoFactorMoves).where(eq(twoFactorMoves.userId, userId));
 
@@ -123,6 +136,7 @@ describe('moving 2FA to a new phone', () => {
       code: await totpNow(user.rawSecret),
     });
     expect(res.statusCode).toBe(200);
+    expect(res.headers['cache-control']).toBe('no-store');
     const { totpURI } = res.json() as { totpURI: string };
     expect(new URL(totpURI).searchParams.get('issuer')).toBe('Family Tree');
     const newRaw = rawFromUri(totpURI);
@@ -137,6 +151,7 @@ describe('moving 2FA to a new phone', () => {
 
     const done = await confirm(user.jar, await totpNow(newRaw));
     expect(done.statusCode).toBe(200);
+    expect(done.headers['cache-control']).toBe('no-store');
     const { backupCodes } = done.json() as { backupCodes: string[] };
     expect(backupCodes).toHaveLength(8);
     expect(await pendingFor(user.userId)).toHaveLength(0);
@@ -293,6 +308,81 @@ describe('moving 2FA to a new phone', () => {
     expect(
       (await signInWithTotp(user.email, await totpNow(user.rawSecret))).verify.statusCode,
     ).toBe(200);
+  });
+
+  it('forgets trusted devices: a trust-device cookie no longer skips the code', async () => {
+    const user = await userWith2fa(app);
+    // A sign-in on another browser that ticks "trust this device".
+    const { jar: browser } = await signIn(app, { email: user.email, password: TEST_PASSWORD });
+    const verify = await call(app, 'POST', '/api/auth/two-factor/verify-totp', {
+      jar: browser,
+      body: { code: await totpNow(user.rawSecret), trustDevice: true },
+    });
+    expect(verify.statusCode).toBe(200);
+    const trusted = trustCookieJar(verify);
+    // Before the move, the trust cookie skips the code.
+    const skipped = await call(app, 'POST', '/api/auth/sign-in/email', {
+      jar: trusted,
+      body: { email: user.email, password: TEST_PASSWORD },
+    });
+    expect(skipped.statusCode).toBe(200);
+    expect(skipped.json().twoFactorRedirect).toBeUndefined();
+    const latest = trustCookieJar(skipped, trusted);
+
+    const newRaw = await startWithTotp(user);
+    expect((await confirm(user.jar, await totpNow(newRaw))).statusCode).toBe(200);
+
+    const after = await call(app, 'POST', '/api/auth/sign-in/email', {
+      jar: latest,
+      body: { email: user.email, password: TEST_PASSWORD },
+    });
+    expect(after.statusCode).toBe(200);
+    expect(after.json().twoFactorRedirect).toBe(true);
+  });
+
+  it('drops the pending secret when 2FA was turned off before confirming', async () => {
+    const user = await userWith2fa(app);
+    const newRaw = await startWithTotp(user);
+    await db.delete(twoFactors).where(eq(twoFactors.userId, user.userId));
+    const res = await confirm(user.jar, await totpNow(newRaw));
+    expect(res.statusCode).toBe(404);
+    expect(errorCode(res)).toBe('MOVE_NOT_STARTED');
+    expect(await pendingFor(user.userId)).toHaveLength(0);
+  });
+});
+
+describe('expired pending moves', () => {
+  const expire = (userId: string) =>
+    db
+      .update(twoFactorMoves)
+      .set({ expiresAt: new Date(Date.now() - 1000) })
+      .where(eq(twoFactorMoves.userId, userId));
+
+  it("are deleted when anyone starts a move, without touching others' live ones", async () => {
+    const ann = await userWith2fa(app, 'Ann');
+    const bob = await userWith2fa(app, 'Bob');
+    const cat = await userWith2fa(app, 'Cat');
+    await startWithTotp(ann);
+    await startWithTotp(bob);
+    await expire(ann.userId);
+    await startWithTotp(cat);
+    expect(await pendingFor(ann.userId)).toHaveLength(0);
+    expect(await pendingFor(bob.userId)).toHaveLength(1);
+    expect(await pendingFor(cat.userId)).toHaveLength(1);
+  });
+
+  it('are deleted by purgeExpiredMoves, which keeps live ones', async () => {
+    const ann = await userWith2fa(app, 'Ann');
+    const bob = await userWith2fa(app, 'Bob');
+    await startWithTotp(ann);
+    await startWithTotp(bob);
+    await expire(ann.userId);
+    expect(await purgeExpiredMoves(db)).toBeGreaterThanOrEqual(1);
+    const left = await db
+      .select({ userId: twoFactorMoves.userId })
+      .from(twoFactorMoves)
+      .where(inArray(twoFactorMoves.userId, [ann.userId, bob.userId]));
+    expect(left).toEqual([{ userId: bob.userId }]);
   });
 });
 

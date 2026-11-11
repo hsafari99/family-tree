@@ -48,7 +48,7 @@ export const twoFactorMoveRoutes: FastifyPluginAsync<{ auth: Auth; db: Db }> = a
         }),
       ],
     },
-    async (req) => {
+    async (req, reply) => {
       const { password, code } = parseBody(twoFactorMoveStartSchema, req.body);
       const user = req.user!;
       const log = req.log.child({ event: 'two_factor_move_failed', userId: user.id });
@@ -113,7 +113,8 @@ export const twoFactorMoveRoutes: FastifyPluginAsync<{ auth: Auth; db: Db }> = a
         { event: 'two_factor_move_started', userId: user.id, via: check.via },
         '2FA move started',
       );
-      return started;
+      // Carries the new secret: never cached.
+      return reply.header('cache-control', 'no-store').send(started);
     },
   );
 
@@ -131,7 +132,7 @@ export const twoFactorMoveRoutes: FastifyPluginAsync<{ auth: Auth; db: Db }> = a
         }),
       ],
     },
-    async (req) => {
+    async (req, reply) => {
       const { code } = parseBody(twoFactorMoveConfirmSchema, req.body);
       const userId = req.user!.id;
       const ctx = await auth.$context;
@@ -149,7 +150,8 @@ export const twoFactorMoveRoutes: FastifyPluginAsync<{ auth: Auth; db: Db }> = a
           },
           '2FA moved to a new phone',
         );
-        return { backupCodes: outcome.backupCodes };
+        // Carries the new recovery codes: never cached.
+        return reply.header('cache-control', 'no-store').send({ backupCodes: outcome.backupCodes });
       }
       req.log.warn(
         { event: 'two_factor_move_failed', userId, reason: outcome.status },

@@ -13,7 +13,7 @@
 // Auth's own endpoints after a move, so it fails if they drift.
 import { createOTP } from '@better-auth/utils/otp';
 import { generateRandomString, symmetricEncrypt } from 'better-auth/crypto';
-import { and, eq, like, ne, or } from 'drizzle-orm';
+import { and, eq, like, lte, ne, or } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { sessions, twoFactorMoves, twoFactors, verifications } from '../db/schema.js';
 import {
@@ -65,14 +65,28 @@ export function encryptRecoveryCodes(key: TwoFactorKey, codes: string[]): Promis
 }
 
 /**
+ * Deletes every pending move past its expiry (anyone's). Run on each start and by the purge job,
+ * so abandoned secrets don't linger. Returns how many went.
+ */
+export async function purgeExpiredMoves(db: Db): Promise<number> {
+  const gone = await db
+    .delete(twoFactorMoves)
+    .where(lte(twoFactorMoves.expiresAt, new Date()))
+    .returning({ id: twoFactorMoves.id });
+  return gone.length;
+}
+
+/**
  * Keeps a new secret pending for the user (replacing any older pending one) and returns the
- * otpauth URI for it. The caller has already re-authenticated the user.
+ * otpauth URI for it. The caller has already re-authenticated the user. Expired pending moves of
+ * anyone are dropped first.
  */
 export async function startMove(
   db: Db,
   key: TwoFactorKey,
   { userId, sessionId, email }: { userId: string; sessionId: string; email: string },
 ): Promise<{ totpURI: string }> {
+  await purgeExpiredMoves(db);
   const raw = newTotpSecret();
   const secret = await encryptTotpSecret(key, raw);
   const expiresAt = new Date(Date.now() + MOVE_TTL_MS);
@@ -131,7 +145,11 @@ export async function confirmMove(
       .from(twoFactors)
       .where(and(eq(twoFactors.userId, userId), eq(twoFactors.verified, true)))
       .for('update');
-    if (!current) return { status: 'not_started' };
+    if (!current) {
+      // 2FA was turned off since the move started: the pending secret is useless now.
+      await tx.delete(twoFactorMoves).where(eq(twoFactorMoves.id, pending.id));
+      return { status: 'not_started' };
+    }
     if ((await checkLockout(tx, current)) === 'locked') return { status: 'locked' };
 
     if (!(await verifyTotp(await decryptTotpSecret(key, pending.secret), code))) {
