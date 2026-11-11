@@ -152,6 +152,42 @@ a {
   margin: 1rem 0;
 }
 
+/* Google sign-in. System colours, so it follows light and dark mode. */
+.alt-sign-in {
+  margin: 1rem 0;
+}
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--muted);
+  margin: 0 0 1rem;
+}
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--border);
+}
+button.google {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  width: 100%;
+  background: Canvas;
+  color: CanvasText;
+  border-color: var(--border);
+}
+button.google:hover:not(:disabled) {
+  background: var(--surface);
+}
+.google-logo {
+  width: 1.15rem;
+  height: 1.15rem;
+  flex: none;
+}
+
 /* Messages */
 .error,
 .success {

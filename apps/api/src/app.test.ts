@@ -153,6 +153,27 @@ describe('buildApp', () => {
     expect(log).not.toContain('SECRET-ticket_value');
   });
 
+  it('redacts the OAuth code and state, and any return path, from logged URLs', async () => {
+    const sink = logSink();
+    app = buildApp({ config: testConfig({ LOG_LEVEL: 'info' }), checks, logStream: sink.stream });
+    app.get('/api/auth/callback/google', async () => 'ok');
+    app.get('/elsewhere', async () => 'ok');
+    await app.inject({
+      method: 'GET',
+      url: '/api/auth/callback/google?state=SECRET-state&code=SECRET-code&iss=x',
+    });
+    await app.inject({
+      method: 'GET',
+      url: `/elsewhere?next=${encodeURIComponent('/invite/SECRET-invite-token')}&code=SECRET-2`,
+    });
+    const log = sink.text();
+    expect(log).toContain('/api/auth/callback/google?');
+    expect(log).toContain('iss=x');
+    for (const secret of ['SECRET-state', 'SECRET-code', 'SECRET-invite-token', 'SECRET-2']) {
+      expect(log).not.toContain(secret);
+    }
+  });
+
   it('keeps database query parameters out of the error log', async () => {
     const sink = logSink();
     app = buildApp({ config: testConfig({ LOG_LEVEL: 'info' }), checks, logStream: sink.stream });

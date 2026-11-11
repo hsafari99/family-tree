@@ -55,6 +55,12 @@ export const meResponseSchema = z.object({
     twoFactorEnabled: z.boolean(),
     /** True when the user owns a tree or holds a steward grant. */
     requiresTwoFactor: z.boolean(),
+    /** Whether the account has a password login (Google-only accounts don't). */
+    hasPassword: z.boolean(),
+    googleConnected: z.boolean(),
   }),
 });
+export const setPasswordSchema = z.object({ newPassword: passwordSchema });
+export const authProvidersSchema = z.object({ google: z.boolean() });
+export type AuthProviders = z.infer<typeof authProvidersSchema>;
 export type MeResponse = z.infer<typeof meResponseSchema>;

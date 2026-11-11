@@ -12,6 +12,8 @@ import { invitesRoutes } from './routes/invites.js';
 import { membersRoutes } from './routes/members.js';
 import { stewardsRoutes } from './routes/stewards.js';
 import { meRoutes } from './routes/me.js';
+import { authProvidersRoutes } from './routes/auth-providers.js';
+import { accountRoutes } from './routes/account.js';
 import { personsRoutes } from './routes/persons.js';
 import { relationsRoutes } from './routes/relations.js';
 import { residencesRoutes } from './routes/residences.js';
@@ -84,12 +86,13 @@ export function buildApp({
               'res.headers["set-cookie"]',
               '*.password',
             ],
-            // Fastify's own req fields, but with the export ticket (a one-time bearer in the URL)
-            // masked.
+            // Fastify's own req fields, but with one-time secrets in the URL masked: the export
+            // ticket, the OAuth code and state on /api/auth/callback/*, and any return path
+            // (`next`, which can name an invite link).
             serializers: {
               req: (req: FastifyRequest) => ({
                 method: req.method,
-                url: req.url.replace(/([?&]ticket=)[^&#]*/g, '$1[Redacted]'),
+                url: req.url.replace(/([?&](?:ticket|code|state|next)=)[^&#]*/g, '$1[Redacted]'),
                 host: req.host,
                 remoteAddress: req.ip,
                 remotePort: req.socket?.remotePort,
@@ -128,6 +131,8 @@ export function buildApp({
   if (auth) {
     app.register(authRoutes, { auth });
     app.register(meRoutes, { auth, db });
+    app.register(authProvidersRoutes, { auth });
+    app.register(accountRoutes, { auth, db });
     app.register(passwordResetRoutes, { auth, db });
     app.register(treesRoutes, { auth, db, config, storage: store! });
     app.register(membersRoutes, { auth, db, config, storage: store! });

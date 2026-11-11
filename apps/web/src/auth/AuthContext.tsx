@@ -46,6 +46,11 @@ const METHODS = Object.keys({
   resetWithCode: true,
   resetWithLink: true,
   deleteAccount: true,
+  getProviders: true,
+  startGoogleSignIn: true,
+  connectGoogle: true,
+  disconnectGoogle: true,
+  setPassword: true,
 } satisfies Record<keyof AuthApi, true>) as (keyof AuthApi)[];
 
 /**

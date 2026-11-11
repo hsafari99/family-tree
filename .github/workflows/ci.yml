@@ -47,6 +47,9 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      # Made up; the Google spec checks the authorization URL carries exactly this ID.
+      E2E_GOOGLE_CLIENT_ID: ci-fake-client-id.apps.googleusercontent.com
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
@@ -63,6 +66,13 @@ jobs:
       - run: pnpm --filter @family-tree/e2e exec playwright install --with-deps --only-shell chromium
       # The dev stack in Docker, with Better Auth's limits off for E2E only (decision 15).
       - run: docker compose up -d --build --wait postgres s3
+      # A made-up Google client, so the Google E2E test runs against the stubbed Google page.
+      # Never a real client: nothing in CI talks to Google.
+      - name: Fake Google OAuth client for E2E
+        run: printf 'GOOGLE_CLIENT_ID=%s\nGOOGLE_CLIENT_SECRET=%s\n' "$FAKE_GOOGLE_CLIENT_ID" "$FAKE_GOOGLE_CLIENT_SECRET" > .env.development.local
+        env:
+          FAKE_GOOGLE_CLIENT_ID: ${{ env.E2E_GOOGLE_CLIENT_ID }}
+          FAKE_GOOGLE_CLIENT_SECRET: ci-fake-google-secret-not-real
       - run: docker compose up -d --build api web
         env:
           AUTH_RATE_LIMIT_ENABLED: 'false'

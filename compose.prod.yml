@@ -109,6 +109,9 @@ services:
       MAX_TREES_PER_USER: ${MAX_TREES_PER_USER:-3}
       MAX_PHOTO_BYTES_PER_TREE: ${MAX_PHOTO_BYTES_PER_TREE:-1073741824}
       TREE_PURGE_INTERVAL_MINUTES: ${TREE_PURGE_INTERVAL_MINUTES:-60}
+      # Google sign-in: both or neither (blank = off). docs/self-hosting.md, "Google sign-in".
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
     networks: [db, edge]
     depends_on:
       migrate: { condition: service_completed_successfully }

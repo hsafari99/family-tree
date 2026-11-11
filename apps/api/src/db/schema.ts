@@ -359,6 +359,9 @@ export const accounts = pgTable(
   },
   (t) => [
     unique('accounts_provider_account_uq').on(t.providerId, t.accountId),
+    // One login of each kind per user: two concurrent "Connect Google" round trips can't both
+    // attach an account (auth/google.ts turns the violation into a message).
+    unique('accounts_user_provider_uq').on(t.userId, t.providerId),
     index('accounts_user_idx').on(t.userId),
   ],
 );

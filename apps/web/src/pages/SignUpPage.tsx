@@ -4,6 +4,7 @@ import { Link, Navigate, useNavigate, useSearchParams } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
 import { safeNext } from '../auth/RequireAuth';
 import { Field, type FieldErrors, FormError, validate } from '../components/forms';
+import { GoogleSignIn } from '../components/GoogleSignIn';
 import { Page } from '../components/Page';
 
 export function SignUpPage() {
@@ -73,6 +74,7 @@ export function SignUpPage() {
           {pending ? 'Creating account…' : 'Create account'}
         </button>
       </form>
+      <GoogleSignIn next={next} />
       <p>
         Already have an account?{' '}
         <Link to={`/sign-in${next === '/' ? '' : `?next=${encodeURIComponent(next)}`}`}>

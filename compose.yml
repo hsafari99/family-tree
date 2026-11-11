@@ -60,7 +60,11 @@ services:
   api:
     <<: *dev
     command: pnpm --filter @family-tree/api dev
-    env_file: .env.development
+    env_file:
+      - path: .env.development
+      # Optional, git-ignored: GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET for Google sign-in.
+      - path: .env.development.local
+        required: false
     environment:
       DATABASE_URL: postgres://family:dev-only-pw@postgres:5432/family
       S3_ENDPOINT: http://s3:8333

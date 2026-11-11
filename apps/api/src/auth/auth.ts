@@ -9,6 +9,13 @@ import { safeError } from '../errors.js';
 import { accounts, sessions, twoFactors, users, verifications } from '../db/schema.js';
 import { CLIENT_IP_HEADER } from './fastify-adapter.js';
 import { holdsTwoFactorRole, ownsLiveTree } from '../trees/roles.js';
+import {
+  blockUnlinkEndpoint,
+  challengeSocialSignIn,
+  checkSocialStart,
+  confirmLink,
+  guardLinkRace,
+} from './google.js';
 import { hashPassword, verifyPassword } from './password.js';
 
 type AuthLogLevel = 'debug' | 'info' | 'warn' | 'error';
@@ -88,16 +95,46 @@ export function createAuth({ config, db, rateLimitEnabled, log }: AuthOptions) {
           }
         : {}),
     },
-    database: drizzleAdapter(db, {
-      provider: 'pg',
-      schema: {
-        user: users,
-        session: sessions,
-        account: accounts,
-        verification: verifications,
-        twoFactor: twoFactors,
+    database: guardLinkRace(
+      drizzleAdapter(db, {
+        provider: 'pg',
+        schema: {
+          user: users,
+          session: sessions,
+          account: accounts,
+          verification: verifications,
+          twoFactor: twoFactors,
+        },
+      }),
+      config.WEB_ORIGIN,
+    ),
+    // Spec §5: Google sign-in, only when the OAuth client is configured. Google's defaults are
+    // exactly openid, email and profile; include_granted_scopes is off so no earlier grant to
+    // this client is folded in.
+    socialProviders: config.google
+      ? {
+          google: {
+            clientId: config.google.clientId,
+            clientSecret: config.google.clientSecret,
+            includeGrantedScopes: false,
+            prompt: 'select_account',
+          },
+        }
+      : {},
+    account: {
+      accountLinking: {
+        // Spec §5: emails are never verified, so anyone could pre-register a victim's address.
+        // A Google sign-in must never attach itself to an existing account by email; linking
+        // happens only from Account settings, signed in (see google.ts).
+        disableImplicitLinking: true,
+        // Linking is explicit and re-authenticated, so the Google address may differ from the
+        // login name (which is only a name here).
+        allowDifferentEmails: true,
+        updateUserInfoOnLink: false,
       },
-    }),
+    },
+    // OAuth failures land on the web sign-in page (?error=<code>), which shows a fixed message.
+    onAPIError: { errorURL: `${config.WEB_ORIGIN}/sign-in` },
     emailAndPassword: {
       enabled: true,
       minPasswordLength: PASSWORD_MIN,
@@ -123,6 +160,9 @@ export function createAuth({ config, db, rateLimitEnabled, log }: AuthOptions) {
     },
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
+        checkSocialStart(ctx, config.WEB_ORIGIN);
+        blockUnlinkEndpoint(ctx);
+        await confirmLink(ctx, db);
         // Without a password Better Auth deletes any session younger than a day unchecked.
         if (ctx.path === '/delete-user' || ctx.path === '/delete-user/callback') {
           const password = (ctx.body as { password?: unknown } | undefined)?.password;
@@ -144,6 +184,9 @@ export function createAuth({ config, db, rateLimitEnabled, log }: AuthOptions) {
           }
         }
       }),
+      after: createAuthMiddleware(async (ctx) => {
+        await challengeSocialSignIn(ctx, config.WEB_ORIGIN);
+      }),
     },
     emailVerification: { sendOnSignUp: false },
     // cookieCache stays off: with it, a revoked session would keep working until the cache expires.
@@ -156,6 +199,9 @@ export function createAuth({ config, db, rateLimitEnabled, log }: AuthOptions) {
       customRules: {
         '/sign-in/email': { window: 60, max: 5 },
         '/sign-up/email': { window: 60 * 60, max: 10 },
+        '/sign-in/social': { window: 60, max: 10 },
+        // Checks the password and second factor (google.ts), like /change-password.
+        '/link-social': { window: 60 * 15, max: 5 },
         '/two-factor/*': { window: 60, max: 5 },
         '/change-password': { window: 60 * 15, max: 5 },
       },

@@ -1,6 +1,14 @@
-import { apiErrorSchema, type MeResponse, meResponseSchema } from '@family-tree/shared';
+import {
+  apiErrorSchema,
+  type AuthProviders,
+  authProvidersSchema,
+  type MeResponse,
+  meResponseSchema,
+} from '@family-tree/shared';
 import { twoFactorClient } from 'better-auth/client/plugins';
 import { createAuthClient } from 'better-auth/react';
+import { leavePage } from './leave-page';
+import { safeNext } from './safe-next';
 
 export type SessionUser = MeResponse['user'];
 
@@ -33,6 +41,16 @@ export interface AuthApi {
   resetWithCode(input: { email: string; code: string; newPassword: string }): Promise<Result<void>>;
   resetWithLink(input: { token: string; newPassword: string }): Promise<Result<void>>;
   deleteAccount(input: { password: string }): Promise<Result<void>>;
+  /** Which sign-in methods besides email and password are on. Failures read as "none". */
+  getProviders(): Promise<Result<AuthProviders>>;
+  /** Starts a Google sign-in that returns to `next` (a path on this site); leaves the page. */
+  startGoogleSignIn(input: { next: string }): Promise<Result<void>>;
+  /** Re-authenticates, then leaves for Google to connect it; comes back to /account. */
+  connectGoogle(input: { password: string; code?: string }): Promise<Result<void>>;
+  /** Re-authenticates like connectGoogle; refused while Google is the only way in. */
+  disconnectGoogle(input: { password: string; code?: string }): Promise<Result<void>>;
+  /** Gives a Google-only account a password. */
+  setPassword(input: { newPassword: string }): Promise<Result<void>>;
 }
 
 export const MESSAGES = {
@@ -83,6 +101,20 @@ export const MESSAGES = {
   itemChanged: 'That changed in the meantime. Reload and try again.',
   layoutFailed: 'The tree couldn’t be drawn. Try the focus view, or reload the page.',
   layoutTooSlow: 'Layout is taking too long — try a smaller view.',
+  googleEmailTaken:
+    'An account with this email already exists. Sign in with your password, then connect Google in Account settings.',
+  googleLinkedElsewhere: 'That Google account is already connected to another Family Tree account.',
+  googleCancelled: 'Google sign-in was cancelled.',
+  googleFailed: 'Google sign-in didn’t work. Try again.',
+  googleConnectFailed: 'Google couldn’t be connected. Try again.',
+  googleUnavailable: 'Google sign-in isn’t available right now.',
+  googleAlreadyConnected: 'Google is already connected to this account.',
+  googleNotConnected: 'Google isn’t connected to this account.',
+  codeRequired: 'Enter the 6-digit code from your authenticator app, or a recovery code.',
+  passwordRequiredToDisconnect: 'Set a password first, so you can still sign in without Google.',
+  passwordAlreadySet: 'This account already has a password.',
+  recentSignInRequired:
+    'To set a password, confirm it’s you: sign in with Google again, then try once more.',
 } as const;
 
 /** The error code AuthProvider reacts to by re-reading the session. */
@@ -110,7 +142,41 @@ const BY_CODE: Record<string, string> = {
   FORBIDDEN: MESSAGES.forbidden,
   NOT_FOUND: MESSAGES.notFound,
   CONFLICT: MESSAGES.conflict,
+  TWO_FACTOR_CODE_REQUIRED: MESSAGES.codeRequired,
+  GOOGLE_ALREADY_CONNECTED: MESSAGES.googleAlreadyConnected,
+  GOOGLE_NOT_CONNECTED: MESSAGES.googleNotConnected,
+  PASSWORD_REQUIRED_TO_DISCONNECT: MESSAGES.passwordRequiredToDisconnect,
+  PASSWORD_ALREADY_SET: MESSAGES.passwordAlreadySet,
+  RECENT_SIGN_IN_REQUIRED: MESSAGES.recentSignInRequired,
+  PROVIDER_NOT_FOUND: MESSAGES.googleUnavailable,
 };
+
+/** Error codes Better Auth puts in ?error= when a Google round trip fails. */
+const GOOGLE_CALLBACK_ERRORS: Record<string, string> = {
+  account_not_linked: MESSAGES.googleEmailTaken,
+  account_already_linked_to_different_user: MESSAGES.googleLinkedElsewhere,
+  access_denied: MESSAGES.googleCancelled,
+  // Ours (auth/google.ts guardLinkRace): another tab connected a Google account first.
+  google_already_connected: MESSAGES.googleAlreadyConnected,
+};
+
+/**
+ * The message for a `?error=` code after a Google round trip (null when there's none). The code
+ * comes from the URL, so anything unrecognised gets a fixed fallback, never the code itself.
+ */
+export function googleErrorMessage(
+  code: string | null,
+  action: 'signIn' | 'connect' = 'signIn',
+): string | null {
+  if (!code) return null;
+  return (
+    GOOGLE_CALLBACK_ERRORS[code] ??
+    (action === 'connect' ? MESSAGES.googleConnectFailed : MESSAGES.googleFailed)
+  );
+}
+
+/** The only place a Google round trip may send the browser. */
+const GOOGLE_AUTH_ORIGIN = 'https://accounts.google.com';
 
 /**
  * What a call depends on, which decides what a bare 401 means:
@@ -189,17 +255,45 @@ export function createAuthApi({ baseUrl }: { baseUrl: string }): AuthApi {
     }
   }
 
-  async function v1Error(res: Response): Promise<Result<never>> {
+  async function v1Error(res: Response, kind: CallKind = 'public'): Promise<Result<never>> {
     const body: unknown = await res.json().catch(() => null);
     const parsed = apiErrorSchema.safeParse(body);
     const err = parsed.success ? parsed.data.error : undefined;
-    return { ok: false, error: toAuthError(res.status, err?.code) };
+    return { ok: false, error: toAuthError(res.status, err?.code, kind) };
   }
 
-  async function v1Post(path: string, body: unknown): Promise<Result<void>> {
+  async function v1Post(
+    path: string,
+    body: unknown,
+    kind: CallKind = 'public',
+  ): Promise<Result<void>> {
     const res = await v1(path, { method: 'POST', body });
     if (!res) return networkError();
-    if (!res.ok) return v1Error(res);
+    if (!res.ok) return v1Error(res, kind);
+    return { ok: true, data: undefined };
+  }
+
+  /** Asks Better Auth for Google's authorization URL, then leaves the page for it. */
+  async function goToGoogle(
+    kind: CallKind,
+    path: '/sign-in/social' | '/link-social',
+    body: Record<string, unknown>,
+  ): Promise<Result<void>> {
+    const res = await run(
+      kind,
+      () =>
+        client.$fetch<{ url?: unknown }>(path, {
+          method: 'POST',
+          body: { provider: 'google', ...body, disableRedirect: true },
+        }) as Promise<BetterAuthResult<{ url?: unknown }>>,
+      (data) => data?.url,
+    );
+    if (!res.ok) return res;
+    const url = res.data;
+    if (typeof url !== 'string' || !url.startsWith(`${GOOGLE_AUTH_ORIGIN}/`)) {
+      return { ok: false, error: toAuthError(200) };
+    }
+    leavePage.to(url);
     return { ok: true, data: undefined };
   }
 
@@ -260,5 +354,32 @@ export function createAuthApi({ baseUrl }: { baseUrl: string }): AuthApi {
     resetWithCode: (input) => v1Post('/password-reset/totp', input),
     resetWithLink: (input) => v1Post('/password-reset/link', input),
     deleteAccount: ({ password }) => run('session', () => client.deleteUser({ password }), nothing),
+    async getProviders() {
+      const none = { ok: true as const, data: { google: false } };
+      const res = await v1('/auth/providers');
+      if (!res?.ok) return none;
+      const parsed = authProvidersSchema.safeParse(await res.json().catch(() => null));
+      return parsed.success ? { ok: true, data: parsed.data } : none;
+    },
+    startGoogleSignIn: ({ next }) => {
+      // The server accepts only absolute URLs on this site; it redirects to them afterwards.
+      const here = window.location.origin;
+      const path = safeNext(next);
+      return goToGoogle('public', '/sign-in/social', {
+        callbackURL: `${here}${path}`,
+        errorCallbackURL: `${here}/sign-in${path === '/' ? '' : `?next=${encodeURIComponent(path)}`}`,
+      });
+    },
+    connectGoogle: ({ password, code }) => {
+      const here = window.location.origin;
+      return goToGoogle('session', '/link-social', {
+        password,
+        ...(code ? { code } : {}),
+        callbackURL: `${here}/account?google=connected`,
+        errorCallbackURL: `${here}/account`,
+      });
+    },
+    disconnectGoogle: (input) => v1Post('/account/google/disconnect', input, 'session'),
+    setPassword: (input) => v1Post('/account/password', input, 'session'),
   };
 }

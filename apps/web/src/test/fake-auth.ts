@@ -1,5 +1,5 @@
 import type { AuthApi, AuthError, Result, SessionUser } from '../auth/api';
-import { MESSAGES } from '../auth/api';
+import { MESSAGES, SESSION_EXPIRED } from '../auth/api';
 
 /** The only TOTP code the fake accepts. */
 export const FAKE_TOTP = '123456';
@@ -18,6 +18,9 @@ interface FakeUser {
   recoveryCodes: string[];
   /** Set to make deleteAccount fail with OWNS_TREES. */
   ownsTrees?: boolean;
+  /** False for an account that only ever signed in with Google. */
+  hasPassword: boolean;
+  googleConnected: boolean;
 }
 
 type Method = keyof AuthApi;
@@ -42,6 +45,10 @@ export class FakeAuthApi implements AuthApi {
   challenge: string | null = null;
   resetTokens = new Map<string, string>();
   calls: { method: Method; input: unknown }[] = [];
+  /** What getProviders answers. */
+  providers = { google: true };
+  /** False makes setPassword answer RECENT_SIGN_IN_REQUIRED, as for a session over 10 minutes old. */
+  recentSignIn = true;
   private forced = new Map<Method, AuthError>();
   private pending = new Set<Method>();
   private waiting: (() => void)[] = [];
@@ -58,6 +65,8 @@ export class FakeAuthApi implements AuthApi {
       requiresTwoFactor: false,
       twoFactorPending: false,
       recoveryCodes: [],
+      hasPassword: true,
+      googleConnected: false,
       ...input,
     };
     if (user.twoFactorEnabled && user.recoveryCodes.length === 0) {
@@ -109,6 +118,8 @@ export class FakeAuthApi implements AuthApi {
       email: u.email,
       twoFactorEnabled: u.twoFactorEnabled,
       requiresTwoFactor: u.requiresTwoFactor,
+      hasPassword: u.hasPassword,
+      googleConnected: u.googleConnected,
     };
   }
 
@@ -260,6 +271,64 @@ export class FakeAuthApi implements AuthApi {
     if (checked.data.ownsTrees) return fail('OWNS_TREES', MESSAGES.ownsTrees);
     this.users.delete(checked.data.email);
     this.current = null;
+    return ok(undefined);
+  }
+
+  async getProviders() {
+    const forced = await this.enter('getProviders');
+    if (forced) return { ok: false as const, error: forced };
+    return ok({ ...this.providers });
+  }
+
+  /** The real one leaves the page for Google; the fake only records the call. */
+  async startGoogleSignIn(input: { next: string }) {
+    const forced = await this.enter('startGoogleSignIn', input);
+    if (forced) return { ok: false as const, error: forced };
+    return ok(undefined);
+  }
+
+  async connectGoogle(input: { password: string; code?: string }) {
+    const forced = await this.enter('connectGoogle', input);
+    if (forced) return { ok: false as const, error: forced };
+    const checked = this.checkPassword(input.password);
+    if (!checked.ok) return checked;
+    if (checked.data.twoFactorEnabled) {
+      if (!input.code) return fail('TWO_FACTOR_CODE_REQUIRED', MESSAGES.codeRequired);
+      if (input.code !== FAKE_TOTP) return fail('INVALID_CODE', MESSAGES.badCode);
+    }
+    return ok(undefined);
+  }
+
+  async disconnectGoogle(input: { password: string; code?: string }) {
+    const forced = await this.enter('disconnectGoogle', input);
+    if (forced) return { ok: false as const, error: forced };
+    const u = this.me();
+    if (!u) return fail(SESSION_EXPIRED, MESSAGES.sessionExpired);
+    if (!u.googleConnected) return fail('GOOGLE_NOT_CONNECTED', MESSAGES.googleNotConnected);
+    if (!u.hasPassword) {
+      return fail('PASSWORD_REQUIRED_TO_DISCONNECT', MESSAGES.passwordRequiredToDisconnect);
+    }
+    const checked = this.checkPassword(input.password);
+    if (!checked.ok) return checked;
+    if (u.twoFactorEnabled) {
+      if (!input.code) return fail('TWO_FACTOR_CODE_REQUIRED', MESSAGES.codeRequired);
+      if (input.code !== FAKE_TOTP) return fail('INVALID_CODE', MESSAGES.badCode);
+    }
+    u.googleConnected = false;
+    return ok(undefined);
+  }
+
+  async setPassword(input: { newPassword: string }) {
+    const forced = await this.enter('setPassword', input);
+    if (forced) return { ok: false as const, error: forced };
+    const u = this.me();
+    if (!u) return fail(SESSION_EXPIRED, MESSAGES.sessionExpired);
+    if (u.hasPassword) return fail('PASSWORD_ALREADY_SET', MESSAGES.passwordAlreadySet);
+    if (!this.recentSignIn) {
+      return fail('RECENT_SIGN_IN_REQUIRED', MESSAGES.recentSignInRequired);
+    }
+    u.password = input.newPassword;
+    u.hasPassword = true;
     return ok(undefined);
   }
 }

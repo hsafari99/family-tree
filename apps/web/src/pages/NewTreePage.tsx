@@ -27,6 +27,12 @@ export function NewTreePage() {
     <Page title="Start a new tree">
       {user.twoFactorEnabled && !codesPending ? (
         <NewTreeForm />
+      ) : !user.hasPassword ? (
+        // Turning on 2FA asks for the password, which a Google-only account doesn't have yet.
+        <p>
+          Tree owners must use two-step verification, and turning it on needs a password.{' '}
+          <Link to="/account">Set a password</Link> in Account settings first, then come back.
+        </p>
       ) : (
         <>
           <p>
