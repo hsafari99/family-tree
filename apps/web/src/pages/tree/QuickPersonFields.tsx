@@ -36,6 +36,14 @@ export function quickPerson(v: QuickValues) {
   };
 }
 
+/** The error summary's names for the quick-add fields (#8). */
+export const QUICK_LABELS: Record<string, string> = {
+  'person.givenName': 'First name',
+  'person.surname': 'Last name',
+  'person.sex': 'Sex',
+  'person.birthDate': 'Born',
+};
+
 /** Our own message for a half-typed birth date, keyed like the schema's errors (or {}). */
 export function quickErrors(v: QuickValues): FieldErrors {
   const message = draftError(v.birth);
@@ -58,21 +66,26 @@ export function QuickPersonFields({
     <>
       <Field
         label="First name"
-        name="givenName"
+        name="person.givenName"
         value={values.givenName}
         onChange={set('givenName')}
         error={errors['person.givenName']}
       />
       <Field
         label="Last name"
-        name="surname"
+        name="person.surname"
         value={values.surname}
         onChange={set('surname')}
         error={errors['person.surname']}
       />
       <div className="field">
         <label htmlFor={`${uid}-sex`}>Sex</label>
-        <select id={`${uid}-sex`} value={values.sex} onChange={(e) => set('sex')(e.target.value)}>
+        <select
+          id={`${uid}-sex`}
+          data-field="person.sex"
+          value={values.sex}
+          onChange={(e) => set('sex')(e.target.value)}
+        >
           {SEXES.map((x) => (
             <option key={x} value={x}>
               {SEX_LABEL[x]}

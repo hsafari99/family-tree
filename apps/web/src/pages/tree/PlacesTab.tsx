@@ -13,7 +13,14 @@ import {
   toDraft,
   type FuzzyDraft,
 } from '../../components/FuzzyDateField';
-import { Field, FormError, Success, validate, type FieldErrors } from '../../components/forms';
+import {
+  ErrorSummary,
+  Field,
+  FormError,
+  Success,
+  validate,
+  type FieldErrors,
+} from '../../components/forms';
 import { formatFuzzyDate } from '../../trees/format';
 import { useTreesApi } from '../../trees/TreesApiContext';
 import { type TabProps, usePersonSave } from './usePersonSave';
@@ -225,6 +232,12 @@ function ResidenceAdd({ treeId, view, reload }: TabProps) {
   );
 }
 
+const RESIDENCE_LABELS: Record<string, string> = {
+  place: 'Place',
+  fromDate: 'From',
+  toDate: 'To',
+};
+
 function ResidenceForm({
   initial,
   submitLabel,
@@ -267,6 +280,7 @@ function ResidenceForm({
   return (
     <form onSubmit={(e) => void submit(e)}>
       <FormError>{error}</FormError>
+      <ErrorSummary errors={errors} labels={RESIDENCE_LABELS} />
       <Field label="Place" name="place" value={place} onChange={setPlace} error={errors.place} />
       <FuzzyDateField
         label="From"

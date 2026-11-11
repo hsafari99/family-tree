@@ -1,4 +1,12 @@
-import { type InputHTMLAttributes, type ReactNode, useId, useState } from 'react';
+import {
+  type InputHTMLAttributes,
+  type ReactNode,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from 'react';
+import { MESSAGES } from '../auth/api';
 
 export type FieldErrors = Partial<Record<string, string>>;
 
@@ -107,6 +115,70 @@ export function Field({ label, error, hint, onChange, type, ...input }: FieldPro
       )}
     </div>
   );
+}
+
+/** Every field error at the top of a form (#8). Takes focus when errors appear; each labelled
+ *  entry moves focus to its field (`data-field`, or `name`). */
+export function ErrorSummary({
+  errors,
+  labels,
+}: {
+  errors: FieldErrors;
+  labels: Record<string, string>;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  // A part's error ("person.birthDate.date1") is listed under its labelled field, once.
+  const owner = (k: string) =>
+    labels[k] ? k : (Object.keys(labels).find((l) => k.startsWith(`${l}.`)) ?? k);
+  const merged = new Map<string, string>();
+  for (const [k, m] of Object.entries(errors))
+    if (m && !merged.has(owner(k))) merged.set(owner(k), m);
+  const entries = [...merged];
+  const key = entries.map(([k, m]) => `${k}:${m}`).join('|');
+  useEffect(() => {
+    if (key) ref.current?.focus();
+  }, [key]);
+  if (entries.length === 0) return null;
+  const focusField = (k: string) => {
+    const scope = ref.current?.closest('form') ?? document;
+    const sel = `[data-field="${CSS.escape(k)}"], [name="${CSS.escape(k)}"]`;
+    const el = scope.querySelector<HTMLElement>(sel);
+    el?.focus();
+    el?.scrollIntoView?.({ block: 'center' });
+  };
+  return (
+    <div role="alert" className="error error-summary" tabIndex={-1} ref={ref}>
+      <p>Check these and try again:</p>
+      <ul>
+        {entries.map(([k, m]) => (
+          <li key={k}>
+            {labels[k] ? (
+              <button type="button" className="link" onClick={() => focusField(k)}>
+                {labels[k]}: {m}
+              </button>
+            ) : (
+              m
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** Server field keys -> this form's errors, with fixed text only (never the server's). A key the
+ *  form doesn't show goes to the summary ('') as the generic message. */
+export function serverFieldErrors(
+  keys: readonly string[],
+  map: Record<string, { field: string; message: string }>,
+): FieldErrors {
+  const out: FieldErrors = {};
+  for (const k of keys) {
+    const hit = map[k];
+    if (hit) out[hit.field] ??= hit.message;
+    else out[''] ??= MESSAGES.checkDetails;
+  }
+  return out;
 }
 
 /** The alert region for a server error. */

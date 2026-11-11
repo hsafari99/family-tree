@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { MESSAGES } from '../auth/api';
 import { FAKE_TOTP, FakeAuthApi } from '../test/fake-auth';
@@ -58,6 +58,18 @@ describe('NewTreePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Start tree' }));
     expect(await screen.findByText('Enter a first name')).toBeInTheDocument();
     expect(trees.callsTo('createTree')).toHaveLength(0);
+  });
+
+  it('sums up the errors at the top and moves focus to the field', async () => {
+    renderAt('/trees/new', setup());
+    await screen.findByLabelText('Tree name');
+    type('Precision', 'year');
+    type('Year', '19');
+    fireEvent.click(screen.getByRole('button', { name: 'Start tree' }));
+    const summary = await screen.findByRole('alert');
+    await waitFor(() => expect(summary).toHaveFocus());
+    fireEvent.click(within(summary).getByRole('button', { name: /^Born: / }));
+    expect(screen.getByLabelText('Precision')).toHaveFocus();
   });
 
   it('explains an incomplete birth date and makes no call', async () => {

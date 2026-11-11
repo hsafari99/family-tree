@@ -2,7 +2,14 @@ import { createTreeSchema, SEXES } from '@family-tree/shared';
 import { type FormEvent, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
-import { errorAt, Field, type FieldErrors, FormError, validateDeep } from '../components/forms';
+import {
+  ErrorSummary,
+  errorAt,
+  Field,
+  type FieldErrors,
+  FormError,
+  validateDeep,
+} from '../components/forms';
 import { draftError, FuzzyDateField, fromDraft, toDraft } from '../components/FuzzyDateField';
 import { Page } from '../components/Page';
 import { useTreesApi } from '../trees/TreesApiContext';
@@ -55,6 +62,14 @@ export function NewTreePage() {
     </Page>
   );
 }
+
+const NEW_TREE_LABELS: Record<string, string> = {
+  name: 'Tree name',
+  'person.givenName': 'Your first name',
+  'person.surname': 'Your last name',
+  'person.sex': 'Sex',
+  'person.birthDate': 'Born',
+};
 
 function NewTreeForm() {
   const api = useTreesApi();
@@ -117,6 +132,7 @@ function NewTreeForm() {
   return (
     <form onSubmit={onSubmit} noValidate>
       <h2>About you</h2>
+      <ErrorSummary errors={errors} labels={NEW_TREE_LABELS} />
       <Field
         label="Tree name"
         name="name"
@@ -129,7 +145,7 @@ function NewTreeForm() {
       />
       <Field
         label="Your first name"
-        name="givenName"
+        name="person.givenName"
         autoComplete="given-name"
         value={values.givenName}
         onChange={(givenName) => setValues((v) => ({ ...v, givenName }))}
@@ -137,7 +153,7 @@ function NewTreeForm() {
       />
       <Field
         label="Your last name"
-        name="surname"
+        name="person.surname"
         autoComplete="family-name"
         value={values.surname}
         onChange={setSurname}
@@ -147,6 +163,7 @@ function NewTreeForm() {
         <label htmlFor="new-tree-sex">Sex</label>
         <select
           id="new-tree-sex"
+          data-field="person.sex"
           value={values.sex}
           onChange={(e) => setValues((v) => ({ ...v, sex: e.target.value }))}
         >

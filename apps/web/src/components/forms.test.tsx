@@ -1,7 +1,7 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it } from 'vitest';
-import { errorAt, Field } from './forms';
+import { ErrorSummary, errorAt, Field, serverFieldErrors } from './forms';
 
 function Pw() {
   const [v, setV] = useState('');
@@ -44,5 +44,55 @@ describe('errorAt', () => {
     expect(errorAt({ 'person.birthDate': 'a' }, 'person.birthDate')).toBe('a');
     expect(errorAt({ 'person.birthDate.date1': 'b' }, 'person.birthDate')).toBe('b');
     expect(errorAt({ 'person.birthDateX': 'c' }, 'person.birthDate')).toBeUndefined();
+  });
+});
+
+describe('ErrorSummary', () => {
+  it('lists errors, takes focus, and moves focus to the field', () => {
+    render(
+      <form>
+        <ErrorSummary
+          errors={{ givenName: 'Enter a first name', deathDate: 'Choose a month' }}
+          labels={{ givenName: 'First name', deathDate: 'Died' }}
+        />
+        <Field
+          label="First name"
+          name="givenName"
+          value=""
+          onChange={() => {}}
+          error="Enter a first name"
+        />
+        <select data-field="deathDate" aria-label="Precision" />
+      </form>,
+    );
+    const summary = screen.getByRole('alert');
+    expect(summary).toHaveFocus();
+    fireEvent.click(within(summary).getByRole('button', { name: 'Died: Choose a month' }));
+    expect(screen.getByLabelText('Precision')).toHaveFocus();
+    fireEvent.click(
+      within(summary).getByRole('button', { name: 'First name: Enter a first name' }),
+    );
+    expect(screen.getByLabelText('First name')).toHaveFocus();
+  });
+
+  it('shows an error with no label as plain text, and nothing when there are no errors', () => {
+    const { rerender } = render(<ErrorSummary errors={{ '': 'Check the details' }} labels={{}} />);
+    expect(screen.getByRole('alert')).toHaveTextContent('Check the details');
+    expect(screen.queryByRole('button')).toBeNull();
+    rerender(<ErrorSummary errors={{}} labels={{}} />);
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+});
+
+describe('serverFieldErrors', () => {
+  it('maps keys to a form field and fixed text, unknown keys to the summary only', () => {
+    expect(
+      serverFieldErrors(['isLiving', 'zzz'], {
+        isLiving: { field: 'deathPlace', message: 'Tick “Mark as deceased” to add a death place' },
+      }),
+    ).toEqual({
+      deathPlace: 'Tick “Mark as deceased” to add a death place',
+      '': 'Check the details and try again',
+    });
   });
 });

@@ -7,15 +7,23 @@ import {
 } from '@family-tree/shared';
 import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { FormError, validateDeep, type FieldErrors } from '../../components/forms';
+import { ErrorSummary, FormError, validateDeep, type FieldErrors } from '../../components/forms';
 import { personName } from '../../trees/format';
 import { useTreesApi } from '../../trees/TreesApiContext';
 import { DuplicatePrompt } from './DuplicatePrompt';
 import { similarQueryOf, useDuplicateCheck } from './useDuplicateCheck';
-import { emptyQuick, QuickPersonFields, quickErrors, quickPerson } from './QuickPersonFields';
+import {
+  emptyQuick,
+  QUICK_LABELS,
+  QuickPersonFields,
+  quickErrors,
+  quickPerson,
+} from './QuickPersonFields';
 
 const NO_EXCLUDED: readonly string[] = [];
 const ROLE_LABEL = { parent: 'Parent', child: 'Child', partner: 'Partner', sibling: 'Sibling' };
+
+const ADD_PERSON_LABELS: Record<string, string> = { ...QUICK_LABELS, connect: 'Connect to' };
 
 export function AddPersonForm({
   treeId,
@@ -116,6 +124,7 @@ export function AddPersonForm({
       <h2>Add a person</h2>
       <p className="hint">You can add more details after saving.</p>
       <FormError>{error}</FormError>
+      <ErrorSummary errors={errors} labels={ADD_PERSON_LABELS} />
       <QuickPersonFields
         values={quick}
         onChange={(v) => {
@@ -129,7 +138,13 @@ export function AddPersonForm({
         {mustConnect && !errors.connect && (
           <p className="hint">Choose someone in your branch to connect them to.</p>
         )}
-        <select id={`${uid}-connect`} value={to} onChange={(e) => setTo(e.target.value)}>
+        <select
+          id={`${uid}-connect`}
+          data-field="connect"
+          aria-describedby={errors.connect ? `${uid}-connect-error` : undefined}
+          value={to}
+          onChange={(e) => setTo(e.target.value)}
+        >
           <option value="">{mustConnect ? 'Choose…' : 'No one'}</option>
           {persons.map((p) => (
             <option key={p.id} value={p.id}>
@@ -137,7 +152,11 @@ export function AddPersonForm({
             </option>
           ))}
         </select>
-        {errors.connect && <p className="field-error">{errors.connect}</p>}
+        {errors.connect && (
+          <p id={`${uid}-connect-error`} className="field-error">
+            {errors.connect}
+          </p>
+        )}
       </div>
       {to && (
         <div className="field">

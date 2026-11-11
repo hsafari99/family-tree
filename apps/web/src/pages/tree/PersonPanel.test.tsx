@@ -98,6 +98,9 @@ describe('PersonPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect(await screen.findByText('Choose a month')).toBeInTheDocument();
     expect(s.trees.callsTo('updatePerson')).toEqual([]);
+    const summary = screen.getByRole('alert');
+    fireEvent.click(within(summary).getByRole('button', { name: 'Died: Choose a month' }));
+    expect(died.getByLabelText('Precision')).toHaveFocus();
   });
 
   it('shows the stale-edit message, reloads, and keeps the draft', async () => {

@@ -132,6 +132,17 @@ form > :is(button, .confirm) {
   color: var(--muted);
   font-size: 0.9rem;
 }
+.error-summary p {
+  margin: 0;
+}
+.error-summary ul {
+  margin: 0.25rem 0 0;
+  padding-left: 1.2rem;
+}
+.error-summary button.link {
+  color: inherit;
+  text-align: left;
+}
 .field-error {
   margin: 0;
   color: var(--bad);

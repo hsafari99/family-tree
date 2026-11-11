@@ -12,7 +12,14 @@ import {
   toDraft,
   type FuzzyDraft,
 } from '../../components/FuzzyDateField';
-import { Field, FormError, Success, validate, type FieldErrors } from '../../components/forms';
+import {
+  ErrorSummary,
+  Field,
+  FormError,
+  Success,
+  validate,
+  type FieldErrors,
+} from '../../components/forms';
 import { formatFuzzyDate, personName, SEX_LABEL } from '../../trees/format';
 import { DeletePerson } from './DeletePerson';
 import { type TabProps, usePersonSave } from './usePersonSave';
@@ -106,6 +113,23 @@ interface Form {
   isLiving: boolean;
 }
 type FormKey = keyof Form;
+/** The error summary's names for this form's fields (#8). */
+const INFO_LABELS: Record<string, string> = {
+  givenName: 'First name',
+  middleName: 'Middle name',
+  surname: 'Last name',
+  maidenName: 'Maiden name',
+  nickname: 'Nickname',
+  sex: 'Sex',
+  birthDate: 'Born',
+  deathDate: 'Died',
+  isLiving: 'Living',
+  causeOfDeath: 'Cause of death',
+  occupation: 'Occupation',
+  education: 'Education',
+  biography: 'Biography',
+  notes: 'Notes',
+};
 /** The person field each form field edits. */
 const PERSON_KEY = { birth: 'birthDate', death: 'deathDate' } as const;
 const personKey = (k: FormKey) => (k === 'birth' || k === 'death' ? PERSON_KEY[k] : k);
@@ -210,11 +234,17 @@ function InfoForm({
       <textarea
         id={`${uid}-${k}`}
         rows={5}
+        data-field={k}
         value={form[k]}
         onChange={(e) => set(k)(e.target.value)}
         aria-invalid={errors[k] ? true : undefined}
+        aria-describedby={errors[k] ? `${uid}-${k}-error` : undefined}
       />
-      {errors[k] && <p className="field-error">{errors[k]}</p>}
+      {errors[k] && (
+        <p id={`${uid}-${k}-error`} className="field-error">
+          {errors[k]}
+        </p>
+      )}
     </div>
   );
   const field = (k: (typeof TEXT_KEYS)[number], label: string) => (
@@ -224,6 +254,7 @@ function InfoForm({
   return (
     <form onSubmit={(e) => void submit(e)}>
       <FormError>{s.error}</FormError>
+      <ErrorSummary errors={errors} labels={INFO_LABELS} />
       {s.stale && (
         <div role="alert" className="error">
           {s.staleMessage} Your changes are still in the form below.{' '}
@@ -239,7 +270,12 @@ function InfoForm({
       {field('nickname', 'Nickname')}
       <div className="field">
         <label htmlFor={`${uid}-sex`}>Sex</label>
-        <select id={`${uid}-sex`} value={sex} onChange={(e) => set('sex')(e.target.value)}>
+        <select
+          id={`${uid}-sex`}
+          data-field="sex"
+          value={sex}
+          onChange={(e) => set('sex')(e.target.value)}
+        >
           {SEXES.map((x) => (
             <option key={x} value={x}>
               {SEX_LABEL[x]}
@@ -265,12 +301,18 @@ function InfoForm({
         <label>
           <input
             type="checkbox"
+            data-field="isLiving"
+            aria-describedby={errors.isLiving ? `${uid}-isLiving-error` : undefined}
             checked={isLiving}
             onChange={(e) => set('isLiving')(e.target.checked)}
           />{' '}
           Living
         </label>
-        {errors.isLiving && <p className="field-error">{errors.isLiving}</p>}
+        {errors.isLiving && (
+          <p id={`${uid}-isLiving-error`} className="field-error">
+            {errors.isLiving}
+          </p>
+        )}
       </div>
       {field('causeOfDeath', 'Cause of death')}
       {field('occupation', 'Occupation')}

@@ -206,6 +206,14 @@ export function createTreesApi({ baseUrl }: { baseUrl: string }): TreesApi {
   const t = (treeId: string) => `/trees/${enc(treeId)}`;
 
   /** An API error response as a fixed message (codes and reasons map to MESSAGES). */
+  /** The keys of `{ field: [messages] }` validation details; the messages are dropped. */
+  function fieldKeys(details: unknown): string[] | undefined {
+    if (typeof details !== 'object' || details === null || Array.isArray(details)) return undefined;
+    const entries = Object.entries(details);
+    if (entries.length === 0 || !entries.every(([, v]) => Array.isArray(v))) return undefined;
+    return entries.map(([k]) => k);
+  }
+
   async function errorFrom(
     res: Response,
     kind: CallKind,
@@ -223,7 +231,15 @@ export function createTreesApi({ baseUrl }: { baseUrl: string }): TreesApi {
       : undefined;
     const override =
       (typeof reason === 'string' ? reasons?.[reason] : undefined) ?? codes?.[error.code];
-    return override ? { ...error, message: override } : error;
+    const fields =
+      error.code === 'VALIDATION' && parsed.success
+        ? fieldKeys(parsed.data.error.details)
+        : undefined;
+    return {
+      ...error,
+      ...(override ? { message: override } : {}),
+      ...(fields ? { fields } : {}),
+    };
   }
 
   async function request<T>(

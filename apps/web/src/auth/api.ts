@@ -17,6 +17,8 @@ export type SessionUser = MeResponse['user'];
 export interface AuthError {
   code: string;
   message: string;
+  /** VALIDATION only: the request fields the server named (its text is never shown). */
+  fields?: string[];
 }
 
 export type Result<T> = { ok: true; data: T } | { ok: false; error: AuthError };

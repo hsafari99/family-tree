@@ -76,6 +76,37 @@ describe('createTreesApi', () => {
     expect(await api().getTree(ID)).toEqual({ ok: false, error: { code, message } });
   });
 
+  it('passes the server field keys of a VALIDATION error, never its text', async () => {
+    stubFetch({
+      status: 400,
+      body: {
+        error: {
+          code: 'VALIDATION',
+          message: 'x',
+          details: { isLiving: ['server text'], deathPlace: ['server text'] },
+        },
+      },
+    });
+    const res = await api().getTree(ID);
+    expect(res).toEqual({
+      ok: false,
+      error: {
+        code: 'VALIDATION',
+        message: MESSAGES.checkDetails,
+        fields: ['isLiving', 'deathPlace'],
+      },
+    });
+  });
+
+  it('gives no field keys when VALIDATION details are not per-field lists', async () => {
+    stubFetch({
+      status: 400,
+      body: { error: { code: 'VALIDATION', message: 'x', details: { reason: 'nope' } } },
+    });
+    const res = await api().getTree(ID);
+    expect(res.ok || res.error.fields).toBeUndefined();
+  });
+
   it('maps a 401 to SESSION_EXPIRED', async () => {
     stubFetch({ status: 401 });
     const res = await api().listTrees();

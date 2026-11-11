@@ -9,7 +9,7 @@ import {
   UNION_TYPES,
 } from '@family-tree/shared';
 import { type FormEvent, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { FormError, validateDeep, type FieldErrors } from '../../components/forms';
+import { ErrorSummary, FormError, validateDeep, type FieldErrors } from '../../components/forms';
 import {
   CHILD_KIND_LABEL,
   personName,
@@ -19,7 +19,13 @@ import {
 import { useTreesApi } from '../../trees/TreesApiContext';
 import { DuplicatePrompt } from './DuplicatePrompt';
 import { similarQueryOf, useDuplicateCheck } from './useDuplicateCheck';
-import { emptyQuick, QuickPersonFields, quickErrors, quickPerson } from './QuickPersonFields';
+import {
+  emptyQuick,
+  QUICK_LABELS,
+  QuickPersonFields,
+  quickErrors,
+  quickPerson,
+} from './QuickPersonFields';
 
 const names = (people: PersonSummary[], fallback: string) =>
   people.length > 0 ? people.map(personName).join(' and ') : fallback;
@@ -38,6 +44,8 @@ function alreadyIn(subject: PersonView, as: RelativeRole): string[] {
       return r.siblings.map((s) => s.person.id);
   }
 }
+
+const ADD_RELATIVE_LABELS: Record<string, string> = { ...QUICK_LABELS, existing: 'Person' };
 
 export function AddRelativeForm({
   treeId,
@@ -182,6 +190,7 @@ export function AddRelativeForm({
   return (
     <form onSubmit={(e) => void submit(e)} aria-label={`Add ${as}`}>
       <FormError>{error}</FormError>
+      <ErrorSummary errors={errors} labels={ADD_RELATIVE_LABELS} />
       <fieldset>
         <legend>Add a {as}</legend>
         <label>
@@ -217,6 +226,8 @@ export function AddRelativeForm({
           <label htmlFor={`${uid}-existing`}>Person</label>
           <select
             id={`${uid}-existing`}
+            data-field="existing"
+            aria-describedby={errors.existing ? `${uid}-existing-error` : undefined}
             value={existingId}
             onChange={(e) => setExistingId(e.target.value)}
           >
@@ -227,7 +238,11 @@ export function AddRelativeForm({
               </option>
             ))}
           </select>
-          {errors.existing && <p className="field-error">{errors.existing}</p>}
+          {errors.existing && (
+            <p id={`${uid}-existing-error`} className="field-error">
+              {errors.existing}
+            </p>
+          )}
         </div>
       )}
       {as === 'child' &&
