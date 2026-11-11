@@ -24,7 +24,7 @@ async function laidOut(without?: string) {
     { focusId: 'leo', meId: null },
   );
   const laid = await new FakeLayoutEngine().layout(toElkGraph(flow, null));
-  return { ...flow, nodes: applyElkLayout(flow.nodes, laid) };
+  return { ...flow, nodes: applyElkLayout(flow.nodes, laid, flow.couples, flow.blood) };
 }
 const actions = () => ({
   openPerson: vi.fn(),

@@ -45,7 +45,7 @@ export function gu(
     ...extra,
   };
 }
-const gl = (
+export const gl = (
   id: string,
   unionId: string,
   childId: string,
@@ -117,4 +117,73 @@ export function unknownParentsGraph(): TreeGraph {
     ],
     links: [gl('l-ann', 'u0', 'ann'), gl('l-ben', 'u0', 'ben'), gl('l-kim', 'u-ap', 'kim')],
   };
+}
+
+const fullGraph = (persons: GraphPerson[], unions: GraphUnionView[], links: GraphLinkView[]) => ({
+  mode: 'full' as const,
+  focusId: null,
+  branchId: null,
+  persons,
+  unions,
+  links,
+  total: persons.length,
+  truncated: false,
+  needsBranch: false,
+});
+
+/** Paul + Mary → Ann (1950), Ben (1952), Cat (1954). Ben's wife Xan (1949) has no parents and
+ *  sorts before every sibling, so model order puts her first in the row (brief #14). */
+export function inLawGraph(): TreeGraph {
+  return fullGraph(
+    [
+      gp('paul', 'Paul', 1920),
+      gp('mary', 'Mary', 1922),
+      gp('ann', 'Ann', 1950, { hasParents: true }),
+      gp('ben', 'Ben', 1952, { hasParents: true }),
+      gp('cat', 'Cat', 1954, { hasParents: true }),
+      gp('xan', 'Xan', 1949, { surname: 'Other' }),
+      gp('kid', 'Kid', 1975, { hasParents: true }),
+    ],
+    [gu('u-pm', 'paul', 'mary', { childCount: 3 }), gu('u-bx', 'ben', 'xan', { childCount: 1 })],
+    [
+      gl('l1', 'u-pm', 'ann'),
+      gl('l2', 'u-pm', 'ben'),
+      gl('l3', 'u-pm', 'cat'),
+      gl('l4', 'u-bx', 'kid'),
+    ],
+  );
+}
+
+/** Paul + Mary → Ann, Ben. Ben + Xan → Kid; Ann alone → Ali (a single-parent union). Kid's wife Sue
+ *  and her brother Sam have unknown parents (u-0). u-0's dot (partition 2·row(Sue)+1) shares a
+ *  layer with the row above's dots, u-bx and u-a. */
+export function unknownParentsFamilyGraph(): TreeGraph {
+  return fullGraph(
+    [
+      gp('paul', 'Paul', 1920),
+      gp('mary', 'Mary', 1922),
+      gp('ann', 'Ann', 1950, { hasParents: true }),
+      gp('ben', 'Ben', 1952, { hasParents: true }),
+      gp('xan', 'Xan', 1953, { surname: 'Other' }),
+      gp('ali', 'Ali', 1975, { hasParents: true }),
+      gp('kid', 'Kid', 1976, { hasParents: true }),
+      gp('sue', 'Sue', 1977, { surname: 'Else', hasParents: true }),
+      gp('sam', 'Sam', 1979, { surname: 'Else', hasParents: true }),
+    ],
+    [
+      gu('u-pm', 'paul', 'mary', { childCount: 2 }),
+      gu('u-bx', 'ben', 'xan', { childCount: 1 }),
+      gu('u-a', 'ann', null, { childCount: 1 }),
+      gu('u-0', null, null, { parentsUnknown: true, childCount: 2 }),
+      gu('u-ks', 'kid', 'sue'),
+    ],
+    [
+      gl('l1', 'u-pm', 'ann'),
+      gl('l2', 'u-pm', 'ben'),
+      gl('l3', 'u-bx', 'kid'),
+      gl('l4', 'u-a', 'ali'),
+      gl('l5', 'u-0', 'sue'),
+      gl('l6', 'u-0', 'sam'),
+    ],
+  );
 }

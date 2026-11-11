@@ -53,7 +53,7 @@ export function useTreeGraph(
           status: 'ready',
           treeId,
           graph: res.data,
-          nodes: applyElkLayout(flow.nodes, laid),
+          nodes: applyElkLayout(flow.nodes, laid, flow.couples, flow.blood),
           edges: flow.edges,
           families: flow.families,
         });

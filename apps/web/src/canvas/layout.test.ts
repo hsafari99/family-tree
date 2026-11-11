@@ -4,14 +4,23 @@ import ELK from 'elkjs/lib/elk.bundled.js';
 import { describe, expect, it } from 'vitest';
 import { applyElkLayout, toElkGraph } from './elk-graph';
 import { assignGenerations } from './generations';
-import { CARD_WIDTH, graphToFlow } from './graph-to-flow';
-import { haleGraph, unknownParentsGraph } from './test-fixtures';
+import { CARD_WIDTH, graphToFlow, UNION_SIZE } from './graph-to-flow';
+import {
+  haleGraph,
+  inLawGraph,
+  unknownParentsFamilyGraph,
+  unknownParentsGraph,
+} from './test-fixtures';
 
-async function layout(graph: TreeGraph) {
+/** The laid-out nodes, with width and height. */
+async function layoutNodes(graph: TreeGraph) {
   const flow = graphToFlow(graph, { focusId: null, meId: null });
   const laid = await new ELK().layout(toElkGraph(flow, assignGenerations(flow)));
-  const nodes = applyElkLayout(flow.nodes, laid);
-  return new Map(nodes.map((n) => [n.id.slice(2), n.position]));
+  return applyElkLayout(flow.nodes, laid, flow.couples, flow.blood);
+}
+/** Positions keyed by person or union id. */
+async function layout(graph: TreeGraph) {
+  return new Map((await layoutNodes(graph)).map((n) => [n.id.slice(2), n.position]));
 }
 
 describe('ELK layered layout of the seed family', () => {
@@ -56,5 +65,84 @@ describe('ELK layered layout of the seed family', () => {
     expect(pos.get('ben')!.y).toBe(pos.get('ann')!.y);
     expect(pos.get('u0')!.y).toBeLessThan(pos.get('ann')!.y);
     expect(pos.get('kim')!.y).toBeGreaterThan(pos.get('ann')!.y);
+  });
+});
+
+describe('couples in the layout (brief #14)', () => {
+  const GRAPHS = () => [
+    inLawGraph(),
+    haleGraph(),
+    unknownParentsFamilyGraph(),
+    unknownParentsGraph(),
+  ];
+  /** People in a's row strictly between a and b. */
+  const between = (
+    g: TreeGraph,
+    pos: Map<string, { x: number; y: number }>,
+    a: string,
+    b: string,
+  ) => {
+    const [l, r] = [pos.get(a)!.x, pos.get(b)!.x].sort((m, n) => m - n);
+    return g.persons
+      .map((p) => p.id)
+      .filter((id) => id !== a && id !== b)
+      .filter(
+        (id) => pos.get(id)!.y === pos.get(a)!.y && pos.get(id)!.x > l! && pos.get(id)!.x < r!,
+      );
+  };
+
+  it('keeps partners next to each other', async () => {
+    for (const g of GRAPHS()) {
+      const pos = await layout(g);
+      for (const u of g.unions) {
+        if (!u.partnerAId || !u.partnerBId) continue;
+        expect(between(g, pos, u.partnerAId, u.partnerBId), u.id).toEqual([]);
+      }
+    }
+  });
+
+  it('keeps sibling order between couple groups', async () => {
+    const pos = await layout(inLawGraph());
+    expect(pos.get('ann')!.x).toBeLessThan(pos.get('ben')!.x);
+    expect(pos.get('ben')!.x).toBeLessThan(pos.get('cat')!.x);
+  });
+
+  it("puts each couple's dot between the two partners", async () => {
+    for (const g of GRAPHS()) {
+      const pos = await layout(g);
+      for (const u of g.unions) {
+        if (!u.partnerAId || !u.partnerBId) continue;
+        const [l, r] = [pos.get(u.partnerAId)!.x, pos.get(u.partnerBId)!.x].sort((m, n) => m - n);
+        const dot = pos.get(u.id)!.x + UNION_SIZE / 2;
+        expect(dot, u.id).toBeGreaterThan(l! + CARD_WIDTH / 2);
+        expect(dot, u.id).toBeLessThan(r! + CARD_WIDTH / 2);
+      }
+    }
+  });
+
+  it('never overlaps two nodes', async () => {
+    for (const g of GRAPHS()) {
+      const laid = await layoutNodes(g);
+      for (const [i, m] of laid.entries())
+        for (const n of laid.slice(i + 1)) {
+          const apart =
+            m.position.x + m.width! <= n.position.x ||
+            n.position.x + n.width! <= m.position.x ||
+            m.position.y + m.height! <= n.position.y ||
+            n.position.y + n.height! <= m.position.y;
+          expect(apart, `${m.id} / ${n.id}`).toBe(true);
+        }
+    }
+  });
+
+  it('puts a one-partner dot under its partner and a parents-unknown dot over its children', async () => {
+    const pos = await layout(unknownParentsFamilyGraph());
+    const card = (id: string) => pos.get(id)!.x + CARD_WIDTH / 2;
+    const dot = (id: string) => pos.get(id)!.x + UNION_SIZE / 2;
+    expect(Math.abs(dot('u-a') - card('ann'))).toBeLessThan(CARD_WIDTH / 2);
+    const [l, r] = [card('sue'), card('sam')].sort((m, n) => m - n);
+    expect(dot('u-0')).toBeGreaterThan(l! - CARD_WIDTH / 2);
+    expect(dot('u-0')).toBeLessThan(r! + CARD_WIDTH / 2);
+    expect(pos.get('u-0')!.y).toBeLessThan(pos.get('sue')!.y);
   });
 });

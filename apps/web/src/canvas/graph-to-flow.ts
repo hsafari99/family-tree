@@ -6,6 +6,7 @@ import {
 } from '@family-tree/shared';
 import type { Edge, Node } from '@xyflow/react';
 import { personName, UNION_STATUS_LABEL } from '../trees/format';
+import type { Couple } from './couples';
 
 export const CARD_WIDTH = 184;
 export const CARD_HEIGHT = 88;
@@ -34,6 +35,10 @@ export interface Flow {
   edges: Edge[];
   families: Family[];
   personIds: string[];
+  /** Shown two-partner unions, for seating partners side by side (brief #14). */
+  couples: Couple[];
+  /** Node ids of people shown as someone's child. */
+  blood: string[];
 }
 
 export const personNodeId = (id: string) => `p:${id}`;
@@ -63,6 +68,8 @@ export function graphToFlow(
   }));
   const edges: Edge[] = [];
   const families: Family[] = [];
+  const couples: Couple[] = [];
+  const blood = new Set<string>();
   for (const u of graph.unions) {
     const partnerIds = [u.partnerAId, u.partnerBId].filter(
       (id): id is string => id !== null && byId.has(id),
@@ -127,6 +134,15 @@ export function graphToFlow(
       });
     }
     families.push({ id: u.id, partnerIds, childIds: children.map((l) => l.childId) });
+    if (partnerIds.length === 2)
+      couples.push({
+        unionId: u.id,
+        a: personNodeId(u.partnerAId!),
+        b: personNodeId(u.partnerBId!),
+        aOrder: u.partnerAOrder,
+        bOrder: u.partnerBOrder,
+      });
+    for (const l of children) blood.add(personNodeId(l.childId));
   }
   const reorderable = new Map<string, string>(); // child id -> the union they can be dragged in
   for (const u of graph.unions) {
@@ -141,5 +157,12 @@ export function graphToFlow(
     n.draggable = unionId !== null;
     if (unionId) n.className = 'is-reorderable';
   }
-  return { nodes, edges, families, personIds: persons.map((p) => p.id) };
+  return {
+    nodes,
+    edges,
+    families,
+    personIds: persons.map((p) => p.id),
+    couples,
+    blood: [...blood],
+  };
 }
