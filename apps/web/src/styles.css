@@ -118,14 +118,37 @@ input[type='radio'] {
 form > :is(button, .confirm) {
   justify-self: start;
 }
+/* The show-password eye sits inside the input, on its right edge. */
 .password-input {
-  display: flex;
-  gap: 0.5rem;
-  align-items: stretch;
+  position: relative;
 }
 .password-input input {
-  flex: 1;
-  min-width: 0;
+  width: 100%;
+  /* Room for the toggle, so the text never runs under it. */
+  padding-right: 2.75rem;
+}
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 0.3rem;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  min-width: 2rem;
+  min-height: 2rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.3rem;
+  background: transparent;
+  color: var(--muted);
+}
+.password-toggle:hover,
+.password-toggle[aria-pressed='true'] {
+  color: inherit;
+}
+.password-toggle:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 0;
 }
 .hint {
   margin: 0;

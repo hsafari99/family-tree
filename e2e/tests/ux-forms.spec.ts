@@ -17,7 +17,24 @@ test('a password field has a Show password toggle', async ({ page }) => {
   await toggle.click();
   await expect(input).toHaveAttribute('type', 'text');
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
-  await expect(toggle).toHaveText('Show');
+  // An eye icon inside the input's box, on its right edge, at least 24px square.
+  await expect(toggle).toHaveText('');
+  await expect(toggle.locator('svg[data-icon="eye-off"]')).toBeVisible();
+  const box = (await input.boundingBox())!;
+  const eye = (await toggle.boundingBox())!;
+  expect(eye.width).toBeGreaterThanOrEqual(24);
+  expect(eye.height).toBeGreaterThanOrEqual(24);
+  expect(eye.x).toBeGreaterThan(box.x + box.width / 2);
+  expect(eye.x + eye.width).toBeLessThanOrEqual(box.x + box.width);
+  expect(eye.y).toBeGreaterThanOrEqual(box.y);
+  expect(eye.y + eye.height).toBeLessThanOrEqual(box.y + box.height);
+  // The keyboard reaches it straight from the input.
+  await input.focus();
+  await page.keyboard.press('Tab');
+  await expect(toggle).toBeFocused();
+  await page.keyboard.press('Space');
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await toggle.click();
   await toggle.click();
   await expect(input).toHaveAttribute('type', 'password');
 });
@@ -65,6 +82,8 @@ test('the reset page checks that the two new passwords match', async ({ page }) 
     ).json()) as { token: string };
 
     await page.goto(`/reset/${token}`);
+    // Both new-password fields have the eye toggle.
+    await expect(page.getByRole('button', { name: 'Show password' })).toHaveCount(2);
     await page.getByLabel('New password', { exact: true }).fill('brand-new-password');
     await page.getByLabel('Repeat new password', { exact: true }).fill('brand-new-passw0rd');
     await page.getByRole('button', { name: 'Set new password' }).click();

@@ -28,6 +28,18 @@ describe('ResetLinkPage', () => {
     ]);
   });
 
+  it('gives the new password and its repeat each an eye toggle', async () => {
+    renderAt(`/reset/${TOKEN}`);
+    const pw = await screen.findByLabelText('New password');
+    const repeat = screen.getByLabelText('Repeat new password');
+    const toggles = screen.getAllByRole('button', { name: 'Show password' });
+    expect(toggles).toHaveLength(2);
+    expect(toggles.map((t) => t.getAttribute('aria-controls'))).toEqual([pw.id, repeat.id]);
+    fireEvent.click(toggles[1]!);
+    expect(repeat).toHaveAttribute('type', 'text');
+    expect(pw).toHaveAttribute('type', 'password');
+  });
+
   it('says when the link is invalid or used', async () => {
     renderAt(`/reset/${TOKEN}`);
     await screen.findByLabelText('New password');

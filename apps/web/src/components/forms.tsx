@@ -62,8 +62,31 @@ type FieldProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'id' | 'onChange'>
   hint?: ReactNode;
 };
 
+/** An eye (crossed out while the password shows), drawn in currentColor. */
+function EyeIcon({ crossed }: { crossed: boolean }) {
+  return (
+    <svg
+      data-icon={crossed ? 'eye-off' : 'eye'}
+      aria-hidden="true"
+      focusable="false"
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+      <circle cx="12" cy="12" r="3" />
+      {crossed && <path d="M3 3l18 18" />}
+    </svg>
+  );
+}
+
 /** A labelled input with its hint and validation message tied to it for screen readers.
- *  A password input gets a Show toggle button (#1). */
+ *  A password input gets an eye toggle on its right edge (#1). */
 export function Field({ label, error, hint, onChange, type, ...input }: FieldProps) {
   const id = useId();
   const [shown, setShown] = useState(false);
@@ -93,17 +116,16 @@ export function Field({ label, error, hint, onChange, type, ...input }: FieldPro
       {isPassword ? (
         <div className="password-input">
           {control}
-          {/* Text and name stay fixed ("Show" is in "Show password"); aria-pressed carries the
-              state (WAI-ARIA toggle button). */}
+          {/* The name stays fixed; aria-pressed carries the state (WAI-ARIA toggle button). */}
           <button
             type="button"
-            className="secondary compact"
+            className="password-toggle"
             aria-label="Show password"
             aria-pressed={shown}
             aria-controls={id}
             onClick={() => setShown((s) => !s)}
           >
-            Show
+            <EyeIcon crossed={shown} />
           </button>
         </div>
       ) : (

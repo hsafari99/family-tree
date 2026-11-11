@@ -16,15 +16,38 @@ describe('Field type=password', () => {
     expect(input).toHaveAttribute('type', 'password');
     expect(toggle).toHaveAttribute('aria-pressed', 'false');
     expect(toggle).toHaveAttribute('aria-controls', input.id);
-    expect(toggle).toHaveTextContent(/^Show$/);
     fireEvent.click(toggle);
     expect(input).toHaveAttribute('type', 'text');
     expect(toggle).toHaveAttribute('aria-pressed', 'true');
-    // The visible text and the name stay the same: aria-pressed alone carries the state.
-    expect(toggle).toHaveTextContent(/^Show$/);
+    // The name stays the same: aria-pressed alone carries the state.
     expect(toggle).toHaveAccessibleName('Show password');
     fireEvent.click(toggle);
     expect(input).toHaveAttribute('type', 'password');
+  });
+
+  it('is an eye icon inside the input box, crossed out while the password shows', () => {
+    render(<Pw />);
+    const input = screen.getByLabelText('Password', { selector: 'input' });
+    const toggle = screen.getByRole('button', { name: 'Show password' });
+    // Icon only: no visible text, the SVG hidden from assistive tech.
+    expect(toggle).toHaveTextContent('');
+    const icon = toggle.querySelector('svg')!;
+    expect(icon).toHaveAttribute('aria-hidden', 'true');
+    expect(icon).toHaveAttribute('focusable', 'false');
+    expect(icon).toHaveAttribute('data-icon', 'eye');
+    // The button shares a wrapper with the input, which places it on the input's right edge.
+    expect(toggle.parentElement).toBe(input.parentElement);
+    expect(toggle.parentElement).toHaveClass('password-input');
+    expect(toggle).toHaveClass('password-toggle');
+    fireEvent.click(toggle);
+    expect(toggle.querySelector('svg')).toHaveAttribute('data-icon', 'eye-off');
+  });
+
+  it('works from the keyboard (a native button)', () => {
+    render(<Pw />);
+    const toggle = screen.getByRole('button', { name: 'Show password' });
+    expect(toggle.tagName).toBe('BUTTON');
+    expect(toggle).not.toHaveAttribute('tabindex', '-1');
   });
 
   it('is a plain button, so it never submits the form', () => {
