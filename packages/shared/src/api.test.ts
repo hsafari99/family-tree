@@ -26,4 +26,15 @@ describe('apiErrorSchema', () => {
       apiErrorSchema.parse({ error: { code: 'NOT_FOUND', message: 'Not found' } }).error.code,
     ).toBe('NOT_FOUND');
   });
+
+  it('knows the codes for moving 2FA to a new phone', () => {
+    for (const code of [
+      'TWO_FACTOR_NOT_ENABLED',
+      'ACCOUNT_TEMPORARILY_LOCKED',
+      'MOVE_NOT_STARTED',
+      'MOVE_EXPIRED',
+    ]) {
+      expect(apiErrorSchema.safeParse({ error: { code, message: 'x' } }).success).toBe(true);
+    }
+  });
 });

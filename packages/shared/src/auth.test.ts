@@ -8,6 +8,10 @@ import {
   signInSchema,
   signUpSchema,
   totpCodeSchema,
+  twoFactorMoveConfirmSchema,
+  twoFactorMovedSchema,
+  twoFactorMoveStartedSchema,
+  twoFactorMoveStartSchema,
 } from './auth.js';
 
 const ok = (schema: { safeParse(v: unknown): { success: boolean } }, value: unknown) =>
@@ -91,5 +95,31 @@ describe('signInSchema', () => {
     expect(ok(signInSchema, { email: 'a@b.co', password: 'a'.repeat(128) })).toBe(true);
     expect(ok(signInSchema, { email: 'a@b.co', password: 'a'.repeat(129) })).toBe(false);
     expect(ok(signInSchema, { email: 'a@b.co', password: '' })).toBe(false);
+  });
+});
+
+describe('moving 2FA to a new phone', () => {
+  it('starts with an optional password and an optional code, both capped', () => {
+    expect(twoFactorMoveStartSchema.parse({ password: 'pw', code: '123456' })).toEqual({
+      password: 'pw',
+      code: '123456',
+    });
+    expect(ok(twoFactorMoveStartSchema, {})).toBe(true);
+    expect(ok(twoFactorMoveStartSchema, { password: 'a'.repeat(129) })).toBe(false);
+    expect(ok(twoFactorMoveStartSchema, { code: 'a'.repeat(65) })).toBe(false);
+    expect(ok(twoFactorMoveStartSchema, { code: 123456 })).toBe(false);
+  });
+
+  it('confirms with a 6-digit code from the new phone only', () => {
+    expect(twoFactorMoveConfirmSchema.parse({ code: '123 456' })).toEqual({ code: '123456' });
+    expect(ok(twoFactorMoveConfirmSchema, { code: 'sCJis-ruroZ' })).toBe(false);
+    expect(ok(twoFactorMoveConfirmSchema, {})).toBe(false);
+  });
+
+  it('answers with an otpauth URI, then with the new recovery codes', () => {
+    expect(ok(twoFactorMoveStartedSchema, { totpURI: 'otpauth://totp/x?secret=AB' })).toBe(true);
+    expect(ok(twoFactorMoveStartedSchema, { totpURI: 'https://example.com' })).toBe(false);
+    expect(ok(twoFactorMovedSchema, { backupCodes: ['abcde-12345'] })).toBe(true);
+    expect(ok(twoFactorMovedSchema, { backupCodes: [] })).toBe(false);
   });
 });
