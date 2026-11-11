@@ -1,13 +1,14 @@
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { call, type CookieJar, signUp, WEB_ORIGIN } from '../../test/auth-helpers.js';
+import { call, type CookieJar, signUp, totpNow, WEB_ORIGIN } from '../../test/auth-helpers.js';
+import { userWith2fa } from '../../test/tree-helpers.js';
 import {
   googleProfile,
   googleSignIn,
   startGoogle,
   TEST_GOOGLE,
 } from '../../test/google-helpers.js';
-import { accounts, users } from '../db/schema.js';
+import { accounts, sessions, users } from '../db/schema.js';
 import { buildApp } from '../app.js';
 import { loadConfig } from '../config.js';
 import { createDeps } from '../deps.js';
@@ -142,5 +143,69 @@ describe('signing in with Google', () => {
     });
     expect(res.statusCode).toBe(302);
     expect(String(res.headers.location)).toBe(`${WEB_ORIGIN}/sign-in?error=state_not_found`);
+  });
+});
+
+describe('two-step verification still applies', () => {
+  /** A password user with 2FA whose Google account is already connected. */
+  async function twoFactorUserWithGoogle() {
+    const user = await userWith2fa(app, 'Tess Two-Factor');
+    const profile = googleProfile();
+    await db.insert(accounts).values({
+      userId: user.userId,
+      providerId: 'google',
+      accountId: profile.sub,
+    });
+    return { user, profile };
+  }
+  const sessionCount = async (userId: string) =>
+    (await db.select().from(sessions).where(eq(sessions.userId, userId))).length;
+
+  it('gives no session until the authenticator code is entered', async () => {
+    const { user, profile } = await twoFactorUserWithGoogle();
+    const before = await sessionCount(user.userId);
+    const { res, location, jar } = await googleSignIn(app, profile);
+    expect(res.statusCode).toBe(302);
+    expect(location).toBe(`${WEB_ORIGIN}/sign-in/verify?next=%2F`);
+    expect((await me(jar)).statusCode).toBe(401);
+    expect(await sessionCount(user.userId)).toBe(before);
+    expect(jar.has('ft.two_factor')).toBe(true);
+
+    const wrong = await call(app, 'POST', '/api/auth/two-factor/verify-totp', {
+      jar,
+      body: { code: '000000' },
+    });
+    expect(wrong.statusCode).toBe(401);
+    expect((await me(jar)).statusCode).toBe(401);
+
+    const verify = await call(app, 'POST', '/api/auth/two-factor/verify-totp', {
+      jar,
+      body: { code: await totpNow(user.rawSecret) },
+    });
+    expect(verify.statusCode).toBe(200);
+    const session = await me(jar);
+    expect(session.statusCode).toBe(200);
+    expect(session.json().user.id).toBe(user.userId);
+  });
+
+  it('accepts a recovery code instead', async () => {
+    const { user, profile } = await twoFactorUserWithGoogle();
+    const { jar } = await googleSignIn(app, profile);
+    const verify = await call(app, 'POST', '/api/auth/two-factor/verify-backup-code', {
+      jar,
+      body: { code: user.backupCodes[0] },
+    });
+    expect(verify.statusCode).toBe(200);
+    expect((await me(jar)).json().user.id).toBe(user.userId);
+  });
+
+  it('keeps the return path through the challenge', async () => {
+    const { profile } = await twoFactorUserWithGoogle();
+    const { location } = await googleSignIn(app, profile, {
+      body: { callbackURL: `${WEB_ORIGIN}/invite/abc123?x=1` },
+    });
+    expect(location).toBe(
+      `${WEB_ORIGIN}/sign-in/verify?next=${encodeURIComponent('/invite/abc123?x=1')}`,
+    );
   });
 });

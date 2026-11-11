@@ -9,6 +9,7 @@ import { safeError } from '../errors.js';
 import { accounts, sessions, twoFactors, users, verifications } from '../db/schema.js';
 import { CLIENT_IP_HEADER } from './fastify-adapter.js';
 import { holdsTwoFactorRole, ownsLiveTree } from '../trees/roles.js';
+import { challengeSocialSignIn } from './google.js';
 import { hashPassword, verifyPassword } from './password.js';
 
 type AuthLogLevel = 'debug' | 'info' | 'warn' | 'error';
@@ -170,6 +171,9 @@ export function createAuth({ config, db, rateLimitEnabled, log }: AuthOptions) {
             });
           }
         }
+      }),
+      after: createAuthMiddleware(async (ctx) => {
+        await challengeSocialSignIn(ctx, config.WEB_ORIGIN);
       }),
     },
     emailVerification: { sendOnSignUp: false },
