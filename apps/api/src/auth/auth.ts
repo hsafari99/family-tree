@@ -14,6 +14,7 @@ import {
   challengeSocialSignIn,
   checkSocialStart,
   confirmLink,
+  guardLinkRace,
 } from './google.js';
 import { hashPassword, verifyPassword } from './password.js';
 
@@ -94,16 +95,19 @@ export function createAuth({ config, db, rateLimitEnabled, log }: AuthOptions) {
           }
         : {}),
     },
-    database: drizzleAdapter(db, {
-      provider: 'pg',
-      schema: {
-        user: users,
-        session: sessions,
-        account: accounts,
-        verification: verifications,
-        twoFactor: twoFactors,
-      },
-    }),
+    database: guardLinkRace(
+      drizzleAdapter(db, {
+        provider: 'pg',
+        schema: {
+          user: users,
+          session: sessions,
+          account: accounts,
+          verification: verifications,
+          twoFactor: twoFactors,
+        },
+      }),
+      config.WEB_ORIGIN,
+    ),
     // Spec §5: Google sign-in, only when the OAuth client is configured. Google's defaults are
     // exactly openid, email and profile; include_granted_scopes is off so no earlier grant to
     // this client is folded in.

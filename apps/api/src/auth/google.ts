@@ -160,3 +160,49 @@ export function blockUnlinkEndpoint(ctx: HookContext): void {
     throw fail('FORBIDDEN', 'UNLINK_DISABLED', 'Use Account settings to disconnect Google');
   }
 }
+
+/** Whether `err` (or its cause) is a unique violation of the named constraint. */
+function violates(err: unknown, constraint: string): boolean {
+  for (let e: unknown = err, depth = 0; e instanceof Error && depth < 5; e = e.cause, depth++) {
+    const pg = e as { code?: unknown; constraint_name?: unknown };
+    if (pg.code === '23505' && pg.constraint_name === constraint) return true;
+  }
+  return false;
+}
+
+/**
+ * Wraps the database adapter so a "Connect Google" that loses a race (two tabs linking at once:
+ * both pass the GOOGLE_ALREADY_CONNECTED check, the database's accounts_user_provider_uq stops
+ * the second) ends on Account settings with a fixed message instead of a 500. Better Auth's
+ * callback has no hook for database errors, so this is the one place to catch it.
+ */
+export function guardLinkRace<F extends (...args: never[]) => { create: unknown }>(
+  factory: F,
+  webOrigin: string,
+): F {
+  return ((...args: Parameters<F>) => {
+    const adapter = factory(...args) as ReturnType<F> & {
+      create: (input: { model: string; data: Record<string, unknown> }) => Promise<unknown>;
+    };
+    return {
+      ...adapter,
+      async create(input: { model: string; data: Record<string, unknown> }) {
+        try {
+          return await adapter.create(input);
+        } catch (err) {
+          if (
+            input.model === 'account' &&
+            input.data.providerId === GOOGLE_PROVIDER_ID &&
+            violates(err, 'accounts_user_provider_uq')
+          ) {
+            const headers = new Headers({
+              location: `${webOrigin}/account?error=google_already_connected`,
+            });
+            throw new APIError('FOUND', undefined, headers);
+          }
+          throw err;
+        }
+      },
+    };
+  }) as unknown as F;
+}

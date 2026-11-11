@@ -374,6 +374,9 @@ describe('Google', () => {
       MESSAGES.googleLinkedElsewhere,
     );
     expect(googleErrorMessage('access_denied')).toBe(MESSAGES.googleCancelled);
+    expect(googleErrorMessage('google_already_connected', 'connect')).toBe(
+      MESSAGES.googleAlreadyConnected,
+    );
     expect(googleErrorMessage('<script>anything</script>')).toBe(MESSAGES.googleFailed);
     expect(googleErrorMessage(null)).toBeNull();
   });

@@ -155,6 +155,8 @@ const GOOGLE_CALLBACK_ERRORS: Record<string, string> = {
   account_not_linked: MESSAGES.googleEmailTaken,
   account_already_linked_to_different_user: MESSAGES.googleLinkedElsewhere,
   access_denied: MESSAGES.googleCancelled,
+  // Ours (auth/google.ts guardLinkRace): another tab connected a Google account first.
+  google_already_connected: MESSAGES.googleAlreadyConnected,
 };
 
 /**

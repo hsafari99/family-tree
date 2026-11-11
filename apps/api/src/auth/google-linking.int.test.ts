@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -124,6 +125,37 @@ describe('Connect Google', () => {
     const again = await startLink(user.jar, { password: TEST_PASSWORD });
     expect(again.res.statusCode).toBe(409);
     expect(again.res.json().code).toBe('GOOGLE_ALREADY_CONNECTED');
+  });
+
+  it('allows one account per provider per user in the database', async () => {
+    const user = await signUp(app);
+    await db
+      .insert(accounts)
+      .values({ userId: user.userId, providerId: 'google', accountId: `g-${randomUUID()}` });
+    await expect(
+      db
+        .insert(accounts)
+        .values({ userId: user.userId, providerId: 'google', accountId: `g-${randomUUID()}` }),
+    ).rejects.toThrow();
+  });
+
+  it('turns a link that loses a race into the "already connected" message', async () => {
+    const user = await signUp(app);
+    const otherTab = `g-${randomUUID()}`;
+    const started = await startLink(user.jar, { password: TEST_PASSWORD });
+    expect(started.res.statusCode).toBe(200);
+    // Another tab finished connecting a different Google account in the meantime.
+    await db
+      .insert(accounts)
+      .values({ userId: user.userId, providerId: 'google', accountId: otherTab });
+    const { res, location } = await finishGoogle(app, user.jar, started.url, googleProfile());
+    expect(res.statusCode).toBe(302);
+    expect(location).toBe(`${ACCOUNT}?error=google_already_connected`);
+    const google = await db
+      .select()
+      .from(accounts)
+      .where(and(eq(accounts.userId, user.userId), eq(accounts.providerId, 'google')));
+    expect(google.map((a) => a.accountId)).toEqual([otherTab]);
   });
 
   it("won't take a Google account that already belongs to someone else", async () => {
