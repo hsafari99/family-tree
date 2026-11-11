@@ -8,6 +8,9 @@ export function ConfirmButton({
   pending = false,
   disabled = false,
   danger = false,
+  startAsking = false,
+  onCancel,
+  compact = false,
 }: {
   label: string;
   confirmLabel: string;
@@ -16,11 +19,21 @@ export function ConfirmButton({
   /** Stops the first click (the confirm step itself is not affected). */
   disabled?: boolean;
   danger?: boolean;
+  /** Open straight on the confirm step (a menu's destructive item hands over to it). */
+  startAsking?: boolean;
+  /** Called when the confirm step is cancelled (Cancel or Escape). */
+  onCancel?: () => void;
+  compact?: boolean;
 }) {
-  const [asking, setAsking] = useState(false);
+  const [asking, setAsking] = useState(startAsking);
   const confirmRef = useRef<HTMLButtonElement>(null);
   const startRef = useRef<HTMLButtonElement>(null);
   const wasAsking = useRef(false);
+
+  const cancel = () => {
+    setAsking(false);
+    onCancel?.();
+  };
 
   useEffect(() => {
     if (asking) confirmRef.current?.focus();
@@ -33,7 +46,8 @@ export function ConfirmButton({
     if (disabled) setAsking(false);
   }, [disabled]);
 
-  const cls = danger ? 'danger' : undefined;
+  const cls =
+    [danger ? 'danger' : '', compact ? 'compact' : ''].filter(Boolean).join(' ') || undefined;
 
   if (!asking) {
     return (
@@ -49,7 +63,15 @@ export function ConfirmButton({
     );
   }
   return (
-    <span className="confirm" onKeyDown={(e) => e.key === 'Escape' && setAsking(false)}>
+    <span
+      className="confirm"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          cancel();
+        }
+      }}
+    >
       <button
         ref={confirmRef}
         type="button"
@@ -62,7 +84,7 @@ export function ConfirmButton({
       >
         {confirmLabel}
       </button>{' '}
-      <button type="button" onClick={() => setAsking(false)}>
+      <button type="button" className={compact ? 'secondary compact' : undefined} onClick={cancel}>
         Cancel
       </button>
     </span>

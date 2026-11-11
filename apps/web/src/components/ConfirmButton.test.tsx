@@ -39,3 +39,43 @@ describe('ConfirmButton', () => {
     expect(screen.getByRole('button', { name: 'Delete tree' })).toBeInTheDocument();
   });
 });
+
+describe('ConfirmButton startAsking', () => {
+  it('starts in the confirm step with focus on it, and Cancel calls onCancel', () => {
+    const onCancel = vi.fn();
+    const onConfirm = vi.fn();
+    render(
+      <ConfirmButton
+        startAsking
+        label="Remove"
+        confirmLabel="Yes, remove"
+        onConfirm={onConfirm}
+        onCancel={onCancel}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Yes, remove' })).toHaveFocus();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(onCancel).toHaveBeenCalledOnce();
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('Escape also calls onCancel', () => {
+    const onCancel = vi.fn();
+    render(
+      <ConfirmButton
+        startAsking
+        label="Remove"
+        confirmLabel="Yes, remove"
+        onConfirm={vi.fn()}
+        onCancel={onCancel}
+      />,
+    );
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Yes, remove' }), { key: 'Escape' });
+    expect(onCancel).toHaveBeenCalledOnce();
+  });
+
+  it('compact adds the compact class', () => {
+    render(<ConfirmButton compact label="Remove" confirmLabel="Yes" onConfirm={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Remove' })).toHaveClass('compact');
+  });
+});
