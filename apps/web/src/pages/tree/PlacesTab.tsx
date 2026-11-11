@@ -4,7 +4,7 @@ import {
   residenceInputSchema,
   updatePersonSchema,
 } from '@family-tree/shared';
-import { type FormEvent, useEffect, useRef, useState } from 'react';
+import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
 import { ConfirmButton } from '../../components/ConfirmButton';
 import {
   draftErrors,
@@ -16,6 +16,7 @@ import {
 import {
   ErrorSummary,
   Field,
+  serverFieldErrors,
   FormError,
   Success,
   validate,
@@ -25,6 +26,20 @@ import { formatFuzzyDate } from '../../trees/format';
 import { useTreesApi } from '../../trees/TreesApiContext';
 import { type TabProps, usePersonSave } from './usePersonSave';
 
+const LIVING_DEATH_PLACE =
+  'This person is marked as living. Tick “Mark as deceased” to add a death place.';
+const PLACE_LABELS: Record<string, string> = {
+  birthPlace: 'Birth place',
+  deathPlace: 'Death place',
+};
+/** Server field keys -> this form's fields, with fixed text (brief #8). The server names
+ *  `isLiving`, which this form has no field for: it belongs to the death place. */
+const PLACE_FIELDS: Record<string, { field: string; message: string }> = {
+  isLiving: { field: 'deathPlace', message: LIVING_DEATH_PLACE },
+  birthPlace: { field: 'birthPlace', message: 'Check the birth place' },
+  deathPlace: { field: 'deathPlace', message: 'Check the death place' },
+};
+
 export function PlacesTab(props: TabProps) {
   const { view } = props;
   const canEdit = view.capabilities.edit;
@@ -32,7 +47,9 @@ export function PlacesTab(props: TabProps) {
   const [editing, setEditing] = useState(false);
   const [birthPlace, setBirthPlace] = useState('');
   const [deathPlace, setDeathPlace] = useState('');
+  const [markDeceased, setMarkDeceased] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
+  const uid = useId();
 
   // What the form was opened from: only fields the user changed are saved.
   const opened = useRef({ birth: '', death: '' });
@@ -44,9 +61,14 @@ export function PlacesTab(props: TabProps) {
     };
     setBirthPlace(view.person.birthPlace ?? '');
     setDeathPlace(view.person.deathPlace ?? '');
+    setMarkDeceased(false);
     setErrors({});
     setEditing(true);
   }
+
+  // A living person can't have a death place: adding one asks to mark them deceased (#8).
+  const asksDeceased =
+    view.person.isLiving && opened.current.death === '' && deathPlace.trim() !== '';
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -56,13 +78,17 @@ export function PlacesTab(props: TabProps) {
       deathPlace,
     });
     if (!v.ok) return setErrors(v.errors);
+    if (asksDeceased && !markDeceased) return setErrors({ deathPlace: LIVING_DEATH_PLACE });
     setErrors({});
     const fields = {
       ...(birthPlace.trim() !== opened.current.birth ? { birthPlace: v.data.birthPlace } : {}),
       ...(deathPlace.trim() !== opened.current.death ? { deathPlace: v.data.deathPlace } : {}),
+      ...(asksDeceased ? { isLiving: false } : {}),
     };
     if (Object.keys(fields).length === 0) return setEditing(false);
-    if (await s.save(fields)) setEditing(false);
+    const res = await s.save(fields);
+    if (res.ok) setEditing(false);
+    else if (res.fields) setErrors(serverFieldErrors(res.fields, PLACE_FIELDS));
   }
 
   return (
@@ -82,6 +108,7 @@ export function PlacesTab(props: TabProps) {
       {editing && (
         <form onSubmit={(e) => void submit(e)}>
           <FormError>{s.error}</FormError>
+          <ErrorSummary errors={errors} labels={PLACE_LABELS} />
           {s.stale && (
             <div role="alert" className="error">
               {s.staleMessage}{' '}
@@ -104,6 +131,23 @@ export function PlacesTab(props: TabProps) {
             onChange={setDeathPlace}
             error={errors.deathPlace}
           />
+          {asksDeceased && (
+            <div className="field">
+              <label>
+                <input
+                  type="checkbox"
+                  data-field="markDeceased"
+                  aria-describedby={`${uid}-deceased-hint`}
+                  checked={markDeceased}
+                  onChange={(e) => setMarkDeceased(e.target.checked)}
+                />{' '}
+                Mark {view.person.givenName} as deceased
+              </label>
+              <p id={`${uid}-deceased-hint`} className="hint">
+                A death place is only kept for someone who has died.
+              </p>
+            </div>
+          )}
           <p className="actions">
             <button type="submit" disabled={s.pending}>
               Save places

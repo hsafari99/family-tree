@@ -121,6 +121,27 @@ describe('person routes', () => {
     expect((await auditRows(db, treeId)).length).toBe(before);
   });
 
+  it('rejects a death place on a living person, keyed isLiving (brief #8)', async () => {
+    const { owner, treeId } = await ownerWithTree(app);
+    const created = await call(app, 'POST', url(treeId), {
+      jar: owner.jar,
+      body: { person: { givenName: 'Alive' } },
+    });
+    const id = created.json().id as string;
+    const res = await call(app, 'PATCH', url(treeId, id), {
+      jar: owner.jar,
+      body: { version: 1, deathPlace: 'Leeds' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('VALIDATION');
+    expect(Object.keys(res.json().error.details)).toEqual(['isLiving']);
+    const ok = await call(app, 'PATCH', url(treeId, id), {
+      jar: owner.jar,
+      body: { version: 1, deathPlace: 'Leeds', isLiving: false },
+    });
+    expect(ok.statusCode).toBe(200);
+  });
+
   it('rejects living with a death date, and bad input', async () => {
     const { owner, treeId } = await ownerWithTree(app);
     const created = await call(app, 'POST', url(treeId), {

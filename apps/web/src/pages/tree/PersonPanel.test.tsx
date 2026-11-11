@@ -193,6 +193,83 @@ describe('PersonPanel', () => {
     expect(s.trees.callsTo('deleteResidence')).toHaveLength(1);
   });
 
+  describe('the death place of a living person (brief #8)', () => {
+    const living = () => {
+      const s = setup();
+      Object.assign(s.view.person, { isLiving: true, deathDate: null, deathPlace: null });
+      return s;
+    };
+    const typeDeathPlace = async (s: ReturnType<typeof setup>) => {
+      renderAt(at(s, '?tab=places'), s);
+      fireEvent.click(await screen.findByRole('button', { name: 'Edit places' }));
+      fireEvent.change(screen.getByLabelText('Death place'), { target: { value: 'Leeds' } });
+    };
+    const LIVING_MSG =
+      'This person is marked as living. Tick “Mark as deceased” to add a death place.';
+
+    it('explains the error at the Death place field and in the summary, without calling', async () => {
+      const s = living();
+      await typeDeathPlace(s);
+      expect(screen.getByRole('checkbox', { name: 'Mark Ada as deceased' })).not.toBeChecked();
+      fireEvent.click(screen.getByRole('button', { name: 'Save places' }));
+      const summary = await screen.findByRole('alert');
+      expect(
+        within(summary).getByRole('button', { name: `Death place: ${LIVING_MSG}` }),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText('Death place')).toHaveAccessibleDescription(LIVING_MSG);
+      expect(s.trees.callsTo('updatePerson')).toEqual([]);
+    });
+
+    it('maps the server’s isLiving key onto the Death place field', async () => {
+      const s = living();
+      await typeDeathPlace(s);
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Mark Ada as deceased' }));
+      s.trees.failNext('updatePerson', {
+        code: 'VALIDATION',
+        message: MESSAGES.checkDetails,
+        fields: ['isLiving'],
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save places' }));
+      await waitFor(() =>
+        expect(screen.getByLabelText('Death place')).toHaveAccessibleDescription(LIVING_MSG),
+      );
+      expect(screen.queryByText(MESSAGES.checkDetails)).toBeNull();
+    });
+
+    it('a key the form doesn’t show goes to the summary as the generic message', async () => {
+      const s = living();
+      await typeDeathPlace(s);
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Mark Ada as deceased' }));
+      s.trees.failNext('updatePerson', {
+        code: 'VALIDATION',
+        message: MESSAGES.checkDetails,
+        fields: ['zzz'],
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save places' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent(MESSAGES.checkDetails);
+    });
+
+    it('ticking “Mark as deceased” saves the place and marks them deceased', async () => {
+      const s = living();
+      await typeDeathPlace(s);
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Mark Ada as deceased' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Save places' }));
+      expect(await screen.findByText('Saved')).toBeInTheDocument();
+      expect(s.trees.callsTo('updatePerson')).toMatchObject([
+        { input: { version: 1, deathPlace: 'Leeds', isLiving: false } },
+      ]);
+      expect(s.view.person).toMatchObject({ deathPlace: 'Leeds', isLiving: false });
+      expect(screen.getByText('Leeds')).toBeInTheDocument();
+    });
+
+    it('a deceased person gets no box', async () => {
+      const s = setup();
+      Object.assign(s.view.person, { isLiving: false, deathPlace: null });
+      await typeDeathPlace(s);
+      expect(screen.queryByRole('checkbox', { name: /as deceased/ })).toBeNull();
+    });
+  });
+
   it('shows history with action labels and field changes', async () => {
     const s = setup();
     s.trees.trees.get(s.id)!.history.set(ada.id, [

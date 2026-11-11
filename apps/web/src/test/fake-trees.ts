@@ -673,7 +673,14 @@ export class FakeTreesApi implements TreesApi {
     if (version !== view.person.version) return fail('CONFLICT', MESSAGES.staleEdit);
     const changed = Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined));
     const merged = { ...view.person, ...changed };
-    if (Object.keys(personConsistencyErrors(merged)).length > 0) return this.invalid();
+    const consistency = Object.keys(personConsistencyErrors(merged));
+    // Like the API: VALIDATION with the field keys (the web never shows the server's text).
+    if (consistency.length > 0) {
+      return {
+        ok: false as const,
+        error: { code: 'VALIDATION', message: MESSAGES.checkDetails, fields: consistency },
+      };
+    }
     Object.assign(view.person, merged, { version: view.person.version + 1 });
     const summary = t.persons.find((p) => p.id === personId);
     if (summary) {

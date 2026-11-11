@@ -12,6 +12,9 @@ export interface TabProps {
   onChanged: () => void;
 }
 
+/** A save's outcome; `fields` are the server's VALIDATION keys, for the tab to map onto its fields. */
+export type SaveResult = { ok: true } | { ok: false; fields?: string[] };
+
 /** Saving person fields with the stale-version handling shared by the Info and Places tabs. */
 export function usePersonSave({ treeId, view, reload, onChanged }: TabProps) {
   const api = useTreesApi();
@@ -27,7 +30,7 @@ export function usePersonSave({ treeId, view, reload, onChanged }: TabProps) {
   const [stale, setStale] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  async function save(fields: Omit<UpdatePersonInput, 'version'>): Promise<boolean> {
+  async function save(fields: Omit<UpdatePersonInput, 'version'>): Promise<SaveResult> {
     setError(null);
     setStale(false);
     setSaved(false);
@@ -36,18 +39,20 @@ export function usePersonSave({ treeId, view, reload, onChanged }: TabProps) {
       ...fields,
       version: view.person.version,
     });
-    if (!alive.current) return false;
+    if (!alive.current) return { ok: false };
     setPending(false);
     if (!res.ok) {
       if (res.error.code === 'CONFLICT') setStale(true);
+      // Field keys are shown at the fields (and in the summary) by the tab instead.
+      else if (res.error.fields) return { ok: false, fields: res.error.fields };
       else setError(res.error.message);
-      return false;
+      return { ok: false };
     }
     await reload();
-    if (!alive.current) return true;
+    if (!alive.current) return { ok: true };
     setSaved(true);
     onChanged();
-    return true;
+    return { ok: true };
   }
 
   async function loadLatest() {

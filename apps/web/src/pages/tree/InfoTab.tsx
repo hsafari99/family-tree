@@ -15,6 +15,7 @@ import {
 import {
   ErrorSummary,
   Field,
+  serverFieldErrors,
   FormError,
   Success,
   validate,
@@ -134,6 +135,15 @@ const INFO_LABELS: Record<string, string> = {
 const PERSON_KEY = { birth: 'birthDate', death: 'deathDate' } as const;
 const personKey = (k: FormKey) => (k === 'birth' || k === 'death' ? PERSON_KEY[k] : k);
 
+/** Server field keys -> this form's fields, with our own fixed text (never the server's). */
+const INFO_FIELDS: Record<string, { field: string; message: string }> = {
+  ...Object.fromEntries(
+    Object.keys(INFO_LABELS).map((k) => [k, { field: k, message: 'Check this and try again' }]),
+  ),
+  isLiving: { field: 'isLiving', message: 'Someone with death details can’t be marked as living' },
+  deathDate: { field: 'deathDate', message: 'Death can’t be before birth' },
+};
+
 const toForm = (p: Person): Form => ({
   givenName: p.givenName,
   middleName: p.middleName ?? '',
@@ -225,7 +235,9 @@ function InfoForm({
       return setErrors(Object.fromEntries(Object.entries(consistency).map(([k, m]) => [k, m[0]])));
     }
     setErrors({});
-    if (await s.save(fields)) onClose();
+    const res = await s.save(fields);
+    if (res.ok) onClose();
+    else if (res.fields) setErrors(serverFieldErrors(res.fields, INFO_FIELDS));
   }
 
   const area = (k: 'biography' | 'notes', label: string) => (
