@@ -86,12 +86,13 @@ export function buildApp({
               'res.headers["set-cookie"]',
               '*.password',
             ],
-            // Fastify's own req fields, but with the export ticket (a one-time bearer in the URL)
-            // masked.
+            // Fastify's own req fields, but with one-time secrets in the URL masked: the export
+            // ticket, the OAuth code and state on /api/auth/callback/*, and any return path
+            // (`next`, which can name an invite link).
             serializers: {
               req: (req: FastifyRequest) => ({
                 method: req.method,
-                url: req.url.replace(/([?&]ticket=)[^&#]*/g, '$1[Redacted]'),
+                url: req.url.replace(/([?&](?:ticket|code|state|next)=)[^&#]*/g, '$1[Redacted]'),
                 host: req.host,
                 remoteAddress: req.ip,
                 remotePort: req.socket?.remotePort,
