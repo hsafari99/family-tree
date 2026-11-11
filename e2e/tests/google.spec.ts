@@ -1,15 +1,13 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { parseEnv } from 'node:util';
 import { expect, type Page, test } from '@playwright/test';
 import { watchCsp } from '../support/csp';
-import { API, PROD_LOCAL, REPO_ROOT } from '../support/env';
+import { API } from '../support/env';
 
-/** The dev stack's client ID, from the git-ignored file compose.yml loads. Never printed. */
-function configuredClientId(): string | undefined {
-  const file = `${REPO_ROOT}.env.development.local`;
-  if (PROD_LOCAL || !existsSync(file)) return undefined;
-  return parseEnv(readFileSync(file, 'utf8')).GOOGLE_CLIENT_ID || undefined;
-}
+/**
+ * The client ID the stack should use, when the runner knows it: CI sets E2E_GOOGLE_CLIENT_ID to
+ * the same made-up value it gives the API, and then the test must run, never skip. Locally it is
+ * unset and only the ID's shape is checked.
+ */
+const EXPECTED_CLIENT_ID = process.env.E2E_GOOGLE_CLIENT_ID || undefined;
 
 /** Opens `path` and reports whether the API said Google sign-in is on (the browser asks). */
 async function openWithProviders(page: Page, path: string): Promise<boolean> {
@@ -43,6 +41,7 @@ test("@smoke Continue with Google redirects to Google with this app's client, ca
   const csp = await watchCsp(page);
   const reachedGoogle = await stopAtGoogle(page);
   const enabled = await openWithProviders(page, '/sign-in?next=%2Faccount');
+  if (EXPECTED_CLIENT_ID) expect(enabled, 'the API has the Google client CI gave it').toBe(true);
   test.skip(!enabled, 'Google sign-in is not configured on this stack');
   await page.getByRole('button', { name: 'Continue with Google' }).click();
   const url = await reachedGoogle();
@@ -50,7 +49,7 @@ test("@smoke Continue with Google redirects to Google with this app's client, ca
 
   expect(`${url.origin}${url.pathname}`).toBe('https://accounts.google.com/o/oauth2/v2/auth');
   const q = url.searchParams;
-  const expectedId = configuredClientId();
+  const expectedId = EXPECTED_CLIENT_ID;
   // Compared as a boolean so a failure never prints the ID.
   if (expectedId)
     expect(q.get('client_id') === expectedId, 'client_id is the configured one').toBe(true);

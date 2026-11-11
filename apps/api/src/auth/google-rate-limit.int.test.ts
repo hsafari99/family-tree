@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, it } from 'vitest';
+import { signUp } from '../../test/auth-helpers.js';
 import { startGoogle, TEST_GOOGLE } from '../../test/google-helpers.js';
 import { buildApp } from '../app.js';
 import { loadConfig } from '../config.js';
@@ -22,5 +23,17 @@ describe('Google sign-in rate limit', () => {
       expect((await startGoogle(app)).res.statusCode).toBe(200);
     }
     expect((await startGoogle(app)).res.statusCode).toBe(429);
+  });
+
+  it('allows 5 Connect Google attempts per 15 minutes, so wrong codes are capped', async () => {
+    const user = await signUp(app);
+    const attempt = () =>
+      startGoogle(app, {
+        jar: user.jar,
+        path: '/api/auth/link-social',
+        body: { password: 'not the password', callbackURL: 'http://localhost:5173/account' },
+      });
+    for (let i = 0; i < 5; i++) expect((await attempt()).res.statusCode).toBe(400);
+    expect((await attempt()).res.statusCode).toBe(429);
   });
 });

@@ -14,6 +14,7 @@ import {
   finishGoogle,
   googleProfile,
   googleSignIn,
+  mockGoogle,
   startGoogle,
   TEST_GOOGLE,
   type GoogleProfile,
@@ -112,6 +113,22 @@ describe('Connect Google', () => {
     });
     expect(location).toBe(`${ACCOUNT}?google=connected`);
     expect(await providersOf(user.userId)).toEqual(['credential', 'google']);
+  });
+
+  it('refuses the id-token shortcut here too', async () => {
+    const user = await signUp(app);
+    const google = mockGoogle(googleProfile());
+    try {
+      const res = await call(app, 'POST', '/api/auth/link-social', {
+        jar: user.jar,
+        body: { provider: 'google', password: TEST_PASSWORD, idToken: { token: 'x.y.z' } },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().code).toBe('ID_TOKEN_SIGN_IN_DISABLED');
+    } finally {
+      google.restore();
+    }
+    expect(await providersOf(user.userId)).toEqual(['credential']);
   });
 
   it('needs a signed-in session', async () => {
