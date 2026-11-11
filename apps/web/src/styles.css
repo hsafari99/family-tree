@@ -8,6 +8,15 @@
   --muted: color-mix(in srgb, currentColor 65%, transparent);
   --border: color-mix(in srgb, currentColor 25%, transparent);
   --surface: color-mix(in srgb, Canvas 94%, CanvasText);
+  /* Status text (not backgrounds): at least 4.5:1 on the page in each theme. */
+  --success: #1a7f37;
+  --danger: #cf222e;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --success: #3fb950;
+    --danger: #ff7b72;
+  }
 }
 *,
 *::before,
@@ -891,7 +900,9 @@ img.card-photo {
   gap: 0.25rem;
 }
 .account-layout nav a {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
   padding: 0.4rem 0.75rem;
   border-radius: 0.4rem;
   text-decoration: none;
@@ -941,4 +952,41 @@ img.card-photo {
     display: block;
     margin-top: 0;
   }
+}
+
+/* Inline icons sit on the text's centre line and keep their size. */
+.icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+.connection-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 600;
+}
+.connection-status--on {
+  color: var(--success);
+}
+.connection-status--off {
+  color: var(--danger);
+}
+/* An icon-only link, e.g. back to home at the top left of a page. */
+.icon-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  min-height: 2rem;
+  margin: 0 0 0.5rem -0.4rem;
+  border-radius: 0.4rem;
+  color: inherit;
+}
+.icon-link:hover {
+  background: var(--surface);
+}
+.icon-link .icon {
+  width: 20px;
+  height: 20px;
 }

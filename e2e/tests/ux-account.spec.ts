@@ -57,6 +57,49 @@ test('desktop: the section list sits beside one section, each at its own URL', a
   );
 });
 
+test('icons: one per nav item, a back-home icon link top left, and the Google status', async ({
+  page,
+}) => {
+  await signUpViaUi(page, 'Ada Icons');
+  await page.goto('/account');
+
+  await expect(nav(page).getByRole('link', { name: 'Profile' })).toBeVisible();
+  const icons = nav(page).getByRole('link').locator('svg[aria-hidden="true"]');
+  await expect(icons).toHaveCount(await nav(page).getByRole('link').count());
+  const box = (await icons.first().boundingBox())!;
+  expect(box.width).toBeGreaterThanOrEqual(16);
+  expect(box.width).toBeLessThanOrEqual(20);
+
+  // Back to home: an icon link above the title, at the card's left, big enough to tap.
+  const home = page.getByRole('link', { name: 'Back to home' });
+  await expect(home).toHaveAttribute('title', 'Back to home');
+  const homeBox = (await home.boundingBox())!;
+  const titleBox = (await page.getByRole('heading', { level: 1, name: 'Account' }).boundingBox())!;
+  expect(homeBox.y + homeBox.height).toBeLessThanOrEqual(titleBox.y + 1);
+  expect(homeBox.x).toBeLessThanOrEqual(titleBox.x);
+  expect(homeBox.width).toBeGreaterThanOrEqual(24);
+  expect(homeBox.height).toBeGreaterThanOrEqual(24);
+  await home.focus();
+  await expect(home).toBeFocused();
+
+  // Google's status: words plus an icon, coloured as a warning while not connected.
+  const google = nav(page).getByRole('link', { name: 'Google sign-in' });
+  if ((await google.count()) > 0) {
+    await google.click();
+    const status = page.getByText('Not connected', { exact: true });
+    await expect(status).toBeVisible();
+    await expect(status.locator('svg')).toBeVisible();
+    const [color, text] = await status.evaluate((el) => [
+      getComputedStyle(el).color,
+      getComputedStyle(el.closest('.card')!).color,
+    ]);
+    expect(color).not.toBe(text);
+  }
+
+  await home.click();
+  await expect(page).toHaveURL(/\/$/);
+});
+
 test('mobile: the list first, then one section with a way back', async ({ browser }) => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const page = await context.newPage();

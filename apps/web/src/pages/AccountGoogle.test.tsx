@@ -28,7 +28,9 @@ describe('Account settings: Google', () => {
     const { api } = account();
     renderAt('/account/google', { auth: api });
     const google = await section();
-    expect(within(google).getByText('Not connected')).toBeInTheDocument();
+    const status = within(google).getByText('Not connected');
+    expect(status).toHaveClass('connection-status--off');
+    expect(status.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
     expect(within(google).queryByLabelText('Authenticator or recovery code')).toBeNull();
 
     fireEvent.click(within(google).getByRole('button', { name: 'Connect Google' }));
@@ -78,7 +80,9 @@ describe('Account settings: Google', () => {
     renderAt('/account/google?google=connected', { auth: account({ googleConnected: true }).api });
     const google = await section();
     expect(within(google).getByRole('status')).toHaveTextContent('Google is connected');
-    expect(within(google).getByText('Connected')).toBeInTheDocument();
+    const status = within(google).getByText('Connected');
+    expect(status).toHaveClass('connection-status--on');
+    expect(status.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
   });
 
   it.each([

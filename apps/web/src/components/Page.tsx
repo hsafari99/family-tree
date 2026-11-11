@@ -5,16 +5,20 @@ export function Page({
   title,
   wide = false,
   full = false,
+  back,
   children,
 }: {
   title: string;
   wide?: boolean;
   full?: boolean;
+  /** A link shown before the title, top left (e.g. back to home). */
+  back?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <main className="page">
       <div className={full ? 'card card-full' : wide ? 'card card-wide' : 'card'}>
+        {back}
         <h1>{title}</h1>
         {children}
       </div>

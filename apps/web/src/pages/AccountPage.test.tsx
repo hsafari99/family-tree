@@ -42,6 +42,30 @@ describe('AccountPage', () => {
     ).toEqual(['Profile', 'Change password', 'Two-step verification', 'Delete account']);
   });
 
+  it('gives each nav item a decorative icon before its label', async () => {
+    renderAt('/account', { auth: signedIn().api });
+    const nav = await screen.findByRole('navigation', { name: 'Account settings' });
+    for (const link of within(nav).getAllByRole('link')) {
+      const icon = link.firstElementChild;
+      expect(icon?.tagName.toLowerCase()).toBe('svg');
+      expect(icon).toHaveAttribute('aria-hidden', 'true');
+    }
+    expect(within(nav).getByRole('link', { name: 'Profile' })).toBeInTheDocument();
+  });
+
+  it('has an icon link back to home before the title', async () => {
+    renderAt('/account/password', { auth: signedIn().api });
+    const home = await screen.findByRole('link', { name: 'Back to home' });
+    expect(home).toHaveAttribute('href', '/');
+    expect(home).toHaveAttribute('title', 'Back to home');
+    expect(home).toHaveTextContent('');
+    expect(home.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+    const title = screen.getByRole('heading', { level: 1, name: 'Account' });
+    expect(home.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(home);
+    expect(await screen.findByRole('heading', { name: 'Your trees' })).toBeInTheDocument();
+  });
+
   it('/account shows the profile', async () => {
     renderAt('/account', { auth: signedIn().api });
     expect(await screen.findByRole('heading', { level: 2, name: 'Profile' })).toBeInTheDocument();

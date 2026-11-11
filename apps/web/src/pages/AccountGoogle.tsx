@@ -12,6 +12,7 @@ import {
   Success,
   validate,
 } from '../components/forms';
+import { CheckCircleIcon, CrossCircleIcon } from '../components/icons';
 
 /**
  * Account settings: connect Google (password, plus a code when 2FA is on) or disconnect it
@@ -63,7 +64,20 @@ export function GoogleSection({
       </h2>
       <dl className="details">
         <dt>Status</dt>
-        <dd>{user.googleConnected ? 'Connected' : 'Not connected'}</dd>
+        <dd>
+          {/* The words carry the status; the icon and colour only reinforce them. */}
+          {user.googleConnected ? (
+            <span className="connection-status connection-status--on">
+              <CheckCircleIcon />
+              Connected
+            </span>
+          ) : (
+            <span className="connection-status connection-status--off">
+              <CrossCircleIcon />
+              Not connected
+            </span>
+          )}
+        </dd>
       </dl>
       {notice ? (
         <Success>
