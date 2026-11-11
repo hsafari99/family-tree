@@ -108,7 +108,9 @@ describe('resetWithCodeSchema', () => {
     expect(ok(resetWithCodeSchema, { email: 'a@b.co', code: '123456', newPassword: 'short' })).toBe(
       false,
     );
-    expect(ok(resetWithCodeSchema, { email: 'a@b.co', newPassword: 'Long enough pw1' })).toBe(false);
+    expect(ok(resetWithCodeSchema, { email: 'a@b.co', newPassword: 'Long enough pw1' })).toBe(
+      false,
+    );
   });
 });
 
