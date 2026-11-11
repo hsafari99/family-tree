@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
 import { FormError } from '../components/forms';
+import { GoogleSignIn } from '../components/GoogleSignIn';
 import { Page } from '../components/Page';
 import { useTreesApi } from '../trees/TreesApiContext';
 
@@ -87,10 +88,13 @@ export function InvitePage() {
           </button>
         </>
       ) : (
-        <div className="actions">
-          <Link to={`/sign-in?next=${next}`}>Sign in</Link>
-          <Link to={`/sign-up?next=${next}`}>Create an account</Link>
-        </div>
+        <>
+          <div className="actions">
+            <Link to={`/sign-in?next=${next}`}>Sign in</Link>
+            <Link to={`/sign-up?next=${next}`}>Create an account</Link>
+          </div>
+          <GoogleSignIn next={`/invite/${encodeURIComponent(token)}`} />
+        </>
       )}
     </Page>
   );
