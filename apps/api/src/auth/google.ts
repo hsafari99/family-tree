@@ -1,4 +1,4 @@
-import { createAuthMiddleware, getOAuthState } from 'better-auth/api';
+import { APIError, createAuthMiddleware, getOAuthState } from 'better-auth/api';
 import { deleteSessionCookie } from 'better-auth/cookies';
 import { generateRandomString } from 'better-auth/crypto';
 
@@ -20,6 +20,35 @@ export function safeWebPath(value: unknown, webOrigin: string): string | null {
   if (url.origin !== webOrigin || url.username !== '' || url.password !== '') return null;
   if (url.pathname.startsWith('//')) return null;
   return `${url.pathname}${url.search}${url.hash}`;
+}
+
+/** Endpoints that start a Google round trip: sign-in, and linking from Account settings. */
+const SOCIAL_START_PATHS = new Set(['/sign-in/social', '/link-social']);
+
+const invalidCallback = () =>
+  APIError.from('BAD_REQUEST', { code: 'INVALID_CALLBACK_URL', message: 'Invalid callback URL' });
+
+/**
+ * Before a Google round trip starts: every URL Better Auth will redirect to afterwards must be
+ * an absolute URL on the web origin with a safe path (Better Auth itself also accepts relative
+ * paths, which would resolve against the API's origin). The id-token shortcut is refused: it
+ * signs in without the redirect, and the app never uses it.
+ */
+export function checkSocialStart(ctx: HookContext, webOrigin: string): void {
+  if (!SOCIAL_START_PATHS.has(ctx.path)) return;
+  const body = (ctx.body ?? {}) as Record<string, unknown>;
+  if (body.idToken !== undefined) {
+    throw APIError.from('BAD_REQUEST', {
+      code: 'ID_TOKEN_SIGN_IN_DISABLED',
+      message: 'Continue on the Google sign-in page',
+    });
+  }
+  if (safeWebPath(body.callbackURL, webOrigin) === null) throw invalidCallback();
+  for (const key of ['errorCallbackURL', 'newUserCallbackURL']) {
+    if (body[key] !== undefined && safeWebPath(body[key], webOrigin) === null) {
+      throw invalidCallback();
+    }
+  }
 }
 
 // Mirrors better-auth@1.7.18 plugins/two-factor/index.mjs (the hook on /sign-in/email) and

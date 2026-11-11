@@ -5,6 +5,7 @@ import { userWith2fa } from '../../test/tree-helpers.js';
 import {
   googleProfile,
   googleSignIn,
+  mockGoogle,
   startGoogle,
   TEST_GOOGLE,
 } from '../../test/google-helpers.js';
@@ -207,5 +208,41 @@ describe('two-step verification still applies', () => {
     expect(location).toBe(
       `${WEB_ORIGIN}/sign-in/verify?next=${encodeURIComponent('/invite/abc123?x=1')}`,
     );
+  });
+});
+
+describe('return paths', () => {
+  it('lands a new user back where they started, e.g. an invite', async () => {
+    const { location } = await googleSignIn(app, googleProfile(), {
+      body: { callbackURL: `${WEB_ORIGIN}/invite/tok123` },
+    });
+    expect(location).toBe(`${WEB_ORIGIN}/invite/tok123`);
+  });
+
+  it.each([
+    ['another site', { callbackURL: 'https://evil.example/' }],
+    ['a relative path (it would resolve against the API)', { callbackURL: '/invite/abc' }],
+    ['a doubled slash', { callbackURL: `${WEB_ORIGIN}//evil.example/` }],
+    ['a backslash', { callbackURL: `${WEB_ORIGIN}/\\evil.example` }],
+    ['no callback at all', { callbackURL: undefined }],
+    ['a foreign error page', { errorCallbackURL: 'https://evil.example/' }],
+    ['a foreign new-user page', { newUserCallbackURL: 'https://evil.example/' }],
+  ])('refuses %s', async (_label, body) => {
+    const { res } = await startGoogle(app, { body });
+    expect([400, 403]).toContain(res.statusCode);
+    expect(res.json().code).toMatch(/CALLBACK_URL/);
+  });
+
+  it('refuses the id-token shortcut, which would skip the checks above', async () => {
+    const google = mockGoogle(googleProfile());
+    try {
+      const res = await call(app, 'POST', '/api/auth/sign-in/social', {
+        body: { provider: 'google', idToken: { token: 'x.y.z' } },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().code).toBe('ID_TOKEN_SIGN_IN_DISABLED');
+    } finally {
+      google.restore();
+    }
   });
 });
