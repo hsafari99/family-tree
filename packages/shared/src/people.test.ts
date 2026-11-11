@@ -7,6 +7,7 @@ import {
   updatePersonSchema,
   updateUnionSchema,
 } from './people.js';
+import { FUTURE_DATE_MESSAGE } from './fuzzy-date.js';
 
 const year = (y: string) => ({ qualifier: 'exact' as const, date1: y });
 
@@ -45,6 +46,16 @@ describe('createPersonSchema', () => {
     expect(bad.error?.issues[0]?.path).toEqual(['person', 'deathDate']);
   });
 
+  it('rejects a birth or death date in the future', () => {
+    const next = year(String(new Date().getUTCFullYear() + 1));
+    for (const field of ['birthDate', 'deathDate'] as const) {
+      const bad = createPersonSchema.safeParse({ person: { givenName: 'Ada', [field]: next } });
+      expect(bad.error?.issues).toEqual([
+        expect.objectContaining({ path: ['person', field], message: FUTURE_DATE_MESSAGE }),
+      ]);
+    }
+  });
+
   it('accepts an attach spec with a default kind', () => {
     const to = crypto.randomUUID();
     const r = createPersonSchema.parse({
@@ -74,6 +85,16 @@ describe('updatePersonSchema', () => {
       version: 3,
       surname: null,
     });
+  });
+
+  it('rejects a birth or death date in the future', () => {
+    const next = year(String(new Date().getUTCFullYear() + 1));
+    for (const field of ['birthDate', 'deathDate'] as const) {
+      const bad = updatePersonSchema.safeParse({ version: 1, [field]: next });
+      expect(bad.error?.issues).toEqual([
+        expect.objectContaining({ path: [field], message: FUTURE_DATE_MESSAGE }),
+      ]);
+    }
   });
 
   it('can clear a date', () => {

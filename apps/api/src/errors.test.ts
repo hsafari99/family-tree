@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { DrizzleQueryError } from 'drizzle-orm/errors';
+import { createTreeSchema, updatePersonSchema } from '@family-tree/shared';
 import {
   AppError,
   conflict,
@@ -27,6 +28,34 @@ describe('parseBody', () => {
       expect((err as AppError).statusCode).toBe(400);
       expect(JSON.stringify((err as AppError).details)).toContain('email');
     }
+  });
+});
+
+describe('parseBody with a future birth or death date', () => {
+  const next = { qualifier: 'exact', date1: String(new Date().getUTCFullYear() + 1) };
+  const detailsOf = (fn: () => unknown): Record<string, unknown> => {
+    try {
+      fn();
+    } catch (err) {
+      return (err as AppError).details as Record<string, unknown>;
+    }
+    throw new Error('expected a VALIDATION error');
+  };
+  it('names the date field', () => {
+    expect(
+      Object.keys(detailsOf(() => parseBody(updatePersonSchema, { version: 1, deathDate: next }))),
+    ).toEqual(['deathDate']);
+    expect(
+      Object.keys(detailsOf(() => parseBody(updatePersonSchema, { version: 1, birthDate: next }))),
+    ).toEqual(['birthDate']);
+    // Quick add and new tree nest the person: the top-level key is what the client gets.
+    expect(
+      Object.keys(
+        detailsOf(() =>
+          parseBody(createTreeSchema, { name: 'x', person: { givenName: 'a', birthDate: next } }),
+        ),
+      ),
+    ).toEqual(['person']);
   });
 });
 

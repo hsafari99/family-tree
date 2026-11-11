@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { FUTURE_DATE_MESSAGE } from './fuzzy-date.js';
 import { ROLE_RANK } from './permissions.js';
 import {
   createInviteSchema,
@@ -48,6 +49,17 @@ describe('createTreeSchema', () => {
         path: ['birthDate'],
         message: 'Give a birth date or a birth year, not both',
       }),
+    ]);
+  });
+  it('rejects a birth date in the future', () => {
+    const next = String(new Date().getUTCFullYear() + 1);
+    const r = createTreeSchema.safeParse({
+      name: 'x',
+      person: { givenName: 'a', birthDate: { qualifier: 'exact', date1: next } },
+    });
+    expect(r.success).toBe(false);
+    expect(r.error!.issues).toEqual([
+      expect.objectContaining({ path: ['person', 'birthDate'], message: FUTURE_DATE_MESSAGE }),
     ]);
   });
   it('rejects names over 100 characters', () => {

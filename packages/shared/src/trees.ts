@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { fuzzyDateSchema } from './fuzzy-date.js';
+import { pastFuzzyDateSchema } from './fuzzy-date.js';
 import { INVITE_ROLES, ROLES } from './permissions.js';
 
 export const SEXES = ['female', 'male', 'other', 'unknown'] as const;
@@ -31,7 +31,7 @@ export const quickPersonSchema = z
       .min(1, 'Enter a real year')
       .refine((y) => y <= new Date().getUTCFullYear(), 'That year is in the future')
       .optional(),
-    birthDate: fuzzyDateSchema.optional(),
+    birthDate: pastFuzzyDateSchema.optional(),
   })
   .refine((p) => p.birthYear === undefined || p.birthDate === undefined, {
     path: ['birthDate'],

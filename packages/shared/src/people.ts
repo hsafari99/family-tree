@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { type FuzzyDate, fuzzyDateSchema, sortYear } from './fuzzy-date.js';
+import { type FuzzyDate, fuzzyDateSchema, pastFuzzyDateSchema, sortYear } from './fuzzy-date.js';
 import { photoSchema, photoUsageSchema } from './photos.js';
 import { NAME_MAX, personSummarySchema, SEXES } from './trees.js';
 
@@ -49,9 +49,9 @@ const personShape = {
   maidenName: clearable(NAME_MAX),
   nickname: clearable(NAME_MAX),
   sex: z.enum(SEXES),
-  birthDate: fuzzyDateSchema.nullable(),
+  birthDate: pastFuzzyDateSchema.nullable(),
   birthPlace: clearable(PLACE_MAX),
-  deathDate: fuzzyDateSchema.nullable(),
+  deathDate: pastFuzzyDateSchema.nullable(),
   deathPlace: clearable(PLACE_MAX),
   causeOfDeath: clearable(PLACE_MAX),
   isLiving: z.boolean(),

@@ -55,6 +55,23 @@ export const fuzzyDateSchema = z
 
 export type FuzzyDate = z.infer<typeof fuzzyDateSchema>;
 
+export const FUTURE_DATE_MESSAGE = 'That date is in the future';
+
+/** Today's date as YYYY-MM-DD where the calendar is furthest ahead (UTC+14), so a date that is
+ *  today in the user's own time zone is never "in the future" here. */
+const latestToday = (now: Date) => new Date(now.getTime() + 14 * 3_600_000).toISOString();
+
+/** True when date1 (or date2) is after today, compared at that date's own precision. */
+export function isFutureDate(d: FuzzyDate, now = new Date()): boolean {
+  const today = latestToday(now);
+  return [d.date1, d.date2].some((s) => s !== undefined && s > today.slice(0, s.length));
+}
+
+/** A fuzzy date that has happened: for birth and death dates. */
+export const pastFuzzyDateSchema = fuzzyDateSchema.refine((d) => !isFutureDate(d), {
+  message: FUTURE_DATE_MESSAGE,
+});
+
 /** Assumes `partial` has already been validated by `fuzzyDateSchema`. */
 export function precisionOf(partial: string): DatePrecision {
   if (partial.length === 4) return 'year';

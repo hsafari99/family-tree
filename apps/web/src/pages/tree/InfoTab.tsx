@@ -141,7 +141,12 @@ const INFO_FIELDS: Record<string, { field: string; message: string }> = {
     Object.keys(INFO_LABELS).map((k) => [k, { field: k, message: 'Check this and try again' }]),
   ),
   isLiving: { field: 'isLiving', message: 'Someone with death details can’t be marked as living' },
-  deathDate: { field: 'deathDate', message: 'Death can’t be before birth' },
+  // The server names only the field, so the text covers each rule a date can break.
+  birthDate: { field: 'birthDate', message: 'Check the birth date. It can’t be in the future.' },
+  deathDate: {
+    field: 'deathDate',
+    message: 'Check the death date. It can’t be before birth or in the future.',
+  },
 };
 
 const toForm = (p: Person): Form => ({
@@ -222,8 +227,9 @@ function InfoForm({
       version: p.version,
       ...Object.fromEntries(TEXT_KEYS.map((k) => [k, form[k]])),
       sex: form.sex,
-      birthDate: fromDraft(form.birth),
-      deathDate: fromDraft(form.death),
+      // Only a changed date is checked: a stored one (even a wrong one) never blocks a save.
+      ...(changed.includes('birth') ? { birthDate: fromDraft(form.birth) } : {}),
+      ...(changed.includes('death') ? { deathDate: fromDraft(form.death) } : {}),
       isLiving: form.isLiving,
     });
     if (!v.ok) return setErrors(v.errors);

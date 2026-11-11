@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { fuzzyDateSchema, precisionOf, sortYear } from './fuzzy-date.js';
+import {
+  FUTURE_DATE_MESSAGE,
+  fuzzyDateSchema,
+  isFutureDate,
+  pastFuzzyDateSchema,
+  precisionOf,
+  sortYear,
+} from './fuzzy-date.js';
 
 describe('fuzzyDateSchema', () => {
   it.each([
@@ -47,5 +54,45 @@ describe('sortYear', () => {
     expect(sortYear({ qualifier: 'about', date1: '1920' })).toBe(1920);
     expect(sortYear({ qualifier: 'between', date1: '1950-02', date2: '1955' })).toBe(1950);
     expect(sortYear({ qualifier: 'exact', date1: '0987-01-01' })).toBe(987);
+  });
+});
+
+describe('isFutureDate', () => {
+  // 11 Nov 2026, 10:00 UTC: the latest calendar date anywhere (UTC+14) is still the 12th.
+  const now = new Date('2026-11-11T10:00:00Z');
+  const d = (date1: string, date2?: string) =>
+    date2 === undefined
+      ? { qualifier: 'exact' as const, date1 }
+      : { qualifier: 'between' as const, date1, date2 };
+
+  it('compares each date at its own precision', () => {
+    expect(isFutureDate(d('2026'), now)).toBe(false);
+    expect(isFutureDate(d('2026-11'), now)).toBe(false);
+    expect(isFutureDate(d('2026-11-11'), now)).toBe(false);
+    expect(isFutureDate(d('2027'), now)).toBe(true);
+    expect(isFutureDate(d('2026-12'), now)).toBe(true);
+    expect(isFutureDate(d('2026-11-13'), now)).toBe(true);
+  });
+  it('allows today in any time zone (UTC+14 is already on the 12th)', () => {
+    expect(isFutureDate(d('2026-11-12'), now)).toBe(false);
+  });
+  it('checks date2 of a range too', () => {
+    expect(isFutureDate(d('2020', '2026'), now)).toBe(false);
+    expect(isFutureDate(d('2020', '2030'), now)).toBe(true);
+  });
+});
+
+describe('pastFuzzyDateSchema', () => {
+  it('rejects a future date with a fixed message, at the date itself', () => {
+    const next = String(new Date().getUTCFullYear() + 1);
+    const r = pastFuzzyDateSchema.safeParse({ qualifier: 'exact', date1: next });
+    expect(r.success).toBe(false);
+    expect(r.error!.issues).toEqual([
+      expect.objectContaining({ path: [], message: FUTURE_DATE_MESSAGE }),
+    ]);
+    expect(FUTURE_DATE_MESSAGE).toBe('That date is in the future');
+  });
+  it('accepts a past date', () => {
+    expect(pastFuzzyDateSchema.safeParse({ qualifier: 'about', date1: '1950' }).success).toBe(true);
   });
 });

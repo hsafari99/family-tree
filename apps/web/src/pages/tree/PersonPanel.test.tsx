@@ -88,6 +88,59 @@ describe('PersonPanel', () => {
     expect(s.trees.callsTo('updatePerson')).toEqual([]);
   });
 
+  describe('a birth or death date in the future', () => {
+    const next = String(new Date().getUTCFullYear() + 1);
+    const editDeathYear = async (s: ReturnType<typeof setup>, year: string) => {
+      renderAt(at(s), s);
+      fireEvent.click(await screen.findByRole('button', { name: 'Edit details' }));
+      const died = within(screen.getByRole('group', { name: 'Died' }));
+      fireEvent.change(died.getByLabelText('Precision'), { target: { value: 'year' } });
+      fireEvent.change(died.getByLabelText('Year'), { target: { value: year } });
+    };
+
+    it('is refused with a fixed message, without calling', async () => {
+      const s = setup();
+      await editDeathYear(s, next);
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      const summary = await screen.findByRole('alert');
+      expect(
+        within(summary).getByRole('button', { name: 'Died: That date is in the future' }),
+      ).toBeInTheDocument();
+      expect(s.trees.callsTo('updatePerson')).toEqual([]);
+    });
+
+    it('a server deathDate key gets our own text, which covers the future too', async () => {
+      const s = setup();
+      await editDeathYear(s, '1853');
+      s.trees.failNext('updatePerson', {
+        code: 'VALIDATION',
+        message: MESSAGES.checkDetails,
+        fields: ['deathDate'],
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      expect(
+        await screen.findByText('Check the death date. It can’t be before birth or in the future.'),
+      ).toBeInTheDocument();
+    });
+
+    it('a stored future birth date doesn’t block an unrelated edit', async () => {
+      const s = setup();
+      Object.assign(s.view.person, {
+        birthDate: { qualifier: 'exact', date1: next },
+        deathDate: null,
+        isLiving: true,
+      });
+      renderAt(at(s), s);
+      fireEvent.click(await screen.findByRole('button', { name: 'Edit details' }));
+      fireEvent.change(screen.getByLabelText('Last name'), { target: { value: 'Lovelace' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      expect(await screen.findByText('Saved')).toBeInTheDocument();
+      expect(s.trees.callsTo('updatePerson')).toMatchObject([
+        { input: { version: 1, surname: 'Lovelace' } },
+      ]);
+    });
+  });
+
   it('explains an incomplete date in plain words, without calling', async () => {
     const s = setup();
     renderAt(at(s), s);
