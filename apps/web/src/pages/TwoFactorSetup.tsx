@@ -229,6 +229,37 @@ function PasswordPrompt({
   );
 }
 
+/** The QR code for an otpauth URI (on white, in both themes) and its key as text. */
+export function SecretQr({ totpURI }: { totpURI: string }) {
+  const [qr, setQr] = useState<string | null>(null);
+  const [qrFailed, setQrFailed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    // Loaded on demand so the QR library stays out of the main bundle.
+    import('qrcode')
+      .then(({ default: QRCode }) => QRCode.toDataURL(totpURI, { margin: 1, width: 200 }))
+      .then(
+        (url) => active && setQr(url),
+        () => active && setQrFailed(true),
+      );
+    return () => {
+      active = false;
+    };
+  }, [totpURI]);
+
+  return (
+    <>
+      {qr && <img className="qr" src={qr} alt="QR code for your authenticator app" />}
+      {qrFailed && <p>The QR code couldn’t be shown.</p>}
+      <p>Can’t scan it? Enter this key in the app instead:</p>
+      <p>
+        <code className="secret">{secretFrom(totpURI)}</code>
+      </p>
+    </>
+  );
+}
+
 function secretFrom(totpURI: string): string {
   try {
     return new URL(totpURI).searchParams.get('secret') ?? '';
@@ -247,28 +278,12 @@ function ScanAndConfirm({
   onCancel: () => void;
 }) {
   const { api } = useAuth();
-  const [qr, setQr] = useState<string | null>(null);
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | undefined>();
   const [serverError, setServerError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  const [qrFailed, setQrFailed] = useState(false);
   const mounted = useMounted();
   const heading = useFocusOnMount();
-
-  useEffect(() => {
-    let active = true;
-    // Loaded on demand so the QR library stays out of the main bundle.
-    import('qrcode')
-      .then(({ default: QRCode }) => QRCode.toDataURL(totpURI, { margin: 1, width: 200 }))
-      .then(
-        (url) => active && setQr(url),
-        () => active && setQrFailed(true),
-      );
-    return () => {
-      active = false;
-    };
-  }, [totpURI]);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -292,12 +307,7 @@ function ScanAndConfirm({
       <h3 ref={heading} tabIndex={-1}>
         Scan with your authenticator app
       </h3>
-      {qr && <img className="qr" src={qr} alt="QR code for your authenticator app" />}
-      {qrFailed && <p>The QR code couldn’t be shown.</p>}
-      <p>Can’t scan it? Enter this key in the app instead:</p>
-      <p>
-        <code className="secret">{secretFrom(totpURI)}</code>
-      </p>
+      <SecretQr totpURI={totpURI} />
       <Field
         label="6-digit code from the app"
         name="code"
@@ -320,7 +330,15 @@ function ScanAndConfirm({
   );
 }
 
-function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void }) {
+export function RecoveryCodes({
+  codes,
+  onDone,
+  title = 'Save your recovery codes',
+}: {
+  codes: string[];
+  onDone: () => void;
+  title?: string;
+}) {
   const [copied, setCopied] = useState<string | null>(null);
   const text = `Family Tree recovery codes\nEach code works once.\n\n${codes.join('\n')}\n`;
 
@@ -351,7 +369,7 @@ function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void 
   return (
     <div>
       <h3 ref={heading} tabIndex={-1}>
-        Save your recovery codes
+        {title}
       </h3>
       <p>
         If you lose your phone, each of these {codes.length} codes lets you sign in or reset your
@@ -380,7 +398,7 @@ function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void 
   );
 }
 
-function useMounted() {
+export function useMounted() {
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -392,7 +410,7 @@ function useMounted() {
 }
 
 /** A ref for a heading that takes focus when its step appears. */
-function useFocusOnMount() {
+export function useFocusOnMount() {
   const ref = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     ref.current?.focus();

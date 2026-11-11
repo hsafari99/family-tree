@@ -4,6 +4,8 @@ import {
   authProvidersSchema,
   type MeResponse,
   meResponseSchema,
+  twoFactorMovedSchema,
+  twoFactorMoveStartedSchema,
 } from '@family-tree/shared';
 import { twoFactorClient } from 'better-auth/client/plugins';
 import { createAuthClient } from 'better-auth/react';
@@ -51,6 +53,18 @@ export interface AuthApi {
   disconnectGoogle(input: { password: string; code?: string }): Promise<Result<void>>;
   /** Gives a Google-only account a password. */
   setPassword(input: { newPassword: string }): Promise<Result<void>>;
+  /**
+   * Moving 2FA to a new phone, step 1: re-authenticates (password, unless Google-only, plus a
+   * current or recovery code) and returns the new phone's otpauth URI. 2FA stays on throughout.
+   */
+  startTwoFactorMove(input: {
+    password?: string;
+    code: string;
+  }): Promise<Result<{ totpURI: string }>>;
+  /** Step 2: a code from the new phone swaps it in; returns the new recovery codes. */
+  confirmTwoFactorMove(input: { code: string }): Promise<Result<{ backupCodes: string[] }>>;
+  /** Discards the pending new phone; the current one keeps working. */
+  cancelTwoFactorMove(): Promise<Result<void>>;
 }
 
 export const MESSAGES = {
@@ -113,6 +127,11 @@ export const MESSAGES = {
   codeRequired: 'Enter the 6-digit code from your authenticator app, or a recovery code.',
   passwordRequiredToDisconnect: 'Set a password first, so you can still sign in without Google.',
   passwordAlreadySet: 'This account already has a password.',
+  twoFactorNotEnabled: 'Two-step verification is off, so there is nothing to move.',
+  moveNotStarted: 'This move is no longer waiting for a code. Start again.',
+  moveExpired: 'That took longer than 10 minutes, so the new phone wasn’t added. Start again.',
+  moveRecentSignIn:
+    'To move two-step verification, confirm it’s you: sign in with Google again, then try once more.',
   recentSignInRequired:
     'To set a password, confirm it’s you: sign in with Google again, then try once more.',
 } as const;
@@ -149,6 +168,9 @@ const BY_CODE: Record<string, string> = {
   PASSWORD_ALREADY_SET: MESSAGES.passwordAlreadySet,
   RECENT_SIGN_IN_REQUIRED: MESSAGES.recentSignInRequired,
   PROVIDER_NOT_FOUND: MESSAGES.googleUnavailable,
+  TWO_FACTOR_NOT_ENABLED: MESSAGES.twoFactorNotEnabled,
+  MOVE_NOT_STARTED: MESSAGES.moveNotStarted,
+  MOVE_EXPIRED: MESSAGES.moveExpired,
 };
 
 /** Error codes Better Auth puts in ?error= when a Google round trip fails. */
@@ -273,6 +295,20 @@ export function createAuthApi({ baseUrl }: { baseUrl: string }): AuthApi {
     return { ok: true, data: undefined };
   }
 
+  /** POSTs JSON and parses a successful answer with `schema` (anything else is a failure). */
+  async function v1PostFor<T>(
+    path: string,
+    body: unknown,
+    schema: { safeParse(v: unknown): { success: true; data: T } | { success: false } },
+  ): Promise<Result<T>> {
+    const res = await v1(path, { method: 'POST', body });
+    if (!res) return networkError();
+    if (!res.ok) return v1Error(res, 'session');
+    const parsed = schema.safeParse(await res.json().catch(() => null));
+    if (!parsed.success) return { ok: false, error: toAuthError(500) };
+    return { ok: true, data: parsed.data };
+  }
+
   /** Asks Better Auth for Google's authorization URL, then leaves the page for it. */
   async function goToGoogle(
     kind: CallKind,
@@ -381,5 +417,10 @@ export function createAuthApi({ baseUrl }: { baseUrl: string }): AuthApi {
     },
     disconnectGoogle: (input) => v1Post('/account/google/disconnect', input, 'session'),
     setPassword: (input) => v1Post('/account/password', input, 'session'),
+    startTwoFactorMove: (input) =>
+      v1PostFor('/account/two-factor/move/start', input, twoFactorMoveStartedSchema),
+    confirmTwoFactorMove: (input) =>
+      v1PostFor('/account/two-factor/move/confirm', input, twoFactorMovedSchema),
+    cancelTwoFactorMove: () => v1Post('/account/two-factor/move/cancel', {}, 'session'),
   };
 }

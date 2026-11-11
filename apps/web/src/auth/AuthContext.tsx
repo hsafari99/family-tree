@@ -51,6 +51,9 @@ const METHODS = Object.keys({
   connectGoogle: true,
   disconnectGoogle: true,
   setPassword: true,
+  startTwoFactorMove: true,
+  confirmTwoFactorMove: true,
+  cancelTwoFactorMove: true,
 } satisfies Record<keyof AuthApi, true>) as (keyof AuthApi)[];
 
 /**

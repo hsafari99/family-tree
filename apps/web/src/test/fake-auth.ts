@@ -6,6 +6,10 @@ export const FAKE_TOTP = '123456';
 export const FAKE_TOTP_URI =
   'otpauth://totp/Family%20Tree:ada%40example.com?secret=JBSWY3DPEHPK3PXP&issuer=Family%20Tree';
 export const FAKE_SECRET = 'JBSWY3DPEHPK3PXP';
+/** Moving 2FA: the new phone's key, and the only code the fake accepts from it. */
+export const FAKE_NEW_SECRET = 'KRUGS4ZANFZSA3TF';
+export const FAKE_NEW_TOTP = '654321';
+export const FAKE_NEW_TOTP_URI = `otpauth://totp/Family%20Tree:ada%40example.com?secret=${FAKE_NEW_SECRET}&issuer=Family%20Tree`;
 
 interface FakeUser {
   id: string;
@@ -16,6 +20,8 @@ interface FakeUser {
   requiresTwoFactor: boolean;
   twoFactorPending: boolean;
   recoveryCodes: string[];
+  /** A started move to a new phone, waiting for its code. */
+  movePending?: boolean;
   /** Set to make deleteAccount fail with OWNS_TREES. */
   ownsTrees?: boolean;
   /** False for an account that only ever signed in with Google. */
@@ -49,6 +55,8 @@ export class FakeAuthApi implements AuthApi {
   providers = { google: true };
   /** False makes setPassword answer RECENT_SIGN_IN_REQUIRED, as for a session over 10 minutes old. */
   recentSignIn = true;
+  /** True makes confirmTwoFactorMove answer MOVE_EXPIRED, as after 10 minutes. */
+  moveExpired = false;
   private forced = new Map<Method, AuthError>();
   private pending = new Set<Method>();
   private waiting: (() => void)[] = [];
@@ -329,6 +337,51 @@ export class FakeAuthApi implements AuthApi {
     }
     u.password = input.newPassword;
     u.hasPassword = true;
+    return ok(undefined);
+  }
+
+  async startTwoFactorMove(input: { password?: string; code: string }) {
+    const forced = await this.enter('startTwoFactorMove', input);
+    if (forced) return { ok: false as const, error: forced };
+    const u = this.me();
+    if (!u) return fail(SESSION_EXPIRED, MESSAGES.sessionExpired);
+    if (!u.twoFactorEnabled) return fail('TWO_FACTOR_NOT_ENABLED', MESSAGES.twoFactorNotEnabled);
+    if (u.hasPassword) {
+      if (!input.password) return fail('PASSWORD_REQUIRED', MESSAGES.passwordRequired);
+      if (input.password !== u.password) return fail('INVALID_PASSWORD', MESSAGES.badPassword);
+    } else if (!this.recentSignIn) {
+      return fail('RECENT_SIGN_IN_REQUIRED', MESSAGES.recentSignInRequired);
+    }
+    if (!input.code) return fail('TWO_FACTOR_CODE_REQUIRED', MESSAGES.codeRequired);
+    if (input.code !== FAKE_TOTP && !u.recoveryCodes.includes(input.code)) {
+      return fail('INVALID_CODE', MESSAGES.badCode);
+    }
+    u.recoveryCodes = u.recoveryCodes.filter((c) => c !== input.code);
+    u.movePending = true;
+    return ok({ totpURI: FAKE_NEW_TOTP_URI });
+  }
+
+  async confirmTwoFactorMove(input: { code: string }) {
+    const forced = await this.enter('confirmTwoFactorMove', input);
+    if (forced) return { ok: false as const, error: forced };
+    const u = this.me();
+    if (!u) return fail(SESSION_EXPIRED, MESSAGES.sessionExpired);
+    if (!u.movePending) return fail('MOVE_NOT_STARTED', MESSAGES.moveNotStarted);
+    if (this.moveExpired) {
+      u.movePending = false;
+      return fail('MOVE_EXPIRED', MESSAGES.moveExpired);
+    }
+    if (input.code !== FAKE_NEW_TOTP) return fail('INVALID_CODE', MESSAGES.badCode);
+    u.movePending = false;
+    u.recoveryCodes = newRecoveryCodes();
+    return ok({ backupCodes: [...u.recoveryCodes] });
+  }
+
+  async cancelTwoFactorMove() {
+    const forced = await this.enter('cancelTwoFactorMove');
+    if (forced) return { ok: false as const, error: forced };
+    const u = this.me();
+    if (u) u.movePending = false;
     return ok(undefined);
   }
 }

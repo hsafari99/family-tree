@@ -385,3 +385,61 @@ describe('Google', () => {
     expect(googleErrorMessage(null)).toBeNull();
   });
 });
+
+describe('moving 2FA to a new phone', () => {
+  const MOVE = `${BASE}/api/v1/account/two-factor/move`;
+  const URI = 'otpauth://totp/Family%20Tree:ada%40example.com?secret=JBSWY3DPEHPK3PXP';
+
+  it('starts with the password and a code, and returns the otpauth URI', async () => {
+    const fetchMock = stubFetch({ status: 200, body: { totpURI: URI } });
+    const input = { password: 'correct-horse', code: '123456' };
+    await expect(createAuthApi({ baseUrl: BASE }).startTwoFactorMove(input)).resolves.toEqual({
+      ok: true,
+      data: { totpURI: URI },
+    });
+    expect(urlOf(fetchMock.mock.calls[0]!)).toBe(`${MOVE}/start`);
+    expect(fetchMock.mock.calls[0]![1]).toMatchObject({
+      method: 'POST',
+      credentials: 'include',
+      body: JSON.stringify(input),
+    });
+  });
+
+  it('refuses a start answer that is not an otpauth URI', async () => {
+    stubFetch({ status: 200, body: { totpURI: 'https://evil.example' } });
+    const res = await createAuthApi({ baseUrl: BASE }).startTwoFactorMove({ code: '123456' });
+    expect(res).toEqual({ ok: false, error: { code: 'HTTP_500', message: MESSAGES.unknown } });
+  });
+
+  it('confirms with a code from the new phone and returns the new recovery codes', async () => {
+    const fetchMock = stubFetch({ status: 200, body: { backupCodes: ['abcde-12345'] } });
+    await expect(
+      createAuthApi({ baseUrl: BASE }).confirmTwoFactorMove({ code: '654321' }),
+    ).resolves.toEqual({ ok: true, data: { backupCodes: ['abcde-12345'] } });
+    expect(urlOf(fetchMock.mock.calls[0]!)).toBe(`${MOVE}/confirm`);
+  });
+
+  it('cancels', async () => {
+    const fetchMock = stubFetch({ status: 204 });
+    await expect(createAuthApi({ baseUrl: BASE }).cancelTwoFactorMove()).resolves.toEqual({
+      ok: true,
+      data: undefined,
+    });
+    expect(urlOf(fetchMock.mock.calls[0]!)).toBe(`${MOVE}/cancel`);
+  });
+
+  it('maps the move errors to fixed messages, never the server text', async () => {
+    const cases: [string, number, string][] = [
+      ['MOVE_EXPIRED', 410, MESSAGES.moveExpired],
+      ['MOVE_NOT_STARTED', 404, MESSAGES.moveNotStarted],
+      ['TWO_FACTOR_NOT_ENABLED', 409, MESSAGES.twoFactorNotEnabled],
+      ['ACCOUNT_TEMPORARILY_LOCKED', 429, MESSAGES.locked],
+      ['INVALID_CODE', 400, MESSAGES.badCode],
+    ];
+    for (const [code, status, message] of cases) {
+      stubFetch({ status, body: { error: { code, message: 'server detail' } } });
+      const res = await createAuthApi({ baseUrl: BASE }).confirmTwoFactorMove({ code: '654321' });
+      expect(res).toEqual({ ok: false, error: { code, message } });
+    }
+  });
+});
