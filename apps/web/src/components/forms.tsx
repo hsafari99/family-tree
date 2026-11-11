@@ -63,7 +63,7 @@ type FieldProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'id' | 'onChange'>
 };
 
 /** A labelled input with its hint and validation message tied to it for screen readers.
- *  A password input gets a Show/Hide toggle (#1). */
+ *  A password input gets a Show toggle button (#1). */
 export function Field({ label, error, hint, onChange, type, ...input }: FieldProps) {
   const id = useId();
   const [shown, setShown] = useState(false);
@@ -93,7 +93,8 @@ export function Field({ label, error, hint, onChange, type, ...input }: FieldPro
       {isPassword ? (
         <div className="password-input">
           {control}
-          {/* The label stays fixed; aria-pressed carries the state (WAI-ARIA toggle button). */}
+          {/* Text and name stay fixed ("Show" is in "Show password"); aria-pressed carries the
+              state (WAI-ARIA toggle button). */}
           <button
             type="button"
             className="secondary compact"
@@ -102,7 +103,7 @@ export function Field({ label, error, hint, onChange, type, ...input }: FieldPro
             aria-controls={id}
             onClick={() => setShown((s) => !s)}
           >
-            <span aria-hidden="true">{shown ? 'Hide' : 'Show'}</span>
+            Show
           </button>
         </div>
       ) : (

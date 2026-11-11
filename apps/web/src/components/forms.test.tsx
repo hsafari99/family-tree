@@ -16,9 +16,13 @@ describe('Field type=password', () => {
     expect(input).toHaveAttribute('type', 'password');
     expect(toggle).toHaveAttribute('aria-pressed', 'false');
     expect(toggle).toHaveAttribute('aria-controls', input.id);
+    expect(toggle).toHaveTextContent(/^Show$/);
     fireEvent.click(toggle);
     expect(input).toHaveAttribute('type', 'text');
     expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    // The visible text and the name stay the same: aria-pressed alone carries the state.
+    expect(toggle).toHaveTextContent(/^Show$/);
+    expect(toggle).toHaveAccessibleName('Show password');
     fireEvent.click(toggle);
     expect(input).toHaveAttribute('type', 'password');
   });

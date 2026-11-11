@@ -17,6 +17,7 @@ test('a password field has a Show password toggle', async ({ page }) => {
   await toggle.click();
   await expect(input).toHaveAttribute('type', 'text');
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(toggle).toHaveText('Show');
   await toggle.click();
   await expect(input).toHaveAttribute('type', 'password');
 });
