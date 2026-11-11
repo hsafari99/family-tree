@@ -317,10 +317,21 @@ button.google:hover:not(:disabled) {
   font-weight: 600;
 }
 .fuzzy-date {
-  display: inline-grid;
-  gap: 0.25rem;
+  display: grid;
+  gap: 0.5rem;
   border: 1px solid var(--border);
   border-radius: 0.4rem;
+  min-width: 0;
+}
+.fuzzy-date .date-row,
+.fuzzy-date .date-parts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.5rem;
+}
+.fuzzy-date span {
+  display: grid;
+  gap: 0.25rem;
 }
 
 /* People list and person panel */

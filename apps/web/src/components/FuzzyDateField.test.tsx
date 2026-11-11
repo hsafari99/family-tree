@@ -1,71 +1,120 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it } from 'vitest';
-import { type FuzzyDraft, FuzzyDateField, fromDraft, toDraft } from './FuzzyDateField';
+import {
+  draftError,
+  type FuzzyDraft,
+  FuzzyDateField,
+  fromDraft,
+  toDraft,
+  withPrecision,
+} from './FuzzyDateField';
 
-function Harness({ error }: { error?: string }) {
-  const [value, setValue] = useState<FuzzyDraft>(toDraft(null));
-  return <FuzzyDateField label="Birth date" value={value} onChange={setValue} error={error} />;
+function Harness({ initial = toDraft(null), error }: { initial?: FuzzyDraft; error?: string }) {
+  const [value, setValue] = useState(initial);
+  return (
+    <>
+      <FuzzyDateField
+        label="Died"
+        name="deathDate"
+        value={value}
+        onChange={setValue}
+        error={error}
+      />
+      <output data-testid="value">{JSON.stringify(fromDraft(value))}</output>
+    </>
+  );
 }
+const value = () => JSON.parse(screen.getByTestId('value').textContent!);
 
 describe('FuzzyDateField', () => {
-  it('renders a labelled group with a certainty select and a date input', () => {
+  it('defaults to an exact day with a native calendar', () => {
     render(<Harness />);
-    const group = screen.getByRole('group', { name: 'Birth date' });
-    expect(group).toBeInTheDocument();
-    const select = screen.getByLabelText('How certain');
-    expect([...(select as HTMLSelectElement).options].map((o) => o.text)).toEqual([
+    expect(screen.getByLabelText('Precision')).toHaveValue('day');
+    const date = screen.getByLabelText('Date');
+    expect(date).toHaveAttribute('type', 'date');
+    fireEvent.change(date, { target: { value: '1950-03-07' } });
+    expect(value()).toEqual({ qualifier: 'exact', date1: '1950-03-07' });
+  });
+
+  it('lists the certainty choices', () => {
+    render(<Harness />);
+    const select = screen.getByLabelText('How certain') as HTMLSelectElement;
+    expect([...select.options].map((o) => o.text)).toEqual([
       'Exact',
       'About',
       'Before',
       'After',
       'Between',
     ]);
-    expect(screen.getByLabelText('Date')).toBeInTheDocument();
   });
 
-  it('shows a second input for Between', () => {
+  it('month precision: a year input and a month select', () => {
     render(<Harness />);
-    expect(screen.queryByLabelText('and')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Precision'), { target: { value: 'month' } });
+    fireEvent.change(screen.getByLabelText('Year'), { target: { value: '1950' } });
+    fireEvent.change(screen.getByLabelText('Month'), { target: { value: '03' } });
+    expect(value()).toEqual({ qualifier: 'exact', date1: '1950-03' });
+  });
+
+  it('year precision with about', () => {
+    render(<Harness />);
+    fireEvent.change(screen.getByLabelText('Precision'), { target: { value: 'year' } });
+    fireEvent.change(screen.getByLabelText('How certain'), { target: { value: 'about' } });
+    fireEvent.change(screen.getByLabelText('Year'), { target: { value: '1950' } });
+    expect(value()).toEqual({ qualifier: 'about', date1: '1950' });
+  });
+
+  it('between shows two controls of the same precision', () => {
+    render(<Harness />);
+    expect(screen.queryByLabelText('To')).toBeNull();
     fireEvent.change(screen.getByLabelText('How certain'), { target: { value: 'between' } });
-    expect(screen.getByLabelText('From')).toBeInTheDocument();
-    expect(screen.getByLabelText('and')).toBeInTheDocument();
+    expect(screen.getByLabelText('From')).toHaveAttribute('type', 'date');
+    expect(screen.getByLabelText('To')).toHaveAttribute('type', 'date');
+    fireEvent.change(screen.getByLabelText('Precision'), { target: { value: 'year' } });
+    fireEvent.change(screen.getByLabelText('From'), { target: { value: '1950' } });
+    fireEvent.change(screen.getByLabelText('To'), { target: { value: '1955' } });
+    expect(value()).toEqual({ qualifier: 'between', date1: '1950', date2: '1955' });
   });
 
-  it('shows the error and links it with aria-describedby', () => {
-    render(<Harness error="Enter a real date" />);
-    const group = screen.getByRole('group', { name: 'Birth date' });
-    const error = screen.getByText('Enter a real date');
-    expect(group.getAttribute('aria-describedby')).toBe(error.id);
+  it('opens a stored month date at month precision', () => {
+    render(<Harness initial={toDraft({ qualifier: 'before', date1: '1950-03' })} />);
+    expect(screen.getByLabelText('Precision')).toHaveValue('month');
+    expect(screen.getByLabelText('Year')).toHaveValue('1950');
+    expect(screen.getByLabelText('Month')).toHaveValue('03');
+  });
+
+  it('ties the error to the group and marks it for the summary', () => {
+    render(<Harness error="Choose a month" />);
+    const group = screen.getByRole('group', { name: 'Died' });
+    expect(group).toHaveAccessibleDescription(/Choose a month/);
+    expect(screen.getByLabelText('Precision')).toHaveAttribute('data-field', 'deathDate');
   });
 });
 
-describe('FuzzyDateField inputs', () => {
-  it('describes each input by the hint and error and marks them invalid', () => {
-    render(<Harness error="Enter a real date" />);
-    const error = screen.getByText('Enter a real date');
-    const hint = screen.getByText(/Year, year and month/);
-    const input = screen.getByLabelText('Date');
-    expect(input.getAttribute('aria-describedby')).toBe(`${hint.id} ${error.id}`);
-    expect(input).toHaveAttribute('aria-invalid', 'true');
+describe('draft helpers', () => {
+  it('withPrecision keeps what fits', () => {
+    const d: FuzzyDraft = { qualifier: 'exact', precision: 'day', date1: '1950-03-07', date2: '' };
+    expect(withPrecision(d, 'month').date1).toBe('1950-03');
+    expect(withPrecision(withPrecision(d, 'month'), 'year').date1).toBe('1950');
+    expect(withPrecision(withPrecision(d, 'year'), 'month').date1).toBe('1950-');
+    expect(withPrecision(withPrecision(d, 'year'), 'day').date1).toBe('');
   });
-});
-
-describe('fromDraft', () => {
-  it('gives null for a blank date', () => {
-    expect(fromDraft({ qualifier: 'exact', date1: '  ', date2: '' })).toBeNull();
+  it('draftError gives plain messages', () => {
+    const base = { qualifier: 'exact', date2: '' } as const;
+    expect(draftError({ ...base, precision: 'year', date1: '' })).toBeNull();
+    expect(draftError({ ...base, precision: 'year', date1: '19' })).toBe(
+      'Enter a 4-digit year, like 1950',
+    );
+    expect(draftError({ ...base, precision: 'month', date1: '1950-' })).toBe('Choose a month');
+    expect(draftError({ ...base, precision: 'month', date1: '-03' })).toBe(
+      'Enter a 4-digit year, like 1950',
+    );
+    expect(
+      draftError({ ...base, qualifier: 'between', precision: 'year', date1: '1950', date2: '' }),
+    ).toBe('Enter the second date');
   });
-  it('keeps between as is', () => {
-    expect(fromDraft({ qualifier: 'between', date1: '1950', date2: '1955' })).toEqual({
-      qualifier: 'between',
-      date1: '1950',
-      date2: '1955',
-    });
-  });
-  it('drops date2 for other qualifiers', () => {
-    expect(fromDraft({ qualifier: 'exact', date1: '1950', date2: '1955' })).toEqual({
-      qualifier: 'exact',
-      date1: '1950',
-    });
+  it('fromDraft is null for an empty date', () => {
+    expect(fromDraft(toDraft(null))).toBeNull();
   });
 });

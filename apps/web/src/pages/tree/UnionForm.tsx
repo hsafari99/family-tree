@@ -6,6 +6,7 @@ import {
 } from '@family-tree/shared';
 import { type FormEvent, useId, useState } from 'react';
 import {
+  draftErrors,
   FuzzyDateField,
   fromDraft,
   toDraft,
@@ -39,6 +40,8 @@ export function UnionForm({
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    const incomplete = draftErrors({ startDate: start, endDate: end });
+    if (Object.keys(incomplete).length > 0) return setErrors(incomplete);
     const change: Record<string, unknown> = {};
     if (type !== union.type) change.type = type;
     if (status !== union.status) change.status = status;
@@ -88,8 +91,20 @@ export function UnionForm({
         setStatus,
         Object.fromEntries(UNION_STATUSES.map((k) => [k, UNION_STATUS_LABEL[k]])),
       )}
-      <FuzzyDateField label="Start" value={start} onChange={setStart} error={errors.startDate} />
-      <FuzzyDateField label="End" value={end} onChange={setEnd} error={errors.endDate} />
+      <FuzzyDateField
+        label="Start"
+        name="startDate"
+        value={start}
+        onChange={setStart}
+        error={errors.startDate}
+      />
+      <FuzzyDateField
+        label="End"
+        name="endDate"
+        value={end}
+        onChange={setEnd}
+        error={errors.endDate}
+      />
       <p className="actions">
         <button type="submit" disabled={pending}>
           Save relationship

@@ -7,6 +7,7 @@ import {
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { ConfirmButton } from '../../components/ConfirmButton';
 import {
+  draftErrors,
   FuzzyDateField,
   fromDraft,
   toDraft,
@@ -246,6 +247,8 @@ function ResidenceForm({
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    const incomplete = draftErrors({ fromDate: from, toDate: to });
+    if (Object.keys(incomplete).length > 0) return setErrors(incomplete);
     const v = validate(residenceInputSchema, {
       place,
       fromDate: fromDraft(from),
@@ -265,8 +268,14 @@ function ResidenceForm({
     <form onSubmit={(e) => void submit(e)}>
       <FormError>{error}</FormError>
       <Field label="Place" name="place" value={place} onChange={setPlace} error={errors.place} />
-      <FuzzyDateField label="From" value={from} onChange={setFrom} error={errors.fromDate} />
-      <FuzzyDateField label="To" value={to} onChange={setTo} error={errors.toDate} />
+      <FuzzyDateField
+        label="From"
+        name="fromDate"
+        value={from}
+        onChange={setFrom}
+        error={errors.fromDate}
+      />
+      <FuzzyDateField label="To" name="toDate" value={to} onChange={setTo} error={errors.toDate} />
       <p className="actions">
         <button type="submit" disabled={pending}>
           {submitLabel}

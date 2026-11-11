@@ -72,17 +72,31 @@ describe('PersonPanel', () => {
     s.view.person.birthDate = { qualifier: 'exact', date1: '1900' };
     renderAt(at(s), s);
     fireEvent.click(await screen.findByRole('button', { name: 'Edit details' }));
-    const dates = screen.getAllByLabelText('Date');
-    fireEvent.change(dates[1]!, { target: { value: '1800' } });
+    const died = within(screen.getByRole('group', { name: 'Died' }));
+    fireEvent.change(died.getByLabelText('Precision'), { target: { value: 'year' } });
+    const deathYear = died.getByLabelText('Year');
+    fireEvent.change(deathYear, { target: { value: '1800' } });
     fireEvent.click(screen.getByRole('checkbox', { name: 'Living' }));
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect(await screen.findByText('Death can’t be before birth')).toBeInTheDocument();
     expect(s.trees.callsTo('updatePerson')).toEqual([]);
-    fireEvent.change(dates[1]!, { target: { value: '1950' } });
+    fireEvent.change(deathYear, { target: { value: '1950' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect(
       await screen.findByText('Someone with death details can’t be marked as living'),
     ).toBeInTheDocument();
+    expect(s.trees.callsTo('updatePerson')).toEqual([]);
+  });
+
+  it('explains an incomplete date in plain words, without calling', async () => {
+    const s = setup();
+    renderAt(at(s), s);
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit details' }));
+    const died = within(screen.getByRole('group', { name: 'Died' }));
+    fireEvent.change(died.getByLabelText('Precision'), { target: { value: 'month' } });
+    fireEvent.change(died.getByLabelText('Year'), { target: { value: '2001' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('Choose a month')).toBeInTheDocument();
     expect(s.trees.callsTo('updatePerson')).toEqual([]);
   });
 

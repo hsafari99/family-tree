@@ -6,6 +6,7 @@ import {
 } from '@family-tree/shared';
 import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
 import {
+  draftErrors,
   FuzzyDateField,
   fromDraft,
   toDraft,
@@ -181,6 +182,8 @@ function InfoForm({
     e.preventDefault();
     const changed = changedKeys(form, p);
     if (changed.length === 0) return onClose();
+    const incomplete = draftErrors({ birthDate: form.birth, deathDate: form.death });
+    if (Object.keys(incomplete).length > 0) return setErrors(incomplete);
     const v = validate(updatePersonSchema, {
       version: p.version,
       ...Object.fromEntries(TEXT_KEYS.map((k) => [k, form[k]])),
@@ -244,8 +247,20 @@ function InfoForm({
           ))}
         </select>
       </div>
-      <FuzzyDateField label="Born" value={birth} onChange={set('birth')} error={errors.birthDate} />
-      <FuzzyDateField label="Died" value={death} onChange={set('death')} error={errors.deathDate} />
+      <FuzzyDateField
+        label="Born"
+        name="birthDate"
+        value={birth}
+        onChange={set('birth')}
+        error={errors.birthDate}
+      />
+      <FuzzyDateField
+        label="Died"
+        name="deathDate"
+        value={death}
+        onChange={set('death')}
+        error={errors.deathDate}
+      />
       <div className="field">
         <label>
           <input

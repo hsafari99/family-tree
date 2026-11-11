@@ -2,7 +2,8 @@ import { z } from 'zod';
 
 export const DATE_QUALIFIERS = ['exact', 'about', 'before', 'after', 'between'] as const;
 export type DateQualifier = (typeof DATE_QUALIFIERS)[number];
-export type DatePrecision = 'year' | 'month' | 'day';
+export const DATE_PRECISIONS = ['day', 'month', 'year'] as const;
+export type DatePrecision = (typeof DATE_PRECISIONS)[number];
 
 const PARTIAL_DATE = /^\d{4}(-\d{2}(-\d{2})?)?$/;
 
