@@ -40,6 +40,14 @@ export function AppRoutes() {
         }
       />
       <Route
+        path="/account/:section"
+        element={
+          <RequireAuth>
+            <AccountPage />
+          </RequireAuth>
+        }
+      />
+      <Route
         path="/trees/new"
         element={
           <RequireAuth>

@@ -13,7 +13,14 @@ function signedIn({ twoFactorEnabled = false, requiresTwoFactor = false, ownsTre
   return { api, user };
 }
 
-const status = () => screen.getByText('Two-step verification', { selector: 'dt' }).nextSibling;
+/** The status a section shows next to its name in the settings nav. */
+const navStatus = (label: string) =>
+  within(
+    within(screen.getByRole('navigation', { name: 'Account settings' })).getByRole('link', {
+      name: new RegExp(label),
+    }),
+  ).getByText((_, el) => el?.classList.contains('nav-status') ?? false);
+const status = () => navStatus('Two-step verification');
 
 function type(label: string, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
@@ -25,17 +32,79 @@ async function enterPassword(submit: string, password = 'Correct-horse1') {
 }
 
 describe('AccountPage', () => {
-  it('shows name, email and 2FA status', async () => {
+  it('lists the sections with their status and opens one per URL', async () => {
+    renderAt('/account/two-step', { auth: signedIn({ twoFactorEnabled: true }).api });
+    const nav = await screen.findByRole('navigation', { name: 'Account settings' });
+    expect(
+      within(nav).getByRole('link', { name: /Two-step verification.*2FA on/ }),
+    ).toHaveAttribute('aria-current', 'page');
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Two-step verification' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Change password' })).toBeNull();
+  });
+
+  it('/account shows the profile', async () => {
     renderAt('/account', { auth: signedIn().api });
-    expect(await screen.findByText('Ada')).toBeInTheDocument();
-    expect(screen.getByText('ada@example.com')).toBeInTheDocument();
-    expect(status()).toHaveTextContent('Off');
+    expect(await screen.findByRole('heading', { level: 2, name: 'Profile' })).toBeInTheDocument();
+    const nav = screen.getByRole('navigation', { name: 'Account settings' });
+    // The default section is the one shown, so it is the one marked current.
+    expect(within(nav).getByRole('link', { current: 'page' })).toHaveAccessibleName(/^Profile/);
+  });
+
+  it('opening another section moves focus to its heading', async () => {
+    renderAt('/account/profile', { auth: signedIn().api });
+    const nav = await screen.findByRole('navigation', { name: 'Account settings' });
+    expect(screen.getByRole('heading', { level: 2, name: 'Profile' })).not.toHaveFocus();
+    fireEvent.click(within(nav).getByRole('link', { name: /^Password/ }));
+    const heading = await screen.findByRole('heading', { level: 2, name: 'Password' });
+    await waitFor(() => expect(heading).toHaveFocus());
+    expect(within(nav).getByRole('link', { current: 'page' })).toHaveAccessibleName(/^Password/);
+  });
+
+  it('a section page has a back link to the list (shown on mobile)', async () => {
+    renderAt('/account/password', { auth: signedIn().api });
+    expect(await screen.findByRole('link', { name: 'Back to account' })).toHaveAttribute(
+      'href',
+      '/account',
+    );
+  });
+
+  it('an unknown section falls back to the profile, marked current', async () => {
+    renderAt('/account/bogus', { auth: signedIn().api });
+    expect(await screen.findByRole('heading', { level: 2, name: 'Profile' })).toBeInTheDocument();
+    const nav = screen.getByRole('navigation', { name: 'Account settings' });
+    expect(within(nav).getByRole('link', { current: 'page' })).toHaveAccessibleName(/^Profile/);
+    expect(screen.queryByRole('heading', { name: /not found/i })).toBeNull();
+  });
+
+  it('Delete account is its own danger section', async () => {
+    renderAt('/account/delete', { auth: signedIn().api });
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Delete account' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Delete account/ })).toHaveClass('danger');
+  });
+
+  it('shows the password status in the nav', async () => {
+    renderAt('/account', { auth: signedIn().api });
+    await screen.findByRole('heading', { level: 2, name: 'Profile' });
+    expect(navStatus('Password')).toHaveTextContent('Set');
+    expect(navStatus('Profile')).toHaveTextContent('ada@example.com');
+  });
+
+  it('shows name, email and 2FA status', async () => {
+    renderAt('/account/profile', { auth: signedIn().api });
+    const profile = await screen.findByRole('region', { name: 'Profile' });
+    expect(within(profile).getByText('Ada')).toBeInTheDocument();
+    expect(within(profile).getByText('ada@example.com')).toBeInTheDocument();
+    expect(status()).toHaveTextContent('2FA off');
   });
 
   it('changes the password', async () => {
     const { api } = signedIn();
-    renderAt('/account', { auth: api });
-    await screen.findByText('ada@example.com');
+    renderAt('/account/password', { auth: api });
+    await screen.findByRole('navigation', { name: 'Account settings' });
     type('Current password', 'Correct-horse1');
     type('New password', 'Brand-new-password1');
     type('Repeat new password', 'Brand-new-password1');
@@ -45,8 +114,8 @@ describe('AccountPage', () => {
   });
 
   it('shows a wrong current password', async () => {
-    renderAt('/account', { auth: signedIn().api });
-    await screen.findByText('ada@example.com');
+    renderAt('/account/password', { auth: signedIn().api });
+    await screen.findByRole('navigation', { name: 'Account settings' });
     type('Current password', 'not-my-password');
     type('New password', 'Brand-new-password1');
     type('Repeat new password', 'Brand-new-password1');
@@ -56,8 +125,8 @@ describe('AccountPage', () => {
 
   it('checks the repeated new password matches', async () => {
     const { api } = signedIn();
-    renderAt('/account', { auth: api });
-    await screen.findByText('ada@example.com');
+    renderAt('/account/password', { auth: api });
+    await screen.findByRole('navigation', { name: 'Account settings' });
     type('Current password', 'Correct-horse1');
     type('New password', 'Brand-new-password1');
     type('Repeat new password', 'Brand-new-passw0rd');
@@ -68,8 +137,8 @@ describe('AccountPage', () => {
 
   it('validates the new password', async () => {
     const { api } = signedIn();
-    renderAt('/account', { auth: api });
-    await screen.findByText('ada@example.com');
+    renderAt('/account/password', { auth: api });
+    await screen.findByRole('navigation', { name: 'Account settings' });
     type('Current password', 'Correct-horse1');
     type('New password', 'short');
     fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
@@ -79,7 +148,7 @@ describe('AccountPage', () => {
 
   it('turns on 2FA: QR code, confirm, 8 recovery codes shown once', async () => {
     const { api } = signedIn();
-    renderAt('/account', { auth: api });
+    renderAt('/account/two-step', { auth: api });
     fireEvent.click(await screen.findByRole('button', { name: 'Turn on two-step verification' }));
     await enterPassword('Continue');
 
@@ -97,7 +166,7 @@ describe('AccountPage', () => {
     expect(within(list).getAllByRole('listitem')).toHaveLength(8);
     expect(screen.getByRole('button', { name: 'Copy' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Download as .txt' })).toBeInTheDocument();
-    expect(status()).toHaveTextContent('On');
+    expect(status()).toHaveTextContent('2FA on');
 
     fireEvent.click(screen.getByRole('button', { name: "I've saved these codes" }));
     expect(screen.queryByRole('list', { name: 'Recovery codes' })).not.toBeInTheDocument();
@@ -106,7 +175,7 @@ describe('AccountPage', () => {
   });
 
   it('shows a wrong password when starting setup', async () => {
-    renderAt('/account', { auth: signedIn().api });
+    renderAt('/account/two-step', { auth: signedIn().api });
     fireEvent.click(await screen.findByRole('button', { name: 'Turn on two-step verification' }));
     await enterPassword('Continue', 'wrong-password');
     expect(await screen.findByRole('alert')).toHaveTextContent(MESSAGES.badPassword);
@@ -115,7 +184,7 @@ describe('AccountPage', () => {
   it('regenerates recovery codes', async () => {
     const { api, user } = signedIn({ twoFactorEnabled: true });
     const old = [...user.recoveryCodes];
-    renderAt('/account', { auth: api });
+    renderAt('/account/two-step', { auth: api });
     fireEvent.click(await screen.findByRole('button', { name: 'Generate new recovery codes' }));
     await enterPassword('Generate codes');
     const list = await screen.findByRole('list', { name: 'Recovery codes' });
@@ -134,7 +203,7 @@ describe('AccountPage', () => {
 
   it('keeps showing the codes when the refresh after confirming fails', async () => {
     const { api } = signedIn();
-    renderAt('/account', { auth: api });
+    renderAt('/account/two-step', { auth: api });
     fireEvent.click(await screen.findByRole('button', { name: 'Turn on two-step verification' }));
     await enterPassword('Continue');
     await screen.findByAltText('QR code for your authenticator app');
@@ -149,7 +218,7 @@ describe('AccountPage', () => {
 
   it('moves focus to each step heading', async () => {
     const { api } = signedIn();
-    renderAt('/account', { auth: api });
+    renderAt('/account/two-step', { auth: api });
     fireEvent.click(await screen.findByRole('button', { name: 'Turn on two-step verification' }));
     // Focus moves in an effect after the step renders, so wait for it rather than assume it.
     await waitFor(() =>
@@ -179,7 +248,7 @@ describe('AccountPage', () => {
     });
     try {
       const { api } = signedIn({ twoFactorEnabled: true });
-      renderAt('/account', { auth: api });
+      renderAt('/account/two-step', { auth: api });
       fireEvent.click(await screen.findByRole('button', { name: 'Generate new recovery codes' }));
       await enterPassword('Generate codes');
       fireEvent.click(await screen.findByRole('button', { name: 'Download as .txt' }));
@@ -197,20 +266,20 @@ describe('AccountPage', () => {
 
   it('turns 2FA off', async () => {
     const { api } = signedIn({ twoFactorEnabled: true });
-    renderAt('/account', { auth: api });
-    await screen.findByText('ada@example.com');
-    expect(status()).toHaveTextContent('On');
+    renderAt('/account/two-step', { auth: api });
+    await screen.findByRole('navigation', { name: 'Account settings' });
+    expect(status()).toHaveTextContent('2FA on');
     fireEvent.click(screen.getByRole('button', { name: 'Turn off two-step verification' }));
     await enterPassword('Turn off');
     expect(await screen.findByText('Two-step verification is off.')).toBeInTheDocument();
-    expect(status()).toHaveTextContent('Off');
+    expect(status()).toHaveTextContent('2FA off');
     expect(screen.getByRole('button', { name: 'Turn on two-step verification' })).toBeVisible();
   });
 
   it('hides Turn off and explains why when 2FA is required', async () => {
     const { api } = signedIn({ twoFactorEnabled: true, requiresTwoFactor: true });
-    renderAt('/account', { auth: api });
-    await screen.findByText('ada@example.com');
+    renderAt('/account/two-step', { auth: api });
+    await screen.findByRole('navigation', { name: 'Account settings' });
     expect(screen.queryByRole('button', { name: 'Turn off two-step verification' })).toBeNull();
     expect(
       screen.getByText('Tree owners and branch stewards must keep two-step verification on.'),
@@ -228,8 +297,8 @@ describe('AccountPage', () => {
 
     it('deletes the account and ends on home, signed out', async () => {
       const { api } = signedIn();
-      renderAt('/account', { auth: api });
-      await screen.findByText('ada@example.com');
+      renderAt('/account/delete', { auth: api });
+      await screen.findByRole('navigation', { name: 'Account settings' });
       typePassword('Correct-horse1');
       confirm();
       expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
@@ -238,8 +307,8 @@ describe('AccountPage', () => {
 
     it('shows the owns-trees message', async () => {
       const { api } = signedIn({ ownsTrees: true });
-      renderAt('/account', { auth: api });
-      await screen.findByText('ada@example.com');
+      renderAt('/account/delete', { auth: api });
+      await screen.findByRole('navigation', { name: 'Account settings' });
       typePassword('Correct-horse1');
       confirm();
       expect(await screen.findByText(MESSAGES.ownsTrees)).toBeInTheDocument();
@@ -247,8 +316,8 @@ describe('AccountPage', () => {
 
     it('shows a wrong password', async () => {
       const { api } = signedIn();
-      renderAt('/account', { auth: api });
-      await screen.findByText('ada@example.com');
+      renderAt('/account/delete', { auth: api });
+      await screen.findByRole('navigation', { name: 'Account settings' });
       typePassword('wrong-password');
       confirm();
       expect(await screen.findByText(MESSAGES.badPassword)).toBeInTheDocument();
@@ -256,8 +325,8 @@ describe('AccountPage', () => {
 
     it('asks for the password first, without calling the API', async () => {
       const { api } = signedIn();
-      renderAt('/account', { auth: api });
-      await screen.findByText('ada@example.com');
+      renderAt('/account/delete', { auth: api });
+      await screen.findByRole('navigation', { name: 'Account settings' });
       confirm();
       expect(await screen.findByText('Enter your password')).toBeInTheDocument();
       expect(api.callsTo('deleteAccount')).toHaveLength(0);
@@ -267,7 +336,7 @@ describe('AccountPage', () => {
   it('re-reads the session when opened, so requirements are current', async () => {
     const { api } = signedIn({ twoFactorEnabled: true });
     renderAt('/account', { auth: api });
-    await screen.findByText('ada@example.com');
+    await screen.findByRole('navigation', { name: 'Account settings' });
     await waitFor(() => expect(api.callsTo('getMe').length).toBeGreaterThanOrEqual(2));
   });
 
@@ -277,7 +346,7 @@ describe('AccountPage', () => {
       code: 'TWO_FACTOR_REQUIRED_FOR_ROLE',
       message: MESSAGES.twoFactorForRole,
     });
-    renderAt('/account', { auth: api });
+    renderAt('/account/two-step', { auth: api });
     fireEvent.click(await screen.findByRole('button', { name: 'Turn off two-step verification' }));
     await enterPassword('Turn off');
     expect(await screen.findByRole('alert')).toHaveTextContent(MESSAGES.twoFactorForRole);

@@ -322,8 +322,8 @@ describe('Google', () => {
       provider: 'google',
       password: 'pw',
       code: '123456',
-      callbackURL: `${HERE}/account?google=connected`,
-      errorCallbackURL: `${HERE}/account`,
+      callbackURL: `${HERE}/account/google?google=connected`,
+      errorCallbackURL: `${HERE}/account/google`,
       disableRedirect: true,
     });
     expect(leave).toHaveBeenCalledWith(GOOGLE_URL);

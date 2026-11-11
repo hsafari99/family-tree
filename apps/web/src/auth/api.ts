@@ -50,7 +50,7 @@ export interface AuthApi {
   getProviders(): Promise<Result<AuthProviders>>;
   /** Starts a Google sign-in that returns to `next` (a path on this site); leaves the page. */
   startGoogleSignIn(input: { next: string }): Promise<Result<void>>;
-  /** Re-authenticates, then leaves for Google to connect it; comes back to /account. */
+  /** Re-authenticates, then leaves for Google to connect it; comes back to /account/google. */
   connectGoogle(input: { password: string; code?: string }): Promise<Result<void>>;
   /** Re-authenticates like connectGoogle; refused while Google is the only way in. */
   disconnectGoogle(input: { password: string; code?: string }): Promise<Result<void>>;
@@ -416,8 +416,8 @@ export function createAuthApi({ baseUrl }: { baseUrl: string }): AuthApi {
       return goToGoogle('session', '/link-social', {
         password,
         ...(code ? { code } : {}),
-        callbackURL: `${here}/account?google=connected`,
-        errorCallbackURL: `${here}/account`,
+        callbackURL: `${here}/account/google?google=connected`,
+        errorCallbackURL: `${here}/account/google`,
       });
     },
     disconnectGoogle: (input) => v1Post('/account/google/disconnect', input, 'session'),

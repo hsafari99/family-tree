@@ -41,7 +41,7 @@ test('spec §9: family, steward invite, steward edits and deletes, owner restore
   await steward.getByRole('button', { name: /^Join / }).click();
   await expect(steward).toHaveURL(new RegExp(`/trees/${treeId}`));
   await expect(steward.getByText(/Turn on two-step verification/)).toBeVisible();
-  await steward.goto('/account');
+  await steward.goto('/account/two-step');
   await enrolTotpViaUi(steward, sam);
   await steward.goto(`/trees/${treeId}`);
   await expect(steward.getByText(/You look after the branches of: Pete Partner/)).toBeVisible();

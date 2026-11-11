@@ -33,7 +33,7 @@ async function expectFocused(heading: HTMLElement | Promise<HTMLElement>) {
 }
 
 async function startMove(api: FakeAuthApi, code = FAKE_TOTP) {
-  renderAt('/account', { auth: api });
+  renderAt('/account/two-step', { auth: api });
   const region = await section();
   fireEvent.click(within(region).getByRole('button', { name: 'Move to a new phone' }));
   await expectFocused(stepHeading(/Step 1 of 3/));
@@ -45,8 +45,8 @@ async function startMove(api: FakeAuthApi, code = FAKE_TOTP) {
 
 describe('Account settings: move two-step verification to a new phone', () => {
   it('is only offered while two-step verification is on', async () => {
-    renderAt('/account', { auth: account({ twoFactorEnabled: false }).api });
-    await screen.findByRole('heading', { name: 'Account' });
+    renderAt('/account/two-step', { auth: account({ twoFactorEnabled: false }).api });
+    await screen.findByRole('heading', { level: 2, name: 'Two-step verification' });
     expect(screen.queryByRole('region', { name: 'Move to a new phone' })).toBeNull();
   });
 
@@ -91,7 +91,7 @@ describe('Account settings: move two-step verification to a new phone', () => {
 
   it('checks the fields before asking the server', async () => {
     const { api } = account();
-    renderAt('/account', { auth: api });
+    renderAt('/account/two-step', { auth: api });
     const region = await section();
     fireEvent.click(within(region).getByRole('button', { name: 'Move to a new phone' }));
     click('Continue');
@@ -102,7 +102,7 @@ describe('Account settings: move two-step verification to a new phone', () => {
 
   it('shows a refused start as a fixed message', async () => {
     const { api } = account();
-    renderAt('/account', { auth: api });
+    renderAt('/account/two-step', { auth: api });
     const region = await section();
     fireEvent.click(within(region).getByRole('button', { name: 'Move to a new phone' }));
     type('Your password', 'wrong-password');
@@ -150,7 +150,7 @@ describe('Account settings: move two-step verification to a new phone', () => {
 
   it('cancel on the first step needs no server call', async () => {
     const { api } = account();
-    renderAt('/account', { auth: api });
+    renderAt('/account/two-step', { auth: api });
     const region = await section();
     fireEvent.click(within(region).getByRole('button', { name: 'Move to a new phone' }));
     click('Cancel');
@@ -163,7 +163,7 @@ describe('Account settings: move two-step verification to a new phone', () => {
   it('asks a Google-only account for a code only, or a fresh Google sign-in', async () => {
     const { api } = account({ hasPassword: false, googleConnected: true });
     api.recentSignIn = false;
-    renderAt('/account', { auth: api });
+    renderAt('/account/two-step', { auth: api });
     const region = await section();
     fireEvent.click(within(region).getByRole('button', { name: 'Move to a new phone' }));
     expect(within(region).queryByLabelText('Your password')).toBeNull();
@@ -171,7 +171,9 @@ describe('Account settings: move two-step verification to a new phone', () => {
     click('Continue');
     expect(await within(region).findByRole('alert')).toHaveTextContent(MESSAGES.moveRecentSignIn);
     click('Sign in with Google again');
-    await waitFor(() => expect(api.callsTo('startGoogleSignIn')).toEqual([{ next: '/account' }]));
+    await waitFor(() =>
+      expect(api.callsTo('startGoogleSignIn')).toEqual([{ next: '/account/two-step' }]),
+    );
 
     api.recentSignIn = true;
     click('Continue');

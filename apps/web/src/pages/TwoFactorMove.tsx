@@ -50,9 +50,9 @@ export function TwoFactorMove({
 
   return (
     <section aria-labelledby="two-factor-move-heading">
-      <h2 id="two-factor-move-heading" ref={headingRef} tabIndex={-1}>
+      <h3 id="two-factor-move-heading" ref={headingRef} tabIndex={-1}>
         Move to a new phone
-      </h2>
+      </h3>
       {step.kind === 'idle' && (
         <>
           <p>
@@ -156,7 +156,7 @@ function ConfirmItsYou({
 
   async function confirmWithGoogle() {
     setPending(true);
-    const res = await api.startGoogleSignIn({ next: '/account' });
+    const res = await api.startGoogleSignIn({ next: '/account/two-step' });
     // On success the page is leaving for Google.
     if (!mounted.current) return;
     setPending(false);
@@ -165,9 +165,9 @@ function ConfirmItsYou({
 
   return (
     <form onSubmit={onSubmit} noValidate aria-label="Confirm it’s you">
-      <h3 ref={heading} tabIndex={-1}>
+      <h4 ref={heading} tabIndex={-1}>
         Step 1 of 3: Confirm it’s you
-      </h3>
+      </h4>
       <p>
         {hasPassword
           ? 'Enter your password and a code from your current phone.'
@@ -264,9 +264,9 @@ function ScanNewPhone({
 
   return (
     <form onSubmit={submit} noValidate aria-label="Scan with your new phone">
-      <h3 ref={heading} tabIndex={-1}>
+      <h4 ref={heading} tabIndex={-1}>
         Step 2 of 3: Scan with your new phone
-      </h3>
+      </h4>
       <p>
         Open the authenticator app on your <strong>new</strong> phone and scan this code. Your
         current phone keeps working until you finish. This code is good for 10 minutes.

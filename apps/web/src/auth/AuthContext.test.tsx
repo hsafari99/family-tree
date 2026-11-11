@@ -115,7 +115,7 @@ describe('AuthProvider error handling', () => {
 
   it('re-reads the session when a call reports it expired, and sends the user to sign in', async () => {
     const api = signedInApi();
-    renderAt('/account', { auth: api });
+    renderAt('/account/password', { auth: api });
     await screen.findByRole('heading', { name: 'Account' });
     // The session ended on the server.
     api.current = null;

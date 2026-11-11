@@ -6,9 +6,12 @@ import { enrolTotpViaUi, signUpViaUi } from '../support/ui';
 
 test.skip(PROD_LOCAL, 'dev stack only');
 
-/** The "Two-step verification: On/Off" line at the top of Account settings. */
+/** The "2FA on/off" status next to Two-step verification in the account settings nav. */
 const twoFactorStatus = (page: Page) =>
-  page.locator('dt', { hasText: /^Two-step verification$/ }).locator('+ dd');
+  page
+    .getByRole('navigation', { name: 'Account settings' })
+    .getByRole('link', { name: /Two-step verification/ })
+    .locator('.nav-status');
 
 /** A password sign-in through the API, finished with `code`; returns the verify response. */
 async function signInWithCode(email: string, password: string, code: string) {
@@ -26,7 +29,7 @@ test('spec §5: move two-step verification to a new phone without turning it off
   page,
 }) => {
   const ada = await signUpViaUi(page, 'Ada Mover');
-  await page.goto('/account');
+  await page.goto('/account/two-step');
   const oldRaw = await enrolTotpViaUi(page, ada);
 
   // Signed in somewhere else too, with the old phone.
@@ -48,7 +51,7 @@ test('spec §5: move two-step verification to a new phone without turning it off
   await expect(move.getByRole('img', { name: /QR code/ })).toBeVisible();
   const newRaw = rawSecret((await move.locator('code.secret').textContent())!.replace(/\s+/g, ''));
   expect(newRaw).not.toBe(oldRaw);
-  await expect(twoFactorStatus(page)).toHaveText('On');
+  await expect(twoFactorStatus(page)).toHaveText('2FA on');
   await move.getByLabel('6-digit code from the new phone').fill(await totpCode(newRaw));
   await move.getByRole('button', { name: 'Move to this phone' }).click();
 
@@ -79,6 +82,6 @@ test('spec §5: move two-step verification to a new phone without turning it off
   await page.getByLabel('6-digit code').fill(await totpCode(newRaw));
   await page.getByRole('button', { name: 'Verify' }).click();
   await expect(page).not.toHaveURL(/\/sign-in/);
-  await page.goto('/account');
-  await expect(twoFactorStatus(page)).toHaveText('On');
+  await page.goto('/account/two-step');
+  await expect(twoFactorStatus(page)).toHaveText('2FA on');
 });

@@ -38,7 +38,8 @@ export function NewTreePage() {
         // Turning on 2FA asks for the password, which a Google-only account doesn't have yet.
         <p>
           Tree owners must use two-step verification, and turning it on needs a password.{' '}
-          <Link to="/account">Set a password</Link> in Account settings first, then come back.
+          <Link to="/account/password">Set a password</Link> in Account settings first, then come
+          back.
         </p>
       ) : (
         <>

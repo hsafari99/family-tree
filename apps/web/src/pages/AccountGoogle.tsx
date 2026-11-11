@@ -12,7 +12,6 @@ import {
   Success,
   validate,
 } from '../components/forms';
-import { useGoogleEnabled } from '../components/GoogleSignIn';
 
 /**
  * Account settings: connect Google (password, plus a code when 2FA is on) or disconnect it
@@ -20,12 +19,14 @@ import { useGoogleEnabled } from '../components/GoogleSignIn';
  */
 export function GoogleSection({
   user,
+  enabled,
   onChanged,
 }: {
   user: SessionUser;
+  /** Whether the server offers Google sign-in (`useGoogleEnabled`). */
+  enabled: boolean;
   onChanged: () => Promise<void>;
 }) {
-  const enabled = useGoogleEnabled();
   const [params, setParams] = useSearchParams();
   const [notice, setNotice] = useState<string | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -38,7 +39,16 @@ export function GoogleSection({
     if (params.has('google') || params.has('error')) setParams({}, { replace: true });
   }, [params, setParams]);
 
-  if (!enabled && !user.googleConnected) return null;
+  if (!enabled && !user.googleConnected) {
+    return (
+      <section aria-labelledby="google-heading">
+        <h2 id="google-heading" tabIndex={-1}>
+          Google
+        </h2>
+        <p>Signing in with Google isn’t available.</p>
+      </section>
+    );
+  }
 
   async function disconnected() {
     await onChanged();
@@ -247,7 +257,7 @@ export function SetPassword({ onDone }: { onDone: () => Promise<void> }) {
 
   async function confirmWithGoogle() {
     setPending(true);
-    const res = await api.startGoogleSignIn({ next: '/account' });
+    const res = await api.startGoogleSignIn({ next: '/account/password' });
     // On success the page is leaving for Google.
     if (!res.ok) {
       setPending(false);
@@ -275,7 +285,7 @@ export function SetPassword({ onDone }: { onDone: () => Promise<void> }) {
 
   return (
     <section aria-labelledby="set-password-heading">
-      <h2 id="set-password-heading">Set a password</h2>
+      <h3 id="set-password-heading">Set a password</h3>
       <p>
         You sign in with Google. Add a password to sign in without Google, to turn on two-step
         verification, or to delete your account.

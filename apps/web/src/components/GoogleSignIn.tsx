@@ -4,12 +4,17 @@ import { FormError } from './forms';
 
 /** Whether Google sign-in is on (asked once per mount; false until known or on failure). */
 export function useGoogleEnabled(): boolean {
+  return useGoogleAvailability() ?? false;
+}
+
+/** Whether the server offers Google sign-in; null until it has answered. */
+export function useGoogleAvailability(): boolean | null {
   const { api } = useAuth();
-  const [enabled, setEnabled] = useState(false);
+  const [enabled, setEnabled] = useState<boolean | null>(null);
   useEffect(() => {
     let active = true;
     void api.getProviders().then((res) => {
-      if (active && res.ok) setEnabled(res.data.google);
+      if (active) setEnabled(res.ok ? res.data.google : false);
     });
     return () => {
       active = false;

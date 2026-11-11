@@ -875,3 +875,80 @@ img.card-photo {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+/* Account settings: section list on the left, one section on the right. */
+.account-layout {
+  display: grid;
+  grid-template-columns: 14rem minmax(0, 1fr);
+  gap: 2rem;
+  align-items: start;
+}
+.account-layout nav ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+.account-layout nav a {
+  display: grid;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.4rem;
+  text-decoration: none;
+  color: inherit;
+}
+.account-layout nav a:hover {
+  background: var(--surface);
+}
+.account-layout nav a[aria-current='page'] {
+  background: var(--surface);
+  outline: 1px solid var(--border);
+}
+.account-layout nav a.danger {
+  color: var(--bad);
+}
+.nav-status {
+  font-size: 0.85rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.account-back {
+  display: none;
+}
+/* Beside the nav the section's name is already on screen: keep its heading for screen readers
+   only, and start the panel flush with the nav. */
+@media (min-width: 721px) {
+  .account-section section > h2 {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .account-section > section > h2 + *,
+  .account-section > section > h2 + * > :first-child {
+    margin-top: 0;
+  }
+}
+@media (max-width: 720px) {
+  .account-layout {
+    grid-template-columns: 1fr;
+  }
+  /* List first; a section page shows only the section, with a back link. */
+  .account-layout:not(.has-section) .account-section {
+    display: none;
+  }
+  .account-layout.has-section nav {
+    display: none;
+  }
+  .account-back {
+    display: block;
+    margin-top: 0;
+  }
+  .account-section section > h2 {
+    margin-top: 0.5rem;
+  }
+}
