@@ -246,4 +246,45 @@ describe('loadConfig', () => {
     );
     expect(loadConfig({ ...prodEnv, MIGRATE_ON_START: 'false' }).MIGRATE_ON_START).toBe(false);
   });
+  describe('Google sign-in', () => {
+    const google = {
+      GOOGLE_CLIENT_ID: '1234-abc.apps.googleusercontent.com',
+      GOOGLE_CLIENT_SECRET: 'test-only-google-secret',
+    };
+
+    it('is off when neither variable is set, or both are blank', () => {
+      expect(loadConfig(devEnv).google).toBeNull();
+      expect(
+        loadConfig({ ...devEnv, GOOGLE_CLIENT_ID: '', GOOGLE_CLIENT_SECRET: '' }).google,
+      ).toBeNull();
+    });
+
+    it('is on when both are set', () => {
+      expect(loadConfig({ ...devEnv, ...google }).google).toEqual({
+        clientId: google.GOOGLE_CLIENT_ID,
+        clientSecret: google.GOOGLE_CLIENT_SECRET,
+      });
+      expect(loadConfig({ ...prodEnv, ...google }).google).not.toBeNull();
+    });
+
+    it('refuses only one of the two', () => {
+      expect(() =>
+        loadConfig({ ...devEnv, GOOGLE_CLIENT_ID: google.GOOGLE_CLIENT_ID }),
+      ).toThrowError(/GOOGLE_CLIENT_SECRET/);
+      expect(() =>
+        loadConfig({ ...devEnv, GOOGLE_CLIENT_ID: '', GOOGLE_CLIENT_SECRET: 'x' }),
+      ).toThrowError(/GOOGLE_CLIENT_ID/);
+    });
+
+    it('never echoes the secret in the error', () => {
+      let message = '';
+      try {
+        loadConfig({ ...devEnv, GOOGLE_CLIENT_SECRET: google.GOOGLE_CLIENT_SECRET });
+      } catch (err) {
+        message = (err as Error).message;
+      }
+      expect(message).toMatch(/GOOGLE_CLIENT_ID/);
+      expect(message).not.toContain(google.GOOGLE_CLIENT_SECRET);
+    });
+  });
 });

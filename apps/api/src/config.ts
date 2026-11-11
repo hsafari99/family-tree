@@ -11,6 +11,10 @@ function isLocalHost(hostname: string): boolean {
   return LOCAL_HOSTS.has(host) || host.startsWith('127.') || host.endsWith('.localhost');
 }
 
+// Compose passes unset variables as "" (`${VAR:-}`); treat that as unset.
+const optionalSecret = () =>
+  z.preprocess((v) => (v === '' ? undefined : v), z.string().trim().min(1).optional());
+
 const bool = z.enum(['true', 'false']).transform((v) => v === 'true');
 // Browsers send Origin without path or trailing slash; anything else silently breaks CORS.
 const bareOrigin = () =>
@@ -64,8 +68,21 @@ export const configSchema = z
       .min(1)
       .max(1_099_511_627_776)
       .default(1_073_741_824),
+    // Google sign-in (spec §5): on only when both are set. Never logged.
+    GOOGLE_CLIENT_ID: optionalSecret(),
+    GOOGLE_CLIENT_SECRET: optionalSecret(),
   })
   .superRefine((config, ctx) => {
+    // Both or neither: half a Google client would show a button that can never work.
+    const googleId = config.GOOGLE_CLIENT_ID !== undefined;
+    const googleSecret = config.GOOGLE_CLIENT_SECRET !== undefined;
+    if (googleId !== googleSecret) {
+      ctx.addIssue({
+        code: 'custom',
+        path: [googleId ? 'GOOGLE_CLIENT_SECRET' : 'GOOGLE_CLIENT_ID'],
+        message: 'Set both GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET, or neither',
+      });
+    }
     // E2E only (decision 15): the auth limits may be off only for a local or .test stack.
     if (!config.AUTH_RATE_LIMIT_ENABLED && URL.canParse(config.AUTH_BASE_URL)) {
       const host = new URL(config.AUTH_BASE_URL).hostname.toLowerCase();
@@ -136,9 +153,14 @@ export const configSchema = z
       });
     }
   })
-  .transform((config) => ({
+  .transform(({ GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, ...config }) => ({
     ...config,
     S3_FORCE_PATH_STYLE: config.S3_FORCE_PATH_STYLE ?? config.NODE_ENV === 'production',
+    /** The Google OAuth client, or null when Google sign-in is off. */
+    google:
+      GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET
+        ? { clientId: GOOGLE_CLIENT_ID, clientSecret: GOOGLE_CLIENT_SECRET }
+        : null,
   }));
 
 export type Config = z.infer<typeof configSchema>;
