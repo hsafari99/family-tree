@@ -19,7 +19,7 @@ function type(label: string, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
 }
 
-async function enterPassword(submit: string, password = 'correct-horse') {
+async function enterPassword(submit: string, password = 'Correct-horse1') {
   type('Your password', password);
   fireEvent.click(screen.getByRole('button', { name: submit }));
 }
@@ -36,20 +36,20 @@ describe('AccountPage', () => {
     const { api } = signedIn();
     renderAt('/account', { auth: api });
     await screen.findByText('ada@example.com');
-    type('Current password', 'correct-horse');
-    type('New password', 'brand-new-password');
-    type('Repeat new password', 'brand-new-password');
+    type('Current password', 'Correct-horse1');
+    type('New password', 'Brand-new-password1');
+    type('Repeat new password', 'Brand-new-password1');
     fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
     expect(await screen.findByText(/Password changed/)).toBeInTheDocument();
-    expect(api.users.get('ada@example.com')!.password).toBe('brand-new-password');
+    expect(api.users.get('ada@example.com')!.password).toBe('Brand-new-password1');
   });
 
   it('shows a wrong current password', async () => {
     renderAt('/account', { auth: signedIn().api });
     await screen.findByText('ada@example.com');
     type('Current password', 'not-my-password');
-    type('New password', 'brand-new-password');
-    type('Repeat new password', 'brand-new-password');
+    type('New password', 'Brand-new-password1');
+    type('Repeat new password', 'Brand-new-password1');
     fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(MESSAGES.badPassword);
   });
@@ -58,9 +58,9 @@ describe('AccountPage', () => {
     const { api } = signedIn();
     renderAt('/account', { auth: api });
     await screen.findByText('ada@example.com');
-    type('Current password', 'correct-horse');
-    type('New password', 'brand-new-password');
-    type('Repeat new password', 'brand-new-passw0rd');
+    type('Current password', 'Correct-horse1');
+    type('New password', 'Brand-new-password1');
+    type('Repeat new password', 'Brand-new-passw0rd');
     fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
     expect(await screen.findByText('The passwords don’t match')).toBeInTheDocument();
     expect(api.callsTo('changePassword')).toHaveLength(0);
@@ -70,7 +70,7 @@ describe('AccountPage', () => {
     const { api } = signedIn();
     renderAt('/account', { auth: api });
     await screen.findByText('ada@example.com');
-    type('Current password', 'correct-horse');
+    type('Current password', 'Correct-horse1');
     type('New password', 'short');
     fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
     expect(await screen.findByText('Use at least 10 characters')).toBeInTheDocument();
@@ -230,7 +230,7 @@ describe('AccountPage', () => {
       const { api } = signedIn();
       renderAt('/account', { auth: api });
       await screen.findByText('ada@example.com');
-      typePassword('correct-horse');
+      typePassword('Correct-horse1');
       confirm();
       expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
       expect(api.users.size).toBe(0);
@@ -240,7 +240,7 @@ describe('AccountPage', () => {
       const { api } = signedIn({ ownsTrees: true });
       renderAt('/account', { auth: api });
       await screen.findByText('ada@example.com');
-      typePassword('correct-horse');
+      typePassword('Correct-horse1');
       confirm();
       expect(await screen.findByText(MESSAGES.ownsTrees)).toBeInTheDocument();
     });

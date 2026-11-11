@@ -31,7 +31,7 @@ describe('Google sign-in rate limit', () => {
       startGoogle(app, {
         jar: user.jar,
         path: '/api/auth/link-social',
-        body: { password: 'not the password', callbackURL: 'http://localhost:5173/account' },
+        body: { password: 'Not the password1', callbackURL: 'http://localhost:5173/account' },
       });
     for (let i = 0; i < 5; i++) expect((await attempt()).res.statusCode).toBe(400);
     expect((await attempt()).res.statusCode).toBe(429);

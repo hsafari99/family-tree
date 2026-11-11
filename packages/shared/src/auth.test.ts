@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   emailSchema,
+  PASSWORD_CLASSES_MESSAGE,
+  PASSWORD_HINT,
+  PASSWORD_MIN,
   passwordSchema,
   resetCodeSchema,
   resetWithCodeSchema,
@@ -18,11 +21,42 @@ const ok = (schema: { safeParse(v: unknown): { success: boolean } }, value: unkn
   schema.safeParse(value).success;
 
 describe('passwordSchema', () => {
+  // A capital, a digit and a symbol, padded with lowercase to the length under test.
+  const pw = (length: number) => 'A1!' + 'a'.repeat(length - 3);
   it('accepts 10 to 128 characters', () => {
-    expect(ok(passwordSchema, 'a'.repeat(9))).toBe(false);
-    expect(ok(passwordSchema, 'a'.repeat(10))).toBe(true);
-    expect(ok(passwordSchema, 'a'.repeat(128))).toBe(true);
-    expect(ok(passwordSchema, 'a'.repeat(129))).toBe(false);
+    expect(ok(passwordSchema, pw(9))).toBe(false);
+    expect(ok(passwordSchema, pw(10))).toBe(true);
+    expect(ok(passwordSchema, pw(128))).toBe(true);
+    expect(ok(passwordSchema, pw(129))).toBe(false);
+  });
+  const messages = (v: string) => passwordSchema.safeParse(v).error?.issues.map((i) => i.message);
+  it.each([
+    ['a capital letter', 'lowercase1!x'],
+    ['a digit', 'Lowercase!xy'],
+    ['a symbol', 'Lowercase1xy'],
+    ['all three', 'lowercasexyz'],
+  ])('refuses a password without %s, with the fixed message', (_what, value) => {
+    expect(messages(value)).toEqual([PASSWORD_CLASSES_MESSAGE]);
+  });
+  it('counts a space or any non-letter, non-digit as a symbol', () => {
+    expect(ok(passwordSchema, 'Correct horse 1')).toBe(true);
+    expect(ok(passwordSchema, 'Correct_horse1')).toBe(true);
+    expect(ok(passwordSchema, 'Ünïcode-pässwörd9')).toBe(true);
+  });
+  it('the hint names every requirement', () => {
+    expect(PASSWORD_HINT).toBe(
+      `At least ${PASSWORD_MIN} characters, with a capital letter, a number and a symbol.`,
+    );
+    expect(PASSWORD_CLASSES_MESSAGE).toBe(
+      'Use at least one capital letter, one number and one symbol',
+    );
+  });
+});
+
+describe('signInSchema', () => {
+  it('never checks the new-password rule, so old passwords keep working', () => {
+    expect(ok(signInSchema, { email: 'a@b.co', password: 'old weak pw' })).toBe(true);
+    expect(ok(signInSchema, { email: 'a@b.co', password: 'x' })).toBe(true);
   });
 });
 
@@ -36,7 +70,7 @@ describe('emailSchema', () => {
 });
 
 describe('signUpSchema', () => {
-  const base = { email: 'a@b.co', password: 'long enough pw' };
+  const base = { email: 'a@b.co', password: 'Long enough pw1' };
   it('requires a name of 1-100 characters after trimming', () => {
     expect(ok(signUpSchema, { ...base, name: '   ' })).toBe(false);
     expect(ok(signUpSchema, { ...base, name: 'a'.repeat(101) })).toBe(false);
@@ -69,18 +103,18 @@ describe('resetCodeSchema', () => {
 describe('resetWithCodeSchema', () => {
   it('needs email, code and a valid new password', () => {
     expect(
-      ok(resetWithCodeSchema, { email: 'a@b.co', code: '123456', newPassword: 'long enough pw' }),
+      ok(resetWithCodeSchema, { email: 'a@b.co', code: '123456', newPassword: 'Long enough pw1' }),
     ).toBe(true);
     expect(ok(resetWithCodeSchema, { email: 'a@b.co', code: '123456', newPassword: 'short' })).toBe(
       false,
     );
-    expect(ok(resetWithCodeSchema, { email: 'a@b.co', newPassword: 'long enough pw' })).toBe(false);
+    expect(ok(resetWithCodeSchema, { email: 'a@b.co', newPassword: 'Long enough pw1' })).toBe(false);
   });
 });
 
 describe('resetWithLinkSchema', () => {
   it('needs a 20-200 character token and a valid new password', () => {
-    const newPassword = 'long enough pw';
+    const newPassword = 'Long enough pw1';
     expect(ok(resetWithLinkSchema, { token: 'a'.repeat(19), newPassword })).toBe(false);
     expect(ok(resetWithLinkSchema, { token: 'a'.repeat(20), newPassword })).toBe(true);
     expect(ok(resetWithLinkSchema, { token: 'a'.repeat(200), newPassword })).toBe(true);

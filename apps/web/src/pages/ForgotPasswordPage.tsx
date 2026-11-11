@@ -2,10 +2,21 @@ import { resetWithCodeSchema } from '@family-tree/shared';
 import { type FormEvent, useState } from 'react';
 import { Link } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
-import { Field, type FieldErrors, FormError, validate } from '../components/forms';
-import { confirmError, NewPasswordFields } from '../components/NewPasswordFields';
+import { ErrorSummary, Field, type FieldErrors, FormError, validate } from '../components/forms';
+import {
+  confirmError,
+  weakPasswordError,
+  NEW_PASSWORD_LABELS,
+  NewPasswordFields,
+} from '../components/NewPasswordFields';
 import { Page } from '../components/Page';
 import { PasswordChanged } from './PasswordChanged';
+
+const RESET_LABELS: Record<string, string> = {
+  email: 'Email',
+  code: 'Authenticator or recovery code',
+  ...NEW_PASSWORD_LABELS,
+};
 
 export function ForgotPasswordPage() {
   const { api } = useAuth();
@@ -29,7 +40,9 @@ export function ForgotPasswordPage() {
     const res = await api.resetWithCode(checked.data);
     setPending(false);
     if (!res.ok) {
-      setServerError(res.error.message);
+      const weak = weakPasswordError(res.error);
+      if (weak) setErrors({ newPassword: weak });
+      else setServerError(res.error.message);
       return;
     }
     setDone(true);
@@ -51,6 +64,7 @@ export function ForgotPasswordPage() {
       </p>
       <p className="hint">No authenticator? Ask your tree owner for a reset link.</p>
       <form onSubmit={onSubmit} noValidate>
+        <ErrorSummary errors={errors} labels={RESET_LABELS} />
         <Field
           label="Email"
           name="email"

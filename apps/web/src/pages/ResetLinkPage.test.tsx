@@ -1,4 +1,5 @@
-import { fireEvent, screen } from '@testing-library/react';
+import { PASSWORD_CLASSES_MESSAGE, PASSWORD_HINT } from '@family-tree/shared';
+import { fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { FakeAuthApi } from '../test/fake-auth';
 import { renderAt } from '../test/render';
@@ -19,12 +20,12 @@ describe('ResetLinkPage', () => {
     api.resetTokens.set(TOKEN, 'ada@example.com');
     renderAt(`/reset/${TOKEN}`, { auth: api });
     await screen.findByLabelText('New password');
-    submit('brand-new-password');
+    submit('Brand-new-password1');
     expect(
       await screen.findByText('Password changed — sign in with your new password'),
     ).toBeInTheDocument();
     expect(api.callsTo('resetWithLink')).toEqual([
-      { token: TOKEN, newPassword: 'brand-new-password' },
+      { token: TOKEN, newPassword: 'Brand-new-password1' },
     ]);
   });
 
@@ -40,17 +41,28 @@ describe('ResetLinkPage', () => {
     expect(pw).toHaveAttribute('type', 'password');
   });
 
+  it('lists the rule and refuses a weak new password, at the field and in the summary', async () => {
+    const { api } = renderAt(`/reset/${TOKEN}`);
+    expect(await screen.findByLabelText('New password')).toHaveAccessibleDescription(PASSWORD_HINT);
+    submit('x'.repeat(12));
+    const summary = await screen.findByRole('alert');
+    expect(
+      within(summary).getByRole('button', { name: `New password: ${PASSWORD_CLASSES_MESSAGE}` }),
+    ).toBeInTheDocument();
+    expect(api.callsTo('resetWithLink')).toEqual([]);
+  });
+
   it('says when the link is invalid or used', async () => {
     renderAt(`/reset/${TOKEN}`);
     await screen.findByLabelText('New password');
-    submit('brand-new-password');
+    submit('Brand-new-password1');
     expect(await screen.findByRole('alert')).toHaveTextContent(INVALID_LINK);
   });
 
   it('rejects a malformed token without calling the API', async () => {
     const { api } = renderAt('/reset/short');
     await screen.findByLabelText('New password');
-    submit('brand-new-password');
+    submit('Brand-new-password1');
     expect(await screen.findByRole('alert')).toHaveTextContent(INVALID_LINK);
     expect(api.callsTo('resetWithLink')).toHaveLength(0);
   });
@@ -68,7 +80,7 @@ describe('ResetLinkPage', () => {
     api.resetTokens.set(TOKEN, 'ada@example.com');
     renderAt(`/reset/${TOKEN}`, { auth: api });
     await screen.findByLabelText('New password');
-    submit('brand-new-password', 'brand-new-passw0rd');
+    submit('Brand-new-password1', 'Brand-new-passw0rd');
     const repeat = screen.getByLabelText('Repeat new password');
     expect(await screen.findByText('The passwords don’t match')).toBeInTheDocument();
     expect(repeat).toHaveAccessibleDescription('The passwords don’t match');

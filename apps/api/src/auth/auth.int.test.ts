@@ -56,8 +56,8 @@ describe('Better Auth email and password', () => {
 
   it('rejects a wrong password without revealing whether the email exists', async () => {
     const { email } = await signUp(app);
-    const wrong = await signIn(app, { email, password: 'not the password' });
-    const unknown = await signIn(app, { email: uniqueEmail(), password: 'not the password' });
+    const wrong = await signIn(app, { email, password: 'Not the password1' });
+    const unknown = await signIn(app, { email: uniqueEmail(), password: 'Not the password1' });
     expect(wrong.res.statusCode).toBe(401);
     expect(unknown.res.statusCode).toBe(401);
     expect(wrong.res.json().code).toBeDefined();
@@ -83,7 +83,7 @@ describe('Better Auth email and password', () => {
 
   it('changes the password; the old one stops working', async () => {
     const { jar, email } = await signUp(app);
-    const newPassword = 'a brand new passphrase';
+    const newPassword = 'A brand new passphrase1';
     const res = await call(app, 'POST', '/api/auth/change-password', {
       jar,
       body: { currentPassword: TEST_PASSWORD, newPassword },
@@ -97,7 +97,7 @@ describe('Better Auth email and password', () => {
     const { jar, email } = await signUp(app);
     const res = await call(app, 'POST', '/api/auth/change-password', {
       jar,
-      body: { currentPassword: 'not the password', newPassword: 'a brand new passphrase' },
+      body: { currentPassword: 'Not the password1', newPassword: 'A brand new passphrase1' },
     });
     expect(res.statusCode).toBeGreaterThanOrEqual(400);
     expect((await signIn(app, { email, password: TEST_PASSWORD })).res.statusCode).toBe(200);
@@ -157,7 +157,7 @@ describe('adapter hardening', () => {
     const { jar, email } = await signUp(app);
     const res = await call(app, 'POST', '/api/auth/change-password', {
       jar,
-      body: { currentPassword: TEST_PASSWORD, newPassword: 'a brand new passphrase' },
+      body: { currentPassword: TEST_PASSWORD, newPassword: 'A brand new passphrase1' },
       headers,
     });
     expect(res.statusCode).toBe(403);

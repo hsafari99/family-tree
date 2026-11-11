@@ -1,10 +1,17 @@
-import { PASSWORD_MIN, passwordSchema, resetCodeSchema } from '@family-tree/shared';
+import { PASSWORD_HINT, passwordSchema, resetCodeSchema } from '@family-tree/shared';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { googleErrorMessage, MESSAGES, type SessionUser } from '../auth/api';
 import { useAuth } from '../auth/AuthContext';
 import { ConfirmButton } from '../components/ConfirmButton';
-import { Field, type FieldErrors, FormError, Success, validate } from '../components/forms';
+import {
+  ErrorSummary,
+  Field,
+  type FieldErrors,
+  FormError,
+  Success,
+  validate,
+} from '../components/forms';
 import { useGoogleEnabled } from '../components/GoogleSignIn';
 
 /**
@@ -228,6 +235,8 @@ function DisconnectGoogle({
 }
 
 /** For an account that only ever signed in with Google: add a password login. */
+const SET_PASSWORD_LABELS: Record<string, string> = { setPassword: 'New password' };
+
 export function SetPassword({ onDone }: { onDone: () => Promise<void> }) {
   const { api } = useAuth();
   const [password, setPassword] = useState('');
@@ -272,12 +281,13 @@ export function SetPassword({ onDone }: { onDone: () => Promise<void> }) {
         verification, or to delete your account.
       </p>
       <form onSubmit={onSubmit} noValidate>
+        <ErrorSummary errors={error ? { setPassword: error } : {}} labels={SET_PASSWORD_LABELS} />
         <Field
           label="New password"
           name="setPassword"
           type="password"
           autoComplete="new-password"
-          hint={`At least ${PASSWORD_MIN} characters.`}
+          hint={PASSWORD_HINT}
           value={password}
           onChange={setPassword}
           error={error}

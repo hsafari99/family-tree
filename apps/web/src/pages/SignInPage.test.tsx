@@ -9,7 +9,7 @@ function seeded({ twoFactorEnabled = false } = {}) {
   return api;
 }
 
-function signIn(password = 'correct-horse') {
+function signIn(password = 'Correct-horse1') {
   fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'ada@example.com' } });
   fireEvent.change(screen.getByLabelText('Password'), { target: { value: password } });
   fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));

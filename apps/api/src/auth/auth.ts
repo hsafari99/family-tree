@@ -1,4 +1,9 @@
-import { PASSWORD_MAX, PASSWORD_MIN } from '@family-tree/shared';
+import {
+  PASSWORD_CLASSES_MESSAGE,
+  PASSWORD_MAX,
+  PASSWORD_MIN,
+  passwordSchema,
+} from '@family-tree/shared';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { APIError, createAuthMiddleware, getSessionFromCtx } from 'better-auth/api';
@@ -160,6 +165,7 @@ export function createAuth({ config, db, rateLimitEnabled, log }: AuthOptions) {
         checkSocialStart(ctx, config.WEB_ORIGIN);
         blockUnlinkEndpoint(ctx);
         await confirmLink(ctx, db);
+        checkNewPassword(ctx);
         // Without a password Better Auth deletes any session younger than a day unchecked.
         if (ctx.path === '/delete-user' || ctx.path === '/delete-user/callback') {
           const password = (ctx.body as { password?: unknown } | undefined)?.password;
@@ -227,6 +233,32 @@ export function createAuth({ config, db, rateLimitEnabled, log }: AuthOptions) {
       }),
     ],
   });
+}
+
+/** Better Auth endpoints that set a new password, and the body field that carries it. */
+const NEW_PASSWORD_FIELD: Record<string, string> = {
+  '/sign-up/email': 'password',
+  '/change-password': 'newPassword',
+  '/reset-password': 'newPassword',
+  // Server-only (the account route calls it after its own check), covered all the same.
+  '/set-password': 'newPassword',
+};
+
+/** Better Auth only checks the length: the shared rule (a capital, a number and a symbol) is
+ *  checked here, so calling these endpoints directly can't skip it. Sign-in never checks it. */
+function checkNewPassword(ctx: { path: string; body?: unknown }) {
+  const field = NEW_PASSWORD_FIELD[ctx.path];
+  if (!field) return;
+  const value = (ctx.body as Record<string, unknown> | undefined)?.[field];
+  // A missing or non-string value is left to Better Auth's own validation.
+  if (typeof value !== 'string') return;
+  const issues = passwordSchema.safeParse(value).error?.issues ?? [];
+  if (issues.some((i) => i.message === PASSWORD_CLASSES_MESSAGE)) {
+    throw APIError.from('BAD_REQUEST', {
+      code: 'WEAK_PASSWORD',
+      message: PASSWORD_CLASSES_MESSAGE,
+    });
+  }
 }
 
 export type Auth = ReturnType<typeof createAuth>;

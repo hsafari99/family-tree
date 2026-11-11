@@ -220,7 +220,7 @@ describe('moving 2FA to a new phone', () => {
     expect((await signInWithRecoveryCode(user.email, backupCodes[0])).statusCode).toBe(200);
     // The reset-with-code route reads the same codes.
     const reset = await call(app, 'POST', '/api/v1/password-reset/totp', {
-      body: { email: user.email, code: user.backupCodes[2], newPassword: 'a brand new password' },
+      body: { email: user.email, code: user.backupCodes[2], newPassword: 'A brand new password1' },
     });
     expect(reset.statusCode).toBe(400);
   });
@@ -391,7 +391,7 @@ describe('starting a move re-authenticates', () => {
     const user = await userWith2fa(app);
     const code = await totpNow(user.rawSecret);
     expect(errorCode(await start(user.jar, { code }))).toBe('PASSWORD_REQUIRED');
-    expect(errorCode(await start(user.jar, { password: 'not the password', code }))).toBe(
+    expect(errorCode(await start(user.jar, { password: 'Not the password1', code }))).toBe(
       'INVALID_PASSWORD',
     );
     expect(errorCode(await start(user.jar, { password: TEST_PASSWORD }))).toBe(
@@ -520,16 +520,16 @@ describe('limits', () => {
   it('rate-limits start to 5 per user per 15 minutes', async () => {
     const user = await userWith2fa(app);
     for (let i = 0; i < 5; i++) {
-      expect(errorCode(await start(user.jar, { password: 'wrong password' }))).toBe(
+      expect(errorCode(await start(user.jar, { password: 'Wrong password1' }))).toBe(
         'INVALID_PASSWORD',
       );
     }
-    const limited = await start(user.jar, { password: 'wrong password' });
+    const limited = await start(user.jar, { password: 'Wrong password1' });
     expect(limited.statusCode).toBe(429);
     expect(errorCode(limited)).toBe('RATE_LIMITED');
     // Someone else on the same address is not held up by it.
     const other = await userWith2fa(app);
-    expect(errorCode(await start(other.jar, { password: 'wrong password' }))).toBe(
+    expect(errorCode(await start(other.jar, { password: 'Wrong password1' }))).toBe(
       'INVALID_PASSWORD',
     );
   });

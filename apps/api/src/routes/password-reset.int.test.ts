@@ -21,7 +21,7 @@ const deps = createDeps(config);
 // Better Auth's limiter is off so sign-ins in these tests are never throttled; our own
 // per-route limits are what is under test.
 const auth = createAuth({ config, db: deps.db, rateLimitEnabled: false });
-const NEW_PASSWORD = 'a fresh reset passphrase';
+const NEW_PASSWORD = 'A fresh reset passphrase1';
 const INVALID = { code: 'INVALID_RESET', message: 'Email or code is incorrect' };
 
 // A fresh app per test gives each one its own @fastify/rate-limit counters.
@@ -105,7 +105,7 @@ describe('POST /api/v1/password-reset/totp', () => {
     const [code, other] = backupCodes as [string, string];
     expect((await resetTotp({ email, code, newPassword: NEW_PASSWORD })).statusCode).toBe(204);
 
-    const again = await resetTotp({ email, code, newPassword: 'yet another passphrase' });
+    const again = await resetTotp({ email, code, newPassword: 'Yet another passphrase1' });
     expect(again.statusCode).toBe(400);
     expect(again.json().error).toEqual(INVALID);
 
@@ -203,7 +203,7 @@ describe('POST /api/v1/password-reset/totp', () => {
     });
     expect(ok.statusCode).toBe(204);
     const link = await call(app, 'POST', '/api/v1/password-reset/link', {
-      body: { token, newPassword: 'an attacker passphrase' },
+      body: { token, newPassword: 'An attacker passphrase1' },
     });
     expect(link.statusCode).toBe(400);
     expect(link.json()).toEqual({ error: INVALID });

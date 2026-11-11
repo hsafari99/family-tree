@@ -131,7 +131,7 @@ describe('account deletion', () => {
     const none = await deleteUser(user.jar, {});
     expect(none.statusCode).toBe(400);
     expect(none.json().code).toBe('PASSWORD_REQUIRED');
-    const wrong = await deleteUser(user.jar, { password: 'wrong password!!' });
+    const wrong = await deleteUser(user.jar, { password: 'Wrong password!!1' });
     expect(wrong.statusCode).toBe(400);
     expect(wrong.json().code).toBe('INVALID_PASSWORD');
     expect(wrong.json().code).not.toBe(none.json().code);

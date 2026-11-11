@@ -12,7 +12,7 @@ import { consumeResetLink, createResetLink, hashResetToken } from './reset-links
 const config = { ...loadConfig(), TRUST_PROXY: 1 };
 const deps = createDeps(config);
 const auth = createAuth({ config, db: deps.db, rateLimitEnabled: false });
-const NEW_PASSWORD = 'a fresh link passphrase';
+const NEW_PASSWORD = 'A fresh link passphrase1';
 const INVALID = { error: { code: 'INVALID_RESET', message: 'Email or code is incorrect' } };
 
 let app: ReturnType<typeof buildApp>;

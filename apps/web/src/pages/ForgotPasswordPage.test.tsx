@@ -40,7 +40,7 @@ describe('ForgotPasswordPage', () => {
   it('shows the generic error for a wrong code', async () => {
     renderAt('/forgot-password', { auth: seeded() });
     await screen.findByLabelText('Email');
-    submit('ada@example.com', '000000', 'brand-new-password');
+    submit('ada@example.com', '000000', 'Brand-new-password1');
     expect(await screen.findByRole('alert')).toHaveTextContent('Email or code is incorrect');
   });
 
@@ -48,18 +48,18 @@ describe('ForgotPasswordPage', () => {
     const api = seeded();
     renderAt('/forgot-password', { auth: api });
     await screen.findByLabelText('Email');
-    submit('ada@example.com', FAKE_TOTP, 'brand-new-password');
+    submit('ada@example.com', FAKE_TOTP, 'Brand-new-password1');
     expect(
       await screen.findByText('Password changed — sign in with your new password'),
     ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/sign-in');
-    expect(api.users.get('ada@example.com')!.password).toBe('brand-new-password');
+    expect(api.users.get('ada@example.com')!.password).toBe('Brand-new-password1');
   });
 
   it('checks the repeat matches without calling the API', async () => {
     const { api } = renderAt('/forgot-password', { auth: seeded() });
     await screen.findByLabelText('Email');
-    submit('ada@example.com', FAKE_TOTP, 'brand-new-password', 'brand-new-passw0rd');
+    submit('ada@example.com', FAKE_TOTP, 'Brand-new-password1', 'Brand-new-passw0rd');
     expect(await screen.findByText('The passwords don’t match')).toBeInTheDocument();
     expect(screen.getByLabelText('Repeat new password')).toHaveAccessibleDescription(
       'The passwords don’t match',

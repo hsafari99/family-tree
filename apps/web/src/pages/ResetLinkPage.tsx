@@ -2,8 +2,13 @@ import { resetWithLinkSchema } from '@family-tree/shared';
 import { type FormEvent, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
-import { type FieldErrors, FormError, validate } from '../components/forms';
-import { confirmError, NewPasswordFields } from '../components/NewPasswordFields';
+import { ErrorSummary, type FieldErrors, FormError, validate } from '../components/forms';
+import {
+  confirmError,
+  weakPasswordError,
+  NEW_PASSWORD_LABELS,
+  NewPasswordFields,
+} from '../components/NewPasswordFields';
 import { Page } from '../components/Page';
 import { PasswordChanged } from './PasswordChanged';
 
@@ -34,7 +39,9 @@ export function ResetLinkPage() {
     const res = await api.resetWithLink(checked.data);
     setPending(false);
     if (!res.ok) {
-      setServerError(res.error.code === 'INVALID_RESET' ? INVALID_LINK : res.error.message);
+      const weak = weakPasswordError(res.error);
+      if (weak) setErrors({ newPassword: weak });
+      else setServerError(res.error.code === 'INVALID_RESET' ? INVALID_LINK : res.error.message);
       return;
     }
     setDone(true);
@@ -51,6 +58,7 @@ export function ResetLinkPage() {
   return (
     <Page title="Choose a new password">
       <form onSubmit={onSubmit} noValidate>
+        <ErrorSummary errors={errors} labels={NEW_PASSWORD_LABELS} />
         <NewPasswordFields
           password={newPassword}
           repeat={repeat}

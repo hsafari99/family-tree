@@ -90,7 +90,7 @@ describe('Connect Google', () => {
     const none = await startLink(user.jar, {});
     expect(none.res.statusCode).toBe(400);
     expect(none.res.json().code).toBe('PASSWORD_REQUIRED');
-    const wrong = await startLink(user.jar, { password: 'not the password' });
+    const wrong = await startLink(user.jar, { password: 'Not the password1' });
     expect(wrong.res.statusCode).toBe(400);
     expect(wrong.res.json().code).toBe('INVALID_PASSWORD');
     expect(wrong.url).toBe('');
@@ -209,7 +209,7 @@ describe('Disconnect Google', () => {
     const none = await disconnect(user.jar, {});
     expect(none.statusCode).toBe(400);
     expect(none.json().error.code).toBe('PASSWORD_REQUIRED');
-    const wrong = await disconnect(user.jar, { password: 'not the password' });
+    const wrong = await disconnect(user.jar, { password: 'Not the password1' });
     expect(wrong.statusCode).toBe(400);
     expect(wrong.json().error.code).toBe('INVALID_PASSWORD');
     expect(await providersOf(user.userId)).toEqual(['credential', 'google']);
@@ -269,14 +269,14 @@ describe('Set a password (Google-only accounts)', () => {
     const { jar, user } = await googleOnlyUser();
     expect(user.hasPassword).toBe(false);
     expect(user.googleConnected).toBe(true);
-    expect((await setPassword(jar, 'a brand new password')).statusCode).toBe(204);
+    expect((await setPassword(jar, 'A brand new password1')).statusCode).toBe(204);
     expect((await me(jar)).hasPassword).toBe(true);
 
-    const { res } = await signIn(app, { email: user.email, password: 'a brand new password' });
+    const { res } = await signIn(app, { email: user.email, password: 'A brand new password1' });
     expect(res.statusCode).toBe(200);
     const disconnected = await call(app, 'POST', '/api/v1/account/google/disconnect', {
       jar,
-      body: { password: 'a brand new password' },
+      body: { password: 'A brand new password1' },
     });
     expect(disconnected.statusCode).toBe(204);
   });
@@ -287,7 +287,7 @@ describe('Set a password (Google-only accounts)', () => {
       .update(sessions)
       .set({ createdAt: new Date(Date.now() - 11 * 60 * 1000) })
       .where(eq(sessions.userId, user.id));
-    const res = await setPassword(jar, 'a brand new password');
+    const res = await setPassword(jar, 'A brand new password1');
     expect(res.statusCode).toBe(403);
     expect(res.json().error.code).toBe('RECENT_SIGN_IN_REQUIRED');
     expect((await me(jar)).hasPassword).toBe(false);
@@ -297,14 +297,14 @@ describe('Set a password (Google-only accounts)', () => {
     const { jar, profile, user } = await googleOnlyUser();
     const elsewhere = await googleSignIn(app, profile);
     expect((await me(elsewhere.jar)).id).toBe(user.id);
-    expect((await setPassword(jar, 'a brand new password')).statusCode).toBe(204);
+    expect((await setPassword(jar, 'A brand new password1')).statusCode).toBe(204);
     expect((await call(app, 'GET', '/api/v1/me', { jar: elsewhere.jar })).statusCode).toBe(401);
     expect((await me(jar)).id).toBe(user.id);
   });
 
   it('is refused once a password exists, and checks the length', async () => {
     const user = await signUp(app);
-    const again = await setPassword(user.jar, 'another long password');
+    const again = await setPassword(user.jar, 'Another long password1');
     expect(again.statusCode).toBe(409);
     expect(again.json().error.code).toBe('PASSWORD_ALREADY_SET');
     const { jar } = await googleOnlyUser();

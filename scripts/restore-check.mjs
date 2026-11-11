@@ -36,7 +36,7 @@ const totp = (raw) => createOTP(raw).totp();
 const mode = process.argv[2];
 if (mode === 'seed') {
   const email = `restore-${Date.now()}@family.test`;
-  const password = `pw-${crypto.randomUUID()}`;
+  const password = `Rc1-pw-${crypto.randomUUID()}`;
   await call('POST', '/api/auth/sign-up/email', { email, password, name: 'Restore Test' });
   const { totpURI } = await call('POST', '/api/auth/two-factor/enable', { password });
   const raw = new TextDecoder().decode(base32.decode(new URL(totpURI).searchParams.get('secret')));

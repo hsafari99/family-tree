@@ -37,7 +37,7 @@ async function startMove(api: FakeAuthApi, code = FAKE_TOTP) {
   const region = await section();
   fireEvent.click(within(region).getByRole('button', { name: 'Move to a new phone' }));
   await expectFocused(stepHeading(/Step 1 of 3/));
-  type('Your password', 'correct-horse');
+  type('Your password', 'Correct-horse1');
   type('Code from your current phone, or a recovery code', code);
   click('Continue');
   return region;
@@ -58,7 +58,7 @@ describe('Account settings: move two-step verification to a new phone', () => {
 
     await expectFocused(stepHeading(/Step 2 of 3/));
     expect(api.callsTo('startTwoFactorMove')).toEqual([
-      { password: 'correct-horse', code: FAKE_TOTP },
+      { password: 'Correct-horse1', code: FAKE_TOTP },
     ]);
     expect(within(region).getByText(FAKE_NEW_SECRET)).toBeInTheDocument();
     type('6-digit code from the new phone', '654 321');
@@ -85,7 +85,7 @@ describe('Account settings: move two-step verification to a new phone', () => {
     await startMove(api, recovery);
     expect(await stepHeading(/Step 2 of 3/)).toBeInTheDocument();
     expect(api.callsTo('startTwoFactorMove')).toEqual([
-      { password: 'correct-horse', code: recovery },
+      { password: 'Correct-horse1', code: recovery },
     ]);
   });
 

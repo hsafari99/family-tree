@@ -1,5 +1,15 @@
-import { PASSWORD_MIN } from '@family-tree/shared';
+import { PASSWORD_CLASSES_MESSAGE, PASSWORD_HINT } from '@family-tree/shared';
 import { Field } from './forms';
+
+/** The error summary's names for these fields. */
+export const NEW_PASSWORD_LABELS: Record<string, string> = {
+  newPassword: 'New password',
+  repeatPassword: 'Repeat new password',
+};
+
+/** Our fixed text for the field when the server refused the new password (WEAK_PASSWORD). */
+export const weakPasswordError = (error: { code: string }) =>
+  error.code === 'WEAK_PASSWORD' ? PASSWORD_CLASSES_MESSAGE : undefined;
 
 export function confirmError(password: string, repeat: string): string | undefined {
   if (repeat === '') return 'Enter the new password again';
@@ -28,7 +38,7 @@ export function NewPasswordFields({
         name="newPassword"
         type="password"
         autoComplete="new-password"
-        hint={`At least ${PASSWORD_MIN} characters.`}
+        hint={PASSWORD_HINT}
         value={password}
         onChange={onPassword}
         error={errors.newPassword}

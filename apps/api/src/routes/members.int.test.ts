@@ -209,7 +209,7 @@ describe('owner reset links are re-checked on use', () => {
     ).json().token as string;
   const redeem = (token: string) =>
     call(app, 'POST', '/api/v1/password-reset/link', {
-      body: { token, newPassword: 'a brand new passphrase' },
+      body: { token, newPassword: 'A brand new passphrase1' },
     });
   const expectInvalid = async (token: string) => {
     const res = await redeem(token);
@@ -260,7 +260,7 @@ describe('POST reset-link', () => {
       .where(eq(resetLinks.tokenHash, hashToken(token)));
     expect(row).toMatchObject({ treeId, createdByUserId: owner.userId, userId: V.userId });
     const use = await call(app, 'POST', '/api/v1/password-reset/link', {
-      body: { token, newPassword: 'a brand new passphrase' },
+      body: { token, newPassword: 'A brand new passphrase1' },
     });
     expect(use.statusCode).toBe(204);
   });

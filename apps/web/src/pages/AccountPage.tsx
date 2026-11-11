@@ -4,8 +4,20 @@ import { Link, useNavigate } from 'react-router';
 import { MESSAGES } from '../auth/api';
 import { useAuth } from '../auth/AuthContext';
 import { ConfirmButton } from '../components/ConfirmButton';
-import { Field, type FieldErrors, FormError, Success, validate } from '../components/forms';
-import { confirmError, NewPasswordFields } from '../components/NewPasswordFields';
+import {
+  ErrorSummary,
+  Field,
+  type FieldErrors,
+  FormError,
+  Success,
+  validate,
+} from '../components/forms';
+import {
+  confirmError,
+  weakPasswordError,
+  NEW_PASSWORD_LABELS,
+  NewPasswordFields,
+} from '../components/NewPasswordFields';
 import { Page } from '../components/Page';
 import { GoogleSection, SetPassword } from './AccountGoogle';
 import { TwoFactorMove } from './TwoFactorMove';
@@ -64,6 +76,11 @@ export function AccountPage() {
   );
 }
 
+const CHANGE_PASSWORD_LABELS: Record<string, string> = {
+  currentPassword: 'Current password',
+  ...NEW_PASSWORD_LABELS,
+};
+
 function ChangePassword() {
   const { api } = useAuth();
   const [values, setValues] = useState({ currentPassword: '', newPassword: '' });
@@ -93,7 +110,9 @@ function ChangePassword() {
     });
     setPending(false);
     if (!res.ok) {
-      setServerError(res.error.message);
+      const weak = weakPasswordError(res.error);
+      if (weak) setErrors({ newPassword: weak });
+      else setServerError(res.error.message);
       return;
     }
     setValues({ currentPassword: '', newPassword: '' });
@@ -105,6 +124,7 @@ function ChangePassword() {
     <section aria-labelledby="change-password-heading">
       <h2 id="change-password-heading">Change password</h2>
       <form onSubmit={onSubmit} noValidate>
+        <ErrorSummary errors={errors} labels={CHANGE_PASSWORD_LABELS} />
         <Field
           label="Current password"
           name="currentPassword"

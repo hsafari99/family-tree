@@ -35,10 +35,10 @@ describe('Account settings: Google', () => {
     expect(await within(google).findByText('Enter your password')).toBeInTheDocument();
     expect(api.callsTo('connectGoogle')).toEqual([]);
 
-    type('Your password, to connect Google', 'correct-horse');
+    type('Your password, to connect Google', 'Correct-horse1');
     fireEvent.click(within(google).getByRole('button', { name: 'Connect Google' }));
     await waitFor(() =>
-      expect(api.callsTo('connectGoogle')).toEqual([{ password: 'correct-horse' }]),
+      expect(api.callsTo('connectGoogle')).toEqual([{ password: 'Correct-horse1' }]),
     );
     // The real API leaves for Google now.
     expect(within(google).getByRole('button', { name: 'Opening Google…' })).toBeDisabled();
@@ -48,7 +48,7 @@ describe('Account settings: Google', () => {
     const { api } = account({ twoFactorEnabled: true });
     renderAt('/account', { auth: api });
     const google = await section();
-    type('Your password, to connect Google', 'correct-horse');
+    type('Your password, to connect Google', 'Correct-horse1');
     fireEvent.click(within(google).getByRole('button', { name: 'Connect Google' }));
     expect(
       await within(google).findByText('Enter a 6-digit code or a recovery code'),
@@ -59,7 +59,7 @@ describe('Account settings: Google', () => {
     fireEvent.click(within(google).getByRole('button', { name: 'Connect Google' }));
     await waitFor(() =>
       expect(api.callsTo('connectGoogle')).toEqual([
-        { password: 'correct-horse', code: FAKE_TOTP },
+        { password: 'Correct-horse1', code: FAKE_TOTP },
       ]),
     );
   });
@@ -106,7 +106,7 @@ describe('Account settings: Google', () => {
     expect(await within(google).findByRole('alert')).toHaveTextContent(MESSAGES.badPassword);
     expect(user.googleConnected).toBe(true);
 
-    type('Your password, to disconnect Google', 'correct-horse');
+    type('Your password, to disconnect Google', 'Correct-horse1');
     fireEvent.click(within(google).getByRole('button', { name: 'Disconnect Google' }));
     fireEvent.click(within(google).getByRole('button', { name: 'Yes, disconnect' }));
     expect(await within(google).findByRole('status')).toHaveTextContent('Google disconnected');
@@ -119,13 +119,13 @@ describe('Account settings: Google', () => {
     const { api } = account({ googleConnected: true, twoFactorEnabled: true });
     renderAt('/account', { auth: api });
     const google = await section();
-    type('Your password, to disconnect Google', 'correct-horse');
+    type('Your password, to disconnect Google', 'Correct-horse1');
     type('Authenticator or recovery code', FAKE_TOTP);
     fireEvent.click(within(google).getByRole('button', { name: 'Disconnect Google' }));
     fireEvent.click(within(google).getByRole('button', { name: 'Yes, disconnect' }));
     await waitFor(() =>
       expect(api.callsTo('disconnectGoogle')).toEqual([
-        { password: 'correct-horse', code: FAKE_TOTP },
+        { password: 'Correct-horse1', code: FAKE_TOTP },
       ]),
     );
   });
@@ -144,7 +144,7 @@ describe('Account settings: Google', () => {
     const setPassword = screen.getByRole('region', { name: 'Set a password' });
     fireEvent.click(within(setPassword).getByRole('button', { name: 'Set password' }));
     expect(await within(setPassword).findByText('Use at least 10 characters')).toBeInTheDocument();
-    type('New password', 'a brand new password');
+    type('New password', 'A brand new password1');
     fireEvent.click(within(setPassword).getByRole('button', { name: 'Set password' }));
 
     expect(await screen.findByRole('heading', { name: 'Change password' })).toBeInTheDocument();
@@ -162,7 +162,7 @@ describe('Account settings: Google', () => {
     api.recentSignIn = false;
     renderAt('/account', { auth: api });
     const setPassword = await screen.findByRole('region', { name: 'Set a password' });
-    type('New password', 'a brand new password');
+    type('New password', 'A brand new password1');
     fireEvent.click(within(setPassword).getByRole('button', { name: 'Set password' }));
     expect(await within(setPassword).findByRole('alert')).toHaveTextContent(
       MESSAGES.recentSignInRequired,

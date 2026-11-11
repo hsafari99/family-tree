@@ -20,7 +20,7 @@ describe('AUTH_RATE_LIMIT_ENABLED=false', () => {
     const { email } = await signUp(app);
     for (let i = 0; i < 7; i++) {
       const res = await call(app, 'POST', '/api/auth/sign-in/email', {
-        body: { email, password: 'not the password' },
+        body: { email, password: 'Not the password1' },
       });
       expect(res.statusCode).toBe(401);
     }

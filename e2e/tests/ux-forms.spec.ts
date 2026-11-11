@@ -11,7 +11,7 @@ test.skip(PROD_LOCAL, 'dev stack only');
 test('a password field has a Show password toggle', async ({ page }) => {
   await page.goto('/sign-in');
   const input = page.getByLabel('Password', { exact: true });
-  await input.fill('not-a-real-password');
+  await input.fill('Not-a-real-password1');
   const toggle = page.getByRole('button', { name: 'Show password' });
   await expect(toggle).toHaveAttribute('aria-pressed', 'false');
   await toggle.click();
@@ -84,8 +84,8 @@ test('the reset page checks that the two new passwords match', async ({ page }) 
     await page.goto(`/reset/${token}`);
     // Both new-password fields have the eye toggle.
     await expect(page.getByRole('button', { name: 'Show password' })).toHaveCount(2);
-    await page.getByLabel('New password', { exact: true }).fill('brand-new-password');
-    await page.getByLabel('Repeat new password', { exact: true }).fill('brand-new-passw0rd');
+    await page.getByLabel('New password', { exact: true }).fill('Brand-new-password1');
+    await page.getByLabel('Repeat new password', { exact: true }).fill('Brand-new-passw0rd');
     await page.getByRole('button', { name: 'Set new password' }).click();
     await expect(page.getByText('The passwords don’t match')).toBeVisible();
     await expect(page).toHaveURL(new RegExp(`/reset/${token}$`));

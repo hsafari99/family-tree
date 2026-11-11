@@ -1,4 +1,5 @@
 import {
+  PASSWORD_CLASSES_MESSAGE,
   apiErrorSchema,
   type AuthProviders,
   authProvidersSchema,
@@ -91,6 +92,7 @@ export const MESSAGES = {
   twoFactorForRole: 'Tree owners and branch stewards must keep two-step verification on',
   ownsTrees: 'Transfer or delete the trees you own before deleting your account',
   passwordRequired: 'Enter your password',
+  weakPassword: PASSWORD_CLASSES_MESSAGE,
   invalidInvite: 'This invite link is invalid, expired or already used',
   resetNotAllowed:
     'You can only issue a reset link to a member without two-step verification who belongs only to trees you own',
@@ -158,6 +160,7 @@ const BY_CODE: Record<string, string> = {
   TWO_FACTOR_REQUIRED_FOR_ROLE: MESSAGES.twoFactorForRole,
   OWNS_TREES: MESSAGES.ownsTrees,
   PASSWORD_REQUIRED: MESSAGES.passwordRequired,
+  WEAK_PASSWORD: MESSAGES.weakPassword,
   INVALID_INVITE: MESSAGES.invalidInvite,
   RESET_LINK_NOT_ALLOWED: MESSAGES.resetNotAllowed,
   FORBIDDEN: MESSAGES.forbidden,

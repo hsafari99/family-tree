@@ -1,11 +1,18 @@
-import { PASSWORD_MIN, signUpSchema } from '@family-tree/shared';
+import { PASSWORD_HINT, signUpSchema } from '@family-tree/shared';
 import { type FormEvent, useState } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
 import { safeNext } from '../auth/RequireAuth';
-import { Field, type FieldErrors, FormError, validate } from '../components/forms';
+import { ErrorSummary, Field, type FieldErrors, FormError, validate } from '../components/forms';
+import { weakPasswordError } from '../components/NewPasswordFields';
 import { GoogleSignIn } from '../components/GoogleSignIn';
 import { Page } from '../components/Page';
+
+const SIGN_UP_LABELS: Record<string, string> = {
+  name: 'Name',
+  email: 'Email',
+  password: 'Password',
+};
 
 export function SignUpPage() {
   const { api, user, refresh } = useAuth();
@@ -29,7 +36,9 @@ export function SignUpPage() {
     const res = await api.signUp(checked.data);
     if (!res.ok) {
       setPending(false);
-      setServerError(res.error.message);
+      const weak = weakPasswordError(res.error);
+      if (weak) setErrors({ password: weak });
+      else setServerError(res.error.message);
       return;
     }
     await refresh();
@@ -42,6 +51,7 @@ export function SignUpPage() {
   return (
     <Page title="Create an account">
       <form onSubmit={onSubmit} noValidate>
+        <ErrorSummary errors={errors} labels={SIGN_UP_LABELS} />
         <Field
           label="Name"
           name="name"
@@ -64,7 +74,7 @@ export function SignUpPage() {
           name="password"
           type="password"
           autoComplete="new-password"
-          hint={`At least ${PASSWORD_MIN} characters.`}
+          hint={PASSWORD_HINT}
           value={values.password}
           onChange={set('password')}
           error={errors.password}

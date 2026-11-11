@@ -23,7 +23,7 @@ describe('client IP reaching Better Auth behind one trusted proxy', () => {
     const { email } = await signUp(app, {}, { 'x-forwarded-for': '192.0.2.1' });
     const attempt = (ip: string) =>
       call(app, 'POST', '/api/auth/sign-in/email', {
-        body: { email, password: 'not the password' },
+        body: { email, password: 'Not the password1' },
         headers: { 'x-forwarded-for': ip },
       });
     // 6 attempts in a minute, but 3 from each of 2 IPs: under the limit of 5 per IP.
@@ -38,7 +38,7 @@ describe('client IP reaching Better Auth behind one trusted proxy', () => {
     const { email } = await signUp(app, {}, { 'x-forwarded-for': '192.0.2.2' });
     const attempt = (i: number) =>
       call(app, 'POST', '/api/auth/sign-in/email', {
-        body: { email, password: 'not the password' },
+        body: { email, password: 'Not the password1' },
         headers: { 'x-forwarded-for': '203.0.113.50', [CLIENT_IP_HEADER]: `10.0.0.${i}` },
       });
     for (let i = 0; i < 5; i++) expect((await attempt(i)).statusCode).toBe(401);

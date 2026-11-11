@@ -121,13 +121,13 @@ describe('AuthProvider error handling', () => {
     api.current = null;
     api.failNext('changePassword', { code: SESSION_EXPIRED, message: MESSAGES.sessionExpired });
     fireEvent.change(screen.getByLabelText('Current password'), {
-      target: { value: 'correct-horse' },
+      target: { value: 'Correct-horse1' },
     });
     fireEvent.change(screen.getByLabelText('New password'), {
-      target: { value: 'brand-new-password' },
+      target: { value: 'Brand-new-password1' },
     });
     fireEvent.change(screen.getByLabelText('Repeat new password'), {
-      target: { value: 'brand-new-password' },
+      target: { value: 'Brand-new-password1' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
     expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();

@@ -1,4 +1,5 @@
-import { fireEvent, screen } from '@testing-library/react';
+import { PASSWORD_CLASSES_MESSAGE, PASSWORD_HINT } from '@family-tree/shared';
+import { fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { FakeAuthApi } from '../test/fake-auth';
 import { renderAt } from '../test/render';
@@ -20,12 +21,42 @@ describe('SignUpPage', () => {
     expect(api.callsTo('signUp')).toHaveLength(0);
   });
 
+  it('lists the password rule under the field', async () => {
+    renderAt('/sign-up');
+    expect(await screen.findByLabelText('Password')).toHaveAccessibleDescription(PASSWORD_HINT);
+  });
+
+  it('refuses a password without a capital, number and symbol, at the field and in the summary', async () => {
+    const { api } = renderAt('/sign-up');
+    await screen.findByRole('heading', { name: 'Create an account' });
+    fill('Ada', 'ada@example.com', 'x'.repeat(12));
+    const summary = await screen.findByRole('alert');
+    expect(
+      within(summary).getByRole('button', { name: `Password: ${PASSWORD_CLASSES_MESSAGE}` }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Password')).toHaveAccessibleDescription(
+      new RegExp(PASSWORD_CLASSES_MESSAGE),
+    );
+    expect(api.callsTo('signUp')).toHaveLength(0);
+  });
+
+  it('shows the server’s WEAK_PASSWORD at the field, with our own text', async () => {
+    const { api } = renderAt('/sign-up');
+    await screen.findByRole('heading', { name: 'Create an account' });
+    api.failNext('signUp', { code: 'WEAK_PASSWORD', message: 'server text' });
+    fill('Ada', 'ada@example.com', 'Correct-horse-battery1');
+    expect(await screen.findByLabelText('Password')).toHaveAccessibleDescription(
+      new RegExp(PASSWORD_CLASSES_MESSAGE),
+    );
+    expect(screen.queryByText('server text')).toBeNull();
+  });
+
   it('signs up and lands on the home page signed in', async () => {
     const { api } = renderAt('/sign-up');
-    fill('Ada', ' Ada@Example.com ', 'correct-horse-battery');
+    fill('Ada', ' Ada@Example.com ', 'Correct-horse-battery1');
     expect(await screen.findByText('Signed in as Ada')).toBeInTheDocument();
     expect(api.callsTo('signUp')).toEqual([
-      { name: 'Ada', email: 'ada@example.com', password: 'correct-horse-battery' },
+      { name: 'Ada', email: 'ada@example.com', password: 'Correct-horse-battery1' },
     ]);
   });
 
@@ -33,7 +64,7 @@ describe('SignUpPage', () => {
     const api = new FakeAuthApi();
     api.addUser({ email: 'ada@example.com' });
     renderAt('/sign-up', { auth: api });
-    fill('Ada', 'ada@example.com', 'correct-horse-battery');
+    fill('Ada', 'ada@example.com', 'Correct-horse-battery1');
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'An account with this email already exists',
     );
@@ -43,7 +74,7 @@ describe('SignUpPage', () => {
     const api = new FakeAuthApi();
     api.hold('signUp');
     renderAt('/sign-up', { auth: api });
-    fill('Ada', 'ada@example.com', 'correct-horse-battery');
+    fill('Ada', 'ada@example.com', 'Correct-horse-battery1');
     expect(await screen.findByRole('button', { name: 'Creating account…' })).toBeDisabled();
     api.release();
     expect(await screen.findByText('Signed in as Ada')).toBeInTheDocument();

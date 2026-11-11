@@ -177,20 +177,20 @@ describe('createAuthApi', () => {
   it('changePassword revokes other sessions', async () => {
     const fetchMock = stubFetch({ status: 200, body: { user } });
     await createAuthApi({ baseUrl: BASE }).changePassword({
-      currentPassword: 'old-password',
-      newPassword: 'new-password',
+      currentPassword: 'Old-password1',
+      newPassword: 'New-password1',
     });
     const init = fetchMock.mock.calls[0]![1] as RequestInit;
     expect(JSON.parse(init.body as string)).toEqual({
-      currentPassword: 'old-password',
-      newPassword: 'new-password',
+      currentPassword: 'Old-password1',
+      newPassword: 'New-password1',
       revokeOtherSessions: true,
     });
   });
 
   it('resetWithCode posts JSON with credentials', async () => {
     const fetchMock = stubFetch({ status: 204 });
-    const input = { email: 'ada@example.com', code: '123456', newPassword: 'new-password' };
+    const input = { email: 'ada@example.com', code: '123456', newPassword: 'New-password1' };
     await expect(createAuthApi({ baseUrl: BASE }).resetWithCode(input)).resolves.toEqual({
       ok: true,
       data: undefined,
@@ -211,7 +211,7 @@ describe('createAuthApi', () => {
     await expect(
       createAuthApi({ baseUrl: BASE }).resetWithLink({
         token: 'x'.repeat(32),
-        newPassword: 'new-password',
+        newPassword: 'New-password1',
       }),
     ).resolves.toEqual({
       ok: false,
@@ -223,8 +223,8 @@ describe('createAuthApi', () => {
     stubFetch({ status: 401, body: { code: 'UNAUTHORIZED', message: 'Unauthorized' } });
     await expect(
       createAuthApi({ baseUrl: BASE }).changePassword({
-        currentPassword: 'old-password',
-        newPassword: 'new-password',
+        currentPassword: 'Old-password1',
+        newPassword: 'New-password1',
       }),
     ).resolves.toEqual({
       ok: false,
@@ -237,7 +237,7 @@ describe('createAuthApi', () => {
     const res = await createAuthApi({ baseUrl: BASE }).signUp({
       name: 'Ada',
       email: 'ada@example.com',
-      password: 'correct-horse',
+      password: 'Correct-horse1',
     });
     expect(res).toEqual({ ok: false, error: { code: 'WEIRD', message: MESSAGES.checkDetails } });
   });
@@ -361,7 +361,7 @@ describe('Google', () => {
         message: MESSAGES.passwordRequiredToDisconnect,
       },
     });
-    await expect(api.setPassword({ newPassword: 'a long password' })).resolves.toEqual({
+    await expect(api.setPassword({ newPassword: 'A long password1' })).resolves.toEqual({
       ok: true,
       data: undefined,
     });
@@ -392,7 +392,7 @@ describe('moving 2FA to a new phone', () => {
 
   it('starts with the password and a code, and returns the otpauth URI', async () => {
     const fetchMock = stubFetch({ status: 200, body: { totpURI: URI } });
-    const input = { password: 'correct-horse', code: '123456' };
+    const input = { password: 'Correct-horse1', code: '123456' };
     await expect(createAuthApi({ baseUrl: BASE }).startTwoFactorMove(input)).resolves.toEqual({
       ok: true,
       data: { totpURI: URI },

@@ -68,7 +68,7 @@ export class FakeAuthApi implements AuthApi {
     const user: FakeUser = {
       id: crypto.randomUUID(),
       name: 'Ada Lovelace',
-      password: 'correct-horse',
+      password: 'Correct-horse1',
       twoFactorEnabled: false,
       requiresTwoFactor: false,
       twoFactorPending: false,

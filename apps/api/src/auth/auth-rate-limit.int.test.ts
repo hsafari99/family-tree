@@ -22,7 +22,7 @@ describe("Better Auth's rate limiter", () => {
     const { email } = await signUp(app);
     const attempt = (forwardedFor: string) =>
       call(app, 'POST', '/api/auth/sign-in/email', {
-        body: { email, password: 'not the password' },
+        body: { email, password: 'Not the password1' },
         headers: { 'x-forwarded-for': forwardedFor },
       });
     for (let i = 0; i < 5; i++) {

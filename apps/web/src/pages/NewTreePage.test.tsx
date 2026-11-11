@@ -29,7 +29,7 @@ describe('NewTreePage', () => {
   it('shows the recovery codes after turning on 2FA, then the form', async () => {
     renderAt('/trees/new', setup({ twoFactorEnabled: false }));
     fireEvent.click(await screen.findByRole('button', { name: 'Turn on two-step verification' }));
-    type('Your password', 'correct-horse');
+    type('Your password', 'Correct-horse1');
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
     await screen.findByLabelText('6-digit code from the app');
     type('6-digit code from the app', FAKE_TOTP);

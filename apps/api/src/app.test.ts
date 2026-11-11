@@ -132,7 +132,7 @@ describe('buildApp', () => {
       method: 'POST',
       url: '/boom',
       headers: { origin: 'http://localhost:5173', cookie: 'ft.session_token=secret-cookie-value' },
-      payload: { email: 'ann@example.com', password: 'hunter2-hunter2' },
+      payload: { email: 'ann@example.com', password: 'Hunter2-hunter2' },
     });
     expect(res.statusCode).toBe(500);
     const log = sink.text();

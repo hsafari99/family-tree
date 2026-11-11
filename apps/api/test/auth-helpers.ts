@@ -4,7 +4,7 @@ import { createOTP } from '@better-auth/utils/otp';
 import type { FastifyInstance, InjectOptions, LightMyRequestResponse } from 'fastify';
 
 export const WEB_ORIGIN = 'http://localhost:5173';
-export const TEST_PASSWORD = 'correct horse battery';
+export const TEST_PASSWORD = 'Correct horse battery1';
 
 /** Minimal cookie jar for app.inject: keeps name=value pairs, drops cookies being cleared. */
 export class CookieJar {

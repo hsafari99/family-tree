@@ -8,10 +8,21 @@ export const emailSchema = z
   .trim()
   .toLowerCase()
   .pipe(z.email('Enter a valid email address'));
+export const PASSWORD_CLASSES_MESSAGE =
+  'Use at least one capital letter, one number and one symbol';
+/** The requirements, for the hint under a new-password field. */
+export const PASSWORD_HINT = `At least ${PASSWORD_MIN} characters, with a capital letter, a number and a symbol.`;
+
+/** A capital letter, a digit, and a symbol (anything that isn't a letter or a digit). */
+export const hasPasswordClasses = (p: string) =>
+  /\p{Lu}/u.test(p) && /\p{Nd}/u.test(p) && /[^\p{L}\p{N}]/u.test(p);
+
+/** A new password. Sign-in never uses it, so older passwords keep working. */
 export const passwordSchema = z
   .string()
   .min(PASSWORD_MIN, `Use at least ${PASSWORD_MIN} characters`)
-  .max(PASSWORD_MAX, `Use at most ${PASSWORD_MAX} characters`);
+  .max(PASSWORD_MAX, `Use at most ${PASSWORD_MAX} characters`)
+  .refine(hasPasswordClasses, PASSWORD_CLASSES_MESSAGE);
 export const nameSchema = z.string().trim().min(1, 'Enter your name').max(100);
 // Authenticator apps often show the code as "123 456"; accept it with any whitespace.
 export const totpCodeSchema = z
