@@ -69,7 +69,7 @@ describe('NewTreePage', () => {
     const summary = await screen.findByRole('alert');
     await waitFor(() => expect(summary).toHaveFocus());
     fireEvent.click(within(summary).getByRole('button', { name: /^Born: / }));
-    expect(screen.getByLabelText('Precision')).toHaveFocus();
+    expect(screen.getByLabelText('Year')).toHaveFocus();
   });
 
   it('explains an incomplete birth date and makes no call', async () => {

@@ -62,13 +62,13 @@ describe('ErrorSummary', () => {
           onChange={() => {}}
           error="Enter a first name"
         />
-        <select data-field="deathDate" aria-label="Precision" />
+        <input type="date" data-field="deathDate" aria-label="Date" />
       </form>,
     );
     const summary = screen.getByRole('alert');
     expect(summary).toHaveFocus();
     fireEvent.click(within(summary).getByRole('button', { name: 'Died: Choose a month' }));
-    expect(screen.getByLabelText('Precision')).toHaveFocus();
+    expect(screen.getByLabelText('Date')).toHaveFocus();
     fireEvent.click(
       within(summary).getByRole('button', { name: 'First name: Enter a first name' }),
     );

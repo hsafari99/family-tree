@@ -141,6 +141,19 @@ describe('PersonPanel', () => {
     });
   });
 
+  it('saves with a stored mixed-precision range left unchanged', async () => {
+    const s = setup();
+    s.view.person.birthDate = { qualifier: 'between', date1: '1815-06', date2: '1815' };
+    renderAt(at(s), s);
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit details' }));
+    fireEvent.change(screen.getByLabelText('Last name'), { target: { value: 'Lovelace' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('Saved')).toBeInTheDocument();
+    expect(s.trees.callsTo('updatePerson')).toMatchObject([
+      { input: { version: 1, surname: 'Lovelace' } },
+    ]);
+  });
+
   it('explains an incomplete date in plain words, without calling', async () => {
     const s = setup();
     renderAt(at(s), s);
@@ -153,7 +166,7 @@ describe('PersonPanel', () => {
     expect(s.trees.callsTo('updatePerson')).toEqual([]);
     const summary = screen.getByRole('alert');
     fireEvent.click(within(summary).getByRole('button', { name: 'Died: Choose a month' }));
-    expect(died.getByLabelText('Precision')).toHaveFocus();
+    expect(died.getByLabelText('Year')).toHaveFocus();
   });
 
   it('shows the stale-edit message, reloads, and keeps the draft', async () => {

@@ -23,22 +23,30 @@ const PRECISION_LABEL: Record<DatePrecision, string> = {
   year: 'Year only',
 };
 
-export const toDraft = (d: FuzzyDate | null): FuzzyDraft =>
-  d
-    ? {
-        qualifier: d.qualifier,
-        precision: precisionOf(d.date1),
-        date1: d.date1,
-        date2: d.date2 ?? '',
-      }
-    : { qualifier: 'exact', precision: 'day', date1: '', date2: '' };
-
 const cut = (s: string, p: DatePrecision) =>
   p === 'year' ? s.slice(0, 4) : p === 'month' ? s.slice(0, 7) : s;
+
+/** A calendar date the browser can't read yet (a part is missing): not blank, never valid. */
+const HALF_TYPED = 'half-typed';
+
+/** One precision serves both dates: a mixed range ('1950-06'..'1950') opens at the coarser one,
+ *  so a stored value saves unchanged. */
+export function toDraft(d: FuzzyDate | null): FuzzyDraft {
+  if (!d) return { qualifier: 'exact', precision: 'day', date1: '', date2: '' };
+  const shortest = d.date2 !== undefined && d.date2.length < d.date1.length ? d.date2 : d.date1;
+  const precision = precisionOf(shortest);
+  return {
+    qualifier: d.qualifier,
+    precision,
+    date1: cut(d.date1, precision),
+    date2: d.date2 === undefined ? '' : cut(d.date2, precision),
+  };
+}
 
 /** Changes precision, keeping what fits: day -> month -> year cut; year -> month keeps the year. */
 export function withPrecision(d: FuzzyDraft, precision: DatePrecision): FuzzyDraft {
   const fit = (s: string) => {
+    if (s === HALF_TYPED) return '';
     // Going finer can't invent a day: the calendar starts empty.
     if (precision === 'day') return s.length === 10 ? s : '';
     const kept = cut(s, precision);
@@ -95,6 +103,7 @@ function DateControl({
   onChange,
   describedBy,
   invalid,
+  field,
 }: {
   id: string;
   label: 'Date' | 'From' | 'To';
@@ -103,6 +112,8 @@ function DateControl({
   onChange: (v: string) => void;
   describedBy: string | undefined;
   invalid: boolean;
+  /** The form field key, on the first date control only: the error summary focuses it. */
+  field: string | undefined;
 }) {
   const common = { 'aria-describedby': describedBy, 'aria-invalid': invalid || undefined };
   if (precision === 'day') {
@@ -112,8 +123,10 @@ function DateControl({
         <input
           id={id}
           type="date"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
+          data-field={field}
+          value={value === HALF_TYPED ? '' : value}
+          // A half-typed date reads as '': keep a marker so it can't save as "no date".
+          onChange={(e) => onChange(e.target.validity.badInput ? HALF_TYPED : e.target.value)}
           {...common}
         />
       </span>
@@ -127,6 +140,7 @@ function DateControl({
       <label htmlFor={`${id}-y`}>{yearLabel}</label>
       <input
         id={`${id}-y`}
+        data-field={field}
         inputMode="numeric"
         maxLength={4}
         value={y}
@@ -186,7 +200,6 @@ export function FuzzyDateField({
           <label htmlFor={`${id}-p`}>Precision</label>
           <select
             id={`${id}-p`}
-            data-field={name}
             value={value.precision}
             onChange={(e) => onChange(withPrecision(value, e.target.value as DatePrecision))}
           >
@@ -221,6 +234,7 @@ export function FuzzyDateField({
           onChange={(date1) => onChange({ ...value, date1 })}
           describedBy={describedBy}
           invalid={!!error}
+          field={name}
         />
         {between && (
           <DateControl
@@ -231,6 +245,7 @@ export function FuzzyDateField({
             onChange={(date2) => onChange({ ...value, date2 })}
             describedBy={describedBy}
             invalid={!!error}
+            field={undefined}
           />
         )}
       </div>

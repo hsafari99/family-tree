@@ -84,11 +84,40 @@ describe('FuzzyDateField', () => {
     expect(screen.getByLabelText('Month')).toHaveValue('03');
   });
 
-  it('ties the error to the group and marks it for the summary', () => {
+  it('ties the error to the group and marks the first date control for the summary', () => {
     render(<Harness error="Choose a month" />);
     const group = screen.getByRole('group', { name: 'Died' });
     expect(group).toHaveAccessibleDescription(/Choose a month/);
-    expect(screen.getByLabelText('Precision')).toHaveAttribute('data-field', 'deathDate');
+    expect(screen.getByLabelText('Precision')).not.toHaveAttribute('data-field');
+    expect(screen.getByLabelText('Date')).toHaveAttribute('data-field', 'deathDate');
+    fireEvent.change(screen.getByLabelText('Precision'), { target: { value: 'month' } });
+    expect(screen.getByLabelText('Year')).toHaveAttribute('data-field', 'deathDate');
+    expect(screen.getByLabelText('Month')).not.toHaveAttribute('data-field');
+    fireEvent.change(screen.getByLabelText('How certain'), { target: { value: 'between' } });
+    expect(document.querySelectorAll('[data-field="deathDate"]')).toHaveLength(1);
+  });
+
+  it('a half-typed calendar date blocks the save instead of clearing the date', () => {
+    function Probe() {
+      const [v, setV] = useState(toDraft({ qualifier: 'exact', date1: '1950-03-07' }));
+      return (
+        <>
+          <FuzzyDateField label="Born" name="birthDate" value={v} onChange={setV} />
+          <output data-testid="error">{draftError(v) ?? ''}</output>
+        </>
+      );
+    }
+    render(<Probe />);
+    const date = screen.getByLabelText('Date') as HTMLInputElement;
+    // The browser reports '' with validity.badInput while a part of the date is missing.
+    Object.defineProperty(date, 'validity', { value: { badInput: true } });
+    fireEvent.change(date, { target: { value: '' } });
+    expect(screen.getByTestId('error')).toHaveTextContent('Pick a date');
+    expect(date).toHaveValue('');
+    // Going coarser keeps nothing of a half-typed date.
+    fireEvent.change(screen.getByLabelText('Precision'), { target: { value: 'year' } });
+    expect(screen.getByLabelText('Year')).toHaveValue('');
+    expect(screen.getByTestId('error')).toHaveTextContent('');
   });
 });
 
@@ -113,6 +142,14 @@ describe('draft helpers', () => {
     expect(
       draftError({ ...base, qualifier: 'between', precision: 'year', date1: '1950', date2: '' }),
     ).toBe('Enter the second date');
+  });
+  it('opens a mixed-precision range at the coarser precision, so it saves unchanged', () => {
+    const d = toDraft({ qualifier: 'between', date1: '1950-06', date2: '1950' });
+    expect(d).toEqual({ qualifier: 'between', precision: 'year', date1: '1950', date2: '1950' });
+    expect(draftError(d)).toBeNull();
+    const e = toDraft({ qualifier: 'between', date1: '1950-06-15', date2: '1950-06' });
+    expect(e).toMatchObject({ precision: 'month', date1: '1950-06', date2: '1950-06' });
+    expect(draftError(e)).toBeNull();
   });
   it('fromDraft is null for an empty date', () => {
     expect(fromDraft(toDraft(null))).toBeNull();
