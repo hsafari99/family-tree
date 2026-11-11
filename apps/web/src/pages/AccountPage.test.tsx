@@ -38,6 +38,7 @@ describe('AccountPage', () => {
     await screen.findByText('ada@example.com');
     type('Current password', 'correct-horse');
     type('New password', 'brand-new-password');
+    type('Repeat new password', 'brand-new-password');
     fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
     expect(await screen.findByText(/Password changed/)).toBeInTheDocument();
     expect(api.users.get('ada@example.com')!.password).toBe('brand-new-password');
@@ -48,8 +49,21 @@ describe('AccountPage', () => {
     await screen.findByText('ada@example.com');
     type('Current password', 'not-my-password');
     type('New password', 'brand-new-password');
+    type('Repeat new password', 'brand-new-password');
     fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(MESSAGES.badPassword);
+  });
+
+  it('checks the repeated new password matches', async () => {
+    const { api } = signedIn();
+    renderAt('/account', { auth: api });
+    await screen.findByText('ada@example.com');
+    type('Current password', 'correct-horse');
+    type('New password', 'brand-new-password');
+    type('Repeat new password', 'brand-new-passw0rd');
+    fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
+    expect(await screen.findByText('The passwords don’t match')).toBeInTheDocument();
+    expect(api.callsTo('changePassword')).toHaveLength(0);
   });
 
   it('validates the new password', async () => {

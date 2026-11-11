@@ -1,14 +1,16 @@
-import { PASSWORD_MIN, resetWithCodeSchema } from '@family-tree/shared';
+import { resetWithCodeSchema } from '@family-tree/shared';
 import { type FormEvent, useState } from 'react';
 import { Link } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
 import { Field, type FieldErrors, FormError, validate } from '../components/forms';
+import { confirmError, NewPasswordFields } from '../components/NewPasswordFields';
 import { Page } from '../components/Page';
 import { PasswordChanged } from './PasswordChanged';
 
 export function ForgotPasswordPage() {
   const { api } = useAuth();
   const [values, setValues] = useState({ email: '', code: '', newPassword: '' });
+  const [repeat, setRepeat] = useState('');
   const [errors, setErrors] = useState<FieldErrors>({});
   const [serverError, setServerError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -20,8 +22,9 @@ export function ForgotPasswordPage() {
     e.preventDefault();
     setServerError(null);
     const checked = validate(resetWithCodeSchema, values);
-    setErrors(checked.ok ? {} : checked.errors);
-    if (!checked.ok) return;
+    const repeatPassword = confirmError(values.newPassword, repeat);
+    setErrors({ ...(checked.ok ? {} : checked.errors), repeatPassword });
+    if (!checked.ok || repeatPassword) return;
     setPending(true);
     const res = await api.resetWithCode(checked.data);
     setPending(false);
@@ -67,15 +70,12 @@ export function ForgotPasswordPage() {
           onChange={set('code')}
           error={errors.code}
         />
-        <Field
-          label="New password"
-          name="newPassword"
-          type="password"
-          autoComplete="new-password"
-          hint={`At least ${PASSWORD_MIN} characters.`}
-          value={values.newPassword}
-          onChange={set('newPassword')}
-          error={errors.newPassword}
+        <NewPasswordFields
+          password={values.newPassword}
+          repeat={repeat}
+          onPassword={set('newPassword')}
+          onRepeat={setRepeat}
+          errors={errors}
         />
         <FormError>{serverError}</FormError>
         <button type="submit" disabled={pending}>

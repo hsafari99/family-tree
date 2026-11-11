@@ -1,8 +1,9 @@
-import { PASSWORD_MIN, resetWithLinkSchema } from '@family-tree/shared';
+import { resetWithLinkSchema } from '@family-tree/shared';
 import { type FormEvent, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
-import { Field, FormError, validate } from '../components/forms';
+import { type FieldErrors, FormError, validate } from '../components/forms';
+import { confirmError, NewPasswordFields } from '../components/NewPasswordFields';
 import { Page } from '../components/Page';
 import { PasswordChanged } from './PasswordChanged';
 
@@ -12,7 +13,8 @@ export function ResetLinkPage() {
   const { api } = useAuth();
   const { token = '' } = useParams();
   const [newPassword, setNewPassword] = useState('');
-  const [error, setError] = useState<string | undefined>();
+  const [repeat, setRepeat] = useState('');
+  const [errors, setErrors] = useState<FieldErrors>({});
   const [serverError, setServerError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [done, setDone] = useState(false);
@@ -21,12 +23,13 @@ export function ResetLinkPage() {
     e.preventDefault();
     setServerError(null);
     const checked = validate(resetWithLinkSchema, { token, newPassword });
+    const repeatPassword = confirmError(newPassword, repeat);
+    setErrors({ newPassword: checked.ok ? undefined : checked.errors.newPassword, repeatPassword });
     if (!checked.ok) {
-      setError(checked.errors.newPassword);
       if (checked.errors.token) setServerError(INVALID_LINK);
       return;
     }
-    setError(undefined);
+    if (repeatPassword) return;
     setPending(true);
     const res = await api.resetWithLink(checked.data);
     setPending(false);
@@ -48,15 +51,12 @@ export function ResetLinkPage() {
   return (
     <Page title="Choose a new password">
       <form onSubmit={onSubmit} noValidate>
-        <Field
-          label="New password"
-          name="newPassword"
-          type="password"
-          autoComplete="new-password"
-          hint={`At least ${PASSWORD_MIN} characters.`}
-          value={newPassword}
-          onChange={setNewPassword}
-          error={error}
+        <NewPasswordFields
+          password={newPassword}
+          repeat={repeat}
+          onPassword={setNewPassword}
+          onRepeat={setRepeat}
+          errors={errors}
         />
         <FormError>{serverError}</FormError>
         <button type="submit" disabled={pending}>

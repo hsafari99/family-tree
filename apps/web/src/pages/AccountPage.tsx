@@ -1,10 +1,11 @@
-import { PASSWORD_MIN, passwordSchema } from '@family-tree/shared';
+import { passwordSchema } from '@family-tree/shared';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { MESSAGES } from '../auth/api';
 import { useAuth } from '../auth/AuthContext';
 import { ConfirmButton } from '../components/ConfirmButton';
 import { Field, type FieldErrors, FormError, Success, validate } from '../components/forms';
+import { confirmError, NewPasswordFields } from '../components/NewPasswordFields';
 import { Page } from '../components/Page';
 import { GoogleSection, SetPassword } from './AccountGoogle';
 import { TwoFactorMove } from './TwoFactorMove';
@@ -66,6 +67,7 @@ export function AccountPage() {
 function ChangePassword() {
   const { api } = useAuth();
   const [values, setValues] = useState({ currentPassword: '', newPassword: '' });
+  const [repeat, setRepeat] = useState('');
   const [errors, setErrors] = useState<FieldErrors>({});
   const [serverError, setServerError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -81,8 +83,9 @@ function ChangePassword() {
     const next: FieldErrors = {};
     if (values.currentPassword === '') next.currentPassword = 'Enter your current password';
     if (!checked.ok) next.newPassword = checked.errors[''];
+    next.repeatPassword = confirmError(values.newPassword, repeat);
     setErrors(next);
-    if (!checked.ok || next.currentPassword) return;
+    if (!checked.ok || next.currentPassword || next.repeatPassword) return;
     setPending(true);
     const res = await api.changePassword({
       currentPassword: values.currentPassword,
@@ -94,6 +97,7 @@ function ChangePassword() {
       return;
     }
     setValues({ currentPassword: '', newPassword: '' });
+    setRepeat('');
     setDone(true);
   }
 
@@ -110,15 +114,12 @@ function ChangePassword() {
           onChange={set('currentPassword')}
           error={errors.currentPassword}
         />
-        <Field
-          label="New password"
-          name="newPassword"
-          type="password"
-          autoComplete="new-password"
-          hint={`At least ${PASSWORD_MIN} characters.`}
-          value={values.newPassword}
-          onChange={set('newPassword')}
-          error={errors.newPassword}
+        <NewPasswordFields
+          password={values.newPassword}
+          repeat={repeat}
+          onPassword={set('newPassword')}
+          onRepeat={setRepeat}
+          errors={errors}
         />
         <FormError>{serverError}</FormError>
         {done && (

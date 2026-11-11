@@ -126,6 +126,9 @@ describe('AuthProvider error handling', () => {
     fireEvent.change(screen.getByLabelText('New password'), {
       target: { value: 'brand-new-password' },
     });
+    fireEvent.change(screen.getByLabelText('Repeat new password'), {
+      target: { value: 'brand-new-password' },
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
     expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
   });

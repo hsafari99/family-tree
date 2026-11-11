@@ -6,8 +6,9 @@ import { INVALID_LINK } from './ResetLinkPage';
 
 const TOKEN = 'a'.repeat(43);
 
-function submit(newPassword: string) {
+function submit(newPassword: string, repeat = newPassword) {
   fireEvent.change(screen.getByLabelText('New password'), { target: { value: newPassword } });
+  fireEvent.change(screen.getByLabelText('Repeat new password'), { target: { value: repeat } });
   fireEvent.click(screen.getByRole('button', { name: 'Set new password' }));
 }
 
@@ -47,5 +48,18 @@ describe('ResetLinkPage', () => {
     await screen.findByLabelText('New password');
     submit('short');
     expect(await screen.findByText('Use at least 10 characters')).toBeInTheDocument();
+  });
+
+  it('checks the repeat matches without calling the API', async () => {
+    const api = new FakeAuthApi();
+    api.addUser({ email: 'ada@example.com' });
+    api.resetTokens.set(TOKEN, 'ada@example.com');
+    renderAt(`/reset/${TOKEN}`, { auth: api });
+    await screen.findByLabelText('New password');
+    submit('brand-new-password', 'brand-new-passw0rd');
+    const repeat = screen.getByLabelText('Repeat new password');
+    expect(await screen.findByText('The passwords don’t match')).toBeInTheDocument();
+    expect(repeat).toHaveAccessibleDescription('The passwords don’t match');
+    expect(api.callsTo('resetWithLink')).toHaveLength(0);
   });
 });

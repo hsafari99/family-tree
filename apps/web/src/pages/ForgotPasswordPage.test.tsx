@@ -9,12 +9,13 @@ function seeded() {
   return api;
 }
 
-function submit(email: string, code: string, newPassword: string) {
+function submit(email: string, code: string, newPassword: string, repeat = newPassword) {
   fireEvent.change(screen.getByLabelText('Email'), { target: { value: email } });
   fireEvent.change(screen.getByLabelText('Authenticator or recovery code'), {
     target: { value: code },
   });
   fireEvent.change(screen.getByLabelText('New password'), { target: { value: newPassword } });
+  fireEvent.change(screen.getByLabelText('Repeat new password'), { target: { value: repeat } });
   fireEvent.click(screen.getByRole('button', { name: 'Set new password' }));
 }
 
@@ -53,5 +54,16 @@ describe('ForgotPasswordPage', () => {
     ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/sign-in');
     expect(api.users.get('ada@example.com')!.password).toBe('brand-new-password');
+  });
+
+  it('checks the repeat matches without calling the API', async () => {
+    const { api } = renderAt('/forgot-password', { auth: seeded() });
+    await screen.findByLabelText('Email');
+    submit('ada@example.com', FAKE_TOTP, 'brand-new-password', 'brand-new-passw0rd');
+    expect(await screen.findByText('The passwords don’t match')).toBeInTheDocument();
+    expect(screen.getByLabelText('Repeat new password')).toHaveAccessibleDescription(
+      'The passwords don’t match',
+    );
+    expect(api.callsTo('resetWithCode')).toHaveLength(0);
   });
 });
