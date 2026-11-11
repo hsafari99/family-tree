@@ -11,6 +11,7 @@ import { ErrorSummary, FormError, validateDeep, type FieldErrors } from '../../c
 import { personName } from '../../trees/format';
 import { useTreesApi } from '../../trees/TreesApiContext';
 import { DuplicatePrompt } from './DuplicatePrompt';
+import { SelectField, UnionChoiceSelects } from './RelationSelects';
 import { similarQueryOf, useDuplicateCheck } from './useDuplicateCheck';
 import {
   emptyQuick,
@@ -21,9 +22,15 @@ import {
 } from './QuickPersonFields';
 
 const NO_EXCLUDED: readonly string[] = [];
-const ROLE_LABEL = { parent: 'Parent', child: 'Child', partner: 'Partner', sibling: 'Sibling' };
+/** The new person is `as` of the chosen one: "Parent of Ann Hale" sends as: 'parent' (brief #10). */
+const ROLE_LABEL = {
+  parent: 'Parent of',
+  child: 'Child of',
+  partner: 'Partner or spouse of',
+  sibling: 'Sibling of',
+};
 
-const ADD_PERSON_LABELS: Record<string, string> = { ...QUICK_LABELS, connect: 'Connect to' };
+const ADD_PERSON_LABELS: Record<string, string> = { ...QUICK_LABELS, connect: 'Related to' };
 
 export function AddPersonForm({
   treeId,
@@ -49,6 +56,14 @@ export function AddPersonForm({
   const [quick, setQuick] = useState(emptyQuick());
   const [to, setTo] = useState('');
   const [as, setAs] = useState('child');
+  const [unionType, setUnionType] = useState('marriage');
+  const [unionStatus, setUnionStatus] = useState('married');
+  const chosen = persons.find((p) => p.id === to);
+  const link = {
+    as,
+    kind: 'biological',
+    ...(as === 'partner' ? { union: { type: unionType, status: unionStatus } } : {}),
+  };
   const [errors, setErrors] = useState<FieldErrors>({});
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -68,7 +83,7 @@ export function AddPersonForm({
     }
     const input = {
       person: quickPerson(quick),
-      ...(to ? { attach: { to, as, kind: 'biological' } } : {}),
+      ...(to ? { attach: { to, ...link } } : {}),
     };
     const v = validateDeep(createPersonSchema, input);
     if (!v.ok) {
@@ -96,8 +111,7 @@ export function AddPersonForm({
       setPending(true);
       const res = await api.addRelative(treeId, to, {
         personId: p.id,
-        as,
-        kind: 'biological',
+        ...link,
       } as Parameters<typeof api.addRelative>[2]);
       if (!alive.current) return;
       setPending(false);
@@ -134,7 +148,7 @@ export function AddPersonForm({
         errors={errors}
       />
       <div className="field">
-        <label htmlFor={`${uid}-connect`}>Connect to</label>
+        <label htmlFor={`${uid}-connect`}>Related to</label>
         {mustConnect && !errors.connect && (
           <p className="hint">Choose someone in your branch to connect them to.</p>
         )}
@@ -158,17 +172,23 @@ export function AddPersonForm({
           </p>
         )}
       </div>
-      {to && (
-        <div className="field">
-          <label htmlFor={`${uid}-as`}>as their</label>
-          <select id={`${uid}-as`} value={as} onChange={(e) => setAs(e.target.value)}>
-            {RELATIVE_ROLES.map((r) => (
-              <option key={r} value={r}>
-                {ROLE_LABEL[r]}
-              </option>
-            ))}
-          </select>
-        </div>
+      <SelectField
+        label="Relationship"
+        value={as}
+        onChange={setAs}
+        disabled={!to}
+        options={RELATIVE_ROLES.map((r) => ({
+          value: r,
+          label: `${ROLE_LABEL[r]} ${chosen ? personName(chosen) : '…'}`,
+        }))}
+      />
+      {to && as === 'partner' && (
+        <UnionChoiceSelects
+          type={unionType}
+          status={unionStatus}
+          onType={setUnionType}
+          onStatus={setUnionStatus}
+        />
       )}
       {dup.matches && (
         <DuplicatePrompt

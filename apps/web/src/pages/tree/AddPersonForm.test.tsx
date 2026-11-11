@@ -36,12 +36,54 @@ describe('AddPersonForm', () => {
     renderAt(`/trees/${s.id}/people/new`, s);
     await screen.findByRole('heading', { name: 'Add a person' });
     fill('Kit');
-    fireEvent.change(screen.getByLabelText('Connect to'), { target: { value: robert.id } });
-    fireEvent.change(screen.getByLabelText('as their'), { target: { value: 'child' } });
+    fireEvent.change(screen.getByLabelText('Related to'), { target: { value: robert.id } });
+    fireEvent.change(screen.getByLabelText('Relationship'), { target: { value: 'child' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add person' }));
     await waitFor(() => expect(s.trees.callsTo('createPerson')).toHaveLength(1));
     expect(s.trees.callsTo('createPerson')[0]).toMatchObject({
       input: { attach: { to: robert.id, as: 'child', kind: 'biological' } },
+    });
+  });
+
+  it('offers Related to with a Relationship select, including Partner or spouse of (brief #10)', async () => {
+    const s = setup();
+    renderAt(`/trees/${s.id}/people/new`, s);
+    await screen.findByRole('heading', { name: 'Add a person' });
+    const related = screen.getByLabelText('Related to');
+    expect(related).toHaveDisplayValue('No one');
+    const rel = screen.getByLabelText('Relationship');
+    expect(rel).toBeDisabled();
+    const texts = () => [...rel.querySelectorAll('option')].map((o) => o.textContent);
+    expect(texts()).toEqual([
+      'Parent of …',
+      'Child of …',
+      'Partner or spouse of …',
+      'Sibling of …',
+    ]);
+    fireEvent.change(related, { target: { value: robert.id } });
+    expect(rel).toBeEnabled();
+    expect(texts()).toEqual([
+      'Parent of Robert Hale',
+      'Child of Robert Hale',
+      'Partner or spouse of Robert Hale',
+      'Sibling of Robert Hale',
+    ]);
+    expect((rel.querySelector('option') as HTMLOptionElement).value).toBe('parent');
+    expect(screen.queryByLabelText('Type')).toBeNull();
+    fireEvent.change(rel, { target: { value: 'partner' } });
+    fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'partnership' } });
+    fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'partners' } });
+    fill('Pat');
+    fireEvent.click(screen.getByRole('button', { name: 'Add person' }));
+    await waitFor(() => expect(s.trees.callsTo('createPerson')).toHaveLength(1));
+    expect(s.trees.callsTo('createPerson')[0]).toMatchObject({
+      input: {
+        attach: {
+          to: robert.id,
+          as: 'partner',
+          union: { type: 'partnership', status: 'partners' },
+        },
+      },
     });
   });
 
@@ -135,7 +177,7 @@ describe('AddPersonForm duplicate check', () => {
     const s = dupSetup();
     renderAt(`/trees/${s.id}/people/new`, s);
     await screen.findByRole('heading', { name: 'Add a person' });
-    fireEvent.change(screen.getByLabelText('Connect to'), { target: { value: robert.id } });
+    fireEvent.change(screen.getByLabelText('Related to'), { target: { value: robert.id } });
     submit();
     fireEvent.click(await screen.findByRole('button', { name: 'Yes, use Ada Lovelace' }));
     await waitFor(() => expect(s.trees.callsTo('addRelative')).toHaveLength(1));
