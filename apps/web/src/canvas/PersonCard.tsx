@@ -86,22 +86,19 @@ export function PersonCardView({
       )}
       {detail === 'full' &&
         person.canAddRelative &&
-        ADD.map(({ as, where, word }) => {
-          const noParents = as === 'sibling' && !person.hasParents;
-          return (
-            <button
-              key={as}
-              type="button"
-              className={`card-add card-add-${where} nodrag`}
-              aria-label={`Add a ${word} of ${name}`}
-              title={noParents ? 'Add a parent first' : `Add a ${word}`}
-              disabled={noParents}
-              onClick={() => onAdd(as)}
-            >
-              +
-            </button>
-          );
-        })}
+        ADD.map(({ as, where, word }) => (
+          // A sibling of someone with no recorded parents shares a parents-unknown union (brief #11).
+          <button
+            key={as}
+            type="button"
+            className={`card-add card-add-${where} nodrag`}
+            aria-label={`Add a ${word} of ${name}`}
+            title={`Add a ${word}`}
+            onClick={() => onAdd(as)}
+          >
+            +
+          </button>
+        ))}
     </div>
   );
 }

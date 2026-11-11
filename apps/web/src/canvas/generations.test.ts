@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { assignGenerations } from './generations';
 import { graphToFlow } from './graph-to-flow';
-import { haleGraph } from './test-fixtures';
+import { haleGraph, unknownParentsGraph } from './test-fixtures';
 
 describe('assignGenerations', () => {
   it('puts partners in one row and children one row below (in-laws join their partner)', () => {
@@ -52,5 +52,14 @@ describe('assignGenerations', () => {
       a: 0,
     });
     expect(assignGenerations({ personIds: [], families: [] })!.size).toBe(0);
+  });
+});
+
+describe('assignGenerations with unknown parents (brief #11)', () => {
+  it('gives the siblings one row even with no parents', () => {
+    const gens = assignGenerations(
+      graphToFlow(unknownParentsGraph(), { focusId: null, meId: null }),
+    )!;
+    expect(Object.fromEntries(gens)).toEqual({ ann: 0, ben: 0, pat: 0, kim: 1 });
   });
 });

@@ -14,19 +14,25 @@ export function pathHighlight(fromId: string, steps: readonly KinStep[]): PathHi
   const unionIds = new Set<string>();
   const edgeIds = new Set<string>();
   let prev = fromId;
+  let prevVirtual = false;
   for (const s of steps) {
-    personIds.add(s.personId);
+    // A virtual step lands on a parents-unknown union (brief #11), not on a person.
+    if (!s.virtual) personIds.add(s.personId);
     unionIds.add(s.unionId);
     if (s.move === 'partner') {
       edgeIds.add(`partner:${s.unionId}:${prev}`);
       edgeIds.add(`partner:${s.unionId}:${s.personId}`);
     } else {
       // child → union dot → parent, whichever way the step goes.
-      const parent = s.move === 'parent' ? s.personId : prev;
       edgeIds.add(`child:${s.linkId}`);
-      edgeIds.add(`partner:${s.unionId}:${parent}`);
+      const virtualParent = s.move === 'parent' ? s.virtual === true : prevVirtual;
+      if (!virtualParent) {
+        const parent = s.move === 'parent' ? s.personId : prev;
+        edgeIds.add(`partner:${s.unionId}:${parent}`);
+      }
     }
     prev = s.personId;
+    prevVirtual = s.virtual === true;
   }
   return { personIds, unionIds, edgeIds };
 }

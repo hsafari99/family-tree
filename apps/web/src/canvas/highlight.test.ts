@@ -2,7 +2,7 @@ import { relationshipPath } from '@family-tree/shared';
 import { describe, expect, it } from 'vitest';
 import { graphToFlow } from './graph-to-flow';
 import { applyHighlight, pathHighlight } from './highlight';
-import { haleGraph } from './test-fixtures';
+import { haleGraph, unknownParentsGraph } from './test-fixtures';
 
 const g = haleGraph();
 const kin = { persons: g.persons, unions: g.unions, parentChild: g.links };
@@ -37,5 +37,16 @@ describe('applyHighlight', () => {
     expect(robert).toBe(flow.nodes.find((n) => n.id === 'p:robert'));
     const other = out.edges.find((e) => e.id === 'child:l-noah')!;
     expect(other).toBe(flow.edges.find((e) => e.id === 'child:l-noah'));
+  });
+});
+
+describe('pathHighlight through a parents-unknown union (brief #11)', () => {
+  it('marks the dot and both child edges, but no person for the union', () => {
+    const u = unknownParentsGraph();
+    const k = { persons: u.persons, unions: u.unions, parentChild: u.links };
+    const h = pathHighlight('ann', relationshipPath(k, 'ann', 'ben')!);
+    expect([...h.personIds].sort()).toEqual(['ann', 'ben']);
+    expect([...h.unionIds]).toEqual(['u0']);
+    expect([...h.edgeIds].sort()).toEqual(['child:l-ann', 'child:l-ben']);
   });
 });

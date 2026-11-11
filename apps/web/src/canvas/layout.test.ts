@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { applyElkLayout, toElkGraph } from './elk-graph';
 import { assignGenerations } from './generations';
 import { CARD_WIDTH, graphToFlow } from './graph-to-flow';
-import { haleGraph } from './test-fixtures';
+import { haleGraph, unknownParentsGraph } from './test-fixtures';
 
 async function layout(graph: TreeGraph) {
   const flow = graphToFlow(graph, { focusId: null, meId: null });
@@ -49,5 +49,12 @@ describe('ELK layered layout of the seed family', () => {
     expect(a.get('leo')!.x).toBeLessThan(a.get('mia')!.x);
     const b = await layout(haleGraph({ leoOrder: 2, miaOrder: 1 }));
     expect(b.get('mia')!.x).toBeLessThan(b.get('leo')!.x);
+  });
+
+  it('puts siblings with unknown parents in one row, under their dot (brief #11)', async () => {
+    const pos = await layout(unknownParentsGraph());
+    expect(pos.get('ben')!.y).toBe(pos.get('ann')!.y);
+    expect(pos.get('u0')!.y).toBeLessThan(pos.get('ann')!.y);
+    expect(pos.get('kim')!.y).toBeGreaterThan(pos.get('ann')!.y);
   });
 });

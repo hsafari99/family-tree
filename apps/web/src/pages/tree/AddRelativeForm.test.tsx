@@ -96,11 +96,11 @@ describe('AddRelativeForm', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('They are already related this way');
   });
 
-  it('disables Add sibling until a parent exists', async () => {
+  it('offers Add sibling with no parents recorded (brief #11)', async () => {
     const s = setup(false);
     renderAt(`/trees/${s.id}/people/${subject.id}?tab=relations`, s);
-    expect(await screen.findByRole('button', { name: 'Add sibling' })).toBeDisabled();
-    expect(screen.getByText('Add a parent first')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Add sibling' })).toBeEnabled();
+    expect(screen.queryByText('Add a parent first')).toBeNull();
   });
 
   it('validates the first name without calling', async () => {

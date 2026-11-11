@@ -46,11 +46,12 @@ describe('PersonCardView', () => {
     expect(onAdd).toHaveBeenCalledWith('child');
   });
 
-  it('disables sibling when there are no parents', () => {
-    view({ person: { ...robert, hasParents: false } });
+  it('offers a sibling even when there are no parents (brief #11)', () => {
+    const { onAdd } = view({ person: { ...robert, hasParents: false } });
     const b = screen.getByRole('button', { name: 'Add a sibling of Robert Hale' });
-    expect(b).toBeDisabled();
-    expect(b).toHaveAttribute('title', 'Add a parent first');
+    expect(b).toBeEnabled();
+    fireEvent.click(b);
+    expect(onAdd).toHaveBeenCalledWith('sibling');
   });
 
   it('has no add buttons without permission', () => {

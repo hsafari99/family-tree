@@ -84,6 +84,27 @@ describe('TrashPage', () => {
     expect(screen.getByRole('link', { name: 'Back to Hale family' })).toBeInTheDocument();
   });
 
+  it('titles siblings with unknown parents, in the list and the details (brief #11)', async () => {
+    const s = setup([
+      batch(
+        {
+          mode: 'relation',
+          people: 0,
+          unions: 1,
+          links: 2,
+          root: { kind: 'union', partners: [], parentsUnknown: true },
+        },
+        { people: [], unions: [{ id: crypto.randomUUID(), partners: [], parentsUnknown: true }] },
+      ),
+    ]);
+    renderAt(`/trees/${s.id}/trash`, s);
+    expect(await screen.findByText('Siblings with unknown parents')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Show details' }));
+    await waitFor(() =>
+      expect(screen.getAllByText('Siblings with unknown parents')).toHaveLength(2),
+    );
+  });
+
   it('shows the details of a batch', async () => {
     const s = setup([batch({}, { slots: 1 })]);
     renderAt(`/trees/${s.id}/trash`, s);

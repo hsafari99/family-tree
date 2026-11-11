@@ -6,7 +6,8 @@ export interface GenerationInput {
 }
 
 /**
- * A row per generation (decision 13): partners share a row, children sit one row below their
+ * A row per generation (decision 13): partners share a row (and so do siblings whose parents are
+ * unknown), children sit one row below their
  * parents, and each couple is packed as low as possible (just above its highest child).
  * Returns null when no consistent rows exist (someone would be in their own parents' row).
  */
@@ -26,6 +27,10 @@ export function assignGenerations({
   };
   for (const f of families) {
     for (const p of f.partnerIds.slice(1)) parent.set(find(p), find(f.partnerIds[0]!));
+    // Siblings with unknown parents (brief #11) share a row too.
+    if (f.partnerIds.length === 0) {
+      for (const c of f.childIds.slice(1)) parent.set(find(c), find(f.childIds[0]!));
+    }
   }
   // 2. Group edges: a family's couple sits above each of its children's groups.
   const below = new Map<string, Set<string>>();

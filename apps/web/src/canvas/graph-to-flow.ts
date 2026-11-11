@@ -70,9 +70,18 @@ export function graphToFlow(
     const children = graph.links
       .filter((l) => l.unionId === u.id && byId.has(l.childId))
       .sort((a, b) => compareSiblings(byId.get(a.childId)!, byId.get(b.childId)!));
-    if (partnerIds.length === 0 || (partnerIds.length < 2 && children.length === 0)) continue;
+    // Siblings whose parents are unknown (brief #11): a dot with no partners, drawn for its children.
+    const unknownParents = u.partnerAId === null && u.partnerBId === null;
+    if (
+      unknownParents
+        ? children.length === 0
+        : partnerIds.length === 0 || (partnerIds.length < 2 && children.length === 0)
+    )
+      continue;
     const ended = ENDED.has(u.status);
-    const names = partnerIds.map((id) => personName(byId.get(id)!));
+    const names = unknownParents
+      ? ['unknown parents']
+      : partnerIds.map((id) => personName(byId.get(id)!));
     if (names.length === 1 && u.partnerAId !== null && u.partnerBId !== null) {
       names.push('someone not shown');
     }
@@ -86,7 +95,9 @@ export function graphToFlow(
       data: {
         union: u,
         ended,
-        label: `Relationship of ${names.join(' and ')} (${UNION_STATUS_LABEL[u.status]})`,
+        label: unknownParents
+          ? 'Siblings with unknown parents'
+          : `Relationship of ${names.join(' and ')} (${UNION_STATUS_LABEL[u.status]})`,
       },
     });
     for (const p of partnerIds) {

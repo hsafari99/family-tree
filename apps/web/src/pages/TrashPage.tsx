@@ -11,12 +11,15 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 const join = (names: string[], fallback: string) =>
   names.length > 0 ? names.join(' and ') : fallback;
 
+const UNKNOWN_PARENTS = 'Siblings with unknown parents';
+
 function title(b: TrashBatch): string {
   const r = b.root;
   switch (r.kind) {
     case 'person':
       return b.mode === 'descendants' ? `${r.name} and their descendants` : r.name;
     case 'union':
+      if (r.parentsUnknown && r.partners.length === 0) return UNKNOWN_PARENTS;
       return r.partners.length === 2
         ? `Relationship between ${r.partners[0]} and ${r.partners[1]}`
         : r.partners.length === 1
@@ -175,7 +178,11 @@ function TrashRow({
               </li>
             ))}
             {detail.unions.map((u) => (
-              <li key={u.id}>{join(u.partners, 'Relationship')}</li>
+              <li key={u.id}>
+                {u.parentsUnknown && u.partners.length === 0
+                  ? UNKNOWN_PARENTS
+                  : join(u.partners, 'Relationship')}
+              </li>
             ))}
             {detail.links.map((l) => (
               <li key={l.id}>

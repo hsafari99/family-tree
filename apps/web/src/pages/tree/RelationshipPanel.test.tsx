@@ -4,7 +4,7 @@ import { MemoryRouter, useLocation } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import { AuthProvider } from '../../auth/AuthContext';
 import { MESSAGES } from '../../auth/api';
-import { gp, haleGraph } from '../../canvas/test-fixtures';
+import { gp, haleGraph, unknownParentsGraph } from '../../canvas/test-fixtures';
 import { FakeAuthApi } from '../../test/fake-auth';
 import { FakeTreesApi, fakePerson } from '../../test/fake-trees';
 import { TreesApiProvider } from '../../trees/TreesApiContext';
@@ -65,6 +65,41 @@ function setup(url: string, meId: string | null = 'leo') {
 }
 
 describe('RelationshipPanel', () => {
+  it('words siblings with unknown parents (brief #11)', async () => {
+    const auth = new FakeAuthApi();
+    auth.addUser({ email: 'a@example.com', name: 'A', twoFactorEnabled: true }, { signedIn: true });
+    const trees = new FakeTreesApi();
+    const g = unknownParentsGraph();
+    g.persons = g.persons.map((p) => ({ ...p, sex: p.id === 'ben' ? 'female' : 'male' }));
+    const persons = g.persons.map(({ id, givenName, surname }) =>
+      fakePerson({ id, givenName, surname, middleName: null }),
+    );
+    const id = trees.addTree({ persons });
+    trees.trees.get(id)!.graph = g;
+    trees.trees.get(id)!.persons = persons;
+    render(
+      <AuthProvider api={auth}>
+        <TreesApiProvider api={trees}>
+          <MemoryRouter initialEntries={[`/trees/${id}/relationship?from=ann&to=ben`]}>
+            <RelationshipPanel
+              treeId={id}
+              detail={trees.trees.get(id)!.detail}
+              persons={persons}
+              onShow={vi.fn()}
+            />
+          </MemoryRouter>
+        </TreesApiProvider>
+      </AuthProvider>,
+    );
+    expect(await screen.findByText('Ben Hale is Ann Hale’s sister.')).toBeInTheDocument();
+    const list = screen.getByRole('list', { name: 'People on the path' });
+    expect(
+      within(list)
+        .getAllByRole('link')
+        .map((a) => a.textContent),
+    ).toEqual(['Ann Hale', 'Ben Hale']);
+  });
+
   it('defaults From to you and words the relationship with the path', async () => {
     const s = setup('/trees/$ID/relationship?to=emma');
     expect(await screen.findByText('Emma Hale is your half-sister.')).toBeInTheDocument();

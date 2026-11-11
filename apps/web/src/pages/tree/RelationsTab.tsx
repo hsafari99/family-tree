@@ -50,8 +50,7 @@ export function RelationsTab({
   }, []);
   const [params, setParams] = useSearchParams();
   const requested = RELATIVE_ROLES.find((r) => r === params.get('add')) ?? null;
-  const noParents = view.relations.parents.length === 0;
-  const startAdding = requested === 'sibling' && noParents ? null : requested;
+  const startAdding = requested;
   const [adding, setAdding] = useState<RelativeRole | null>(startAdding);
   // A card's "+" button arrives as ?add=<role>.
   // (Derived during render, not in an effect: a mount effect could run after a click and undo it.)
@@ -148,15 +147,15 @@ export function RelationsTab({
         <div key={p.linkId} className="relation-block">
           <p>
             <strong>Parents ({CHILD_KIND_LABEL[p.kind]})</strong>:{' '}
-            {p.parents.length > 0
-              ? p.parents.map((x, i) => (
+            {p.parents.length === 0
+              ? 'Parents unknown'
+              : p.parents.map((x, i) => (
                   <span key={x.id}>
                     {i > 0 && ' and '}
                     {person(x)}
                   </span>
-                ))
-              : null}
-            {p.parents.length < 2 && (p.parents.length > 0 ? ' and ' : '') + 'Unknown parent'}{' '}
+                ))}
+            {p.parents.length === 1 && ' and Unknown parent'}{' '}
             {kindSelect(p.linkId, p.kind, names(p.parents, 'parents'))} {removeLink(p.linkId)}
           </p>
         </div>
@@ -267,18 +266,11 @@ export function RelationsTab({
         <>
           <p className="actions">
             {ROLES.map(({ as, label }) => (
-              <button
-                key={as}
-                type="button"
-                className="secondary"
-                disabled={as === 'sibling' && rel.parents.length === 0}
-                onClick={() => setAdding(as)}
-              >
+              <button key={as} type="button" className="secondary" onClick={() => setAdding(as)}>
                 {label}
               </button>
             ))}
           </p>
-          {rel.parents.length === 0 && <p className="hint">Add a parent first</p>}
           {adding && (
             <AddRelativeForm
               key={adding}

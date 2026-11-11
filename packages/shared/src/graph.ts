@@ -53,10 +53,10 @@ export const graphUnionSchema = z.object({
   childCount: z.number().int(),
   canEdit: z.boolean(),
   /** Siblings whose parents are unknown: no partners on purpose (brief #11). */
-  parentsUnknown: z.boolean().optional(),
+  parentsUnknown: z.boolean(),
   /** Each partner's saved position for this union among their partners (brief #16). */
-  partnerAOrder: z.number().int().nullable().optional(),
-  partnerBOrder: z.number().int().nullable().optional(),
+  partnerAOrder: z.number().int().nullable(),
+  partnerBOrder: z.number().int().nullable(),
 });
 export type GraphUnionView = z.infer<typeof graphUnionSchema>;
 

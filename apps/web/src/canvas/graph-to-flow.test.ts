@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CARD_HEIGHT, CARD_WIDTH, graphToFlow, UNION_SIZE } from './graph-to-flow';
-import { gp, gu, haleGraph } from './test-fixtures';
+import { gp, gu, haleGraph, unknownParentsGraph } from './test-fixtures';
 
 const ctx = { focusId: 'leo', meId: 'emma' };
 
@@ -119,5 +119,31 @@ describe('graphToFlow', () => {
     );
     expect(e('child:l-leo').ariaLabel).toBe('Leo Hale, child of David Hale and Laura Chen');
     expect(edges.every((x) => !/p:|u:/.test(x.ariaLabel ?? ''))).toBe(true);
+  });
+});
+
+describe('graphToFlow with unknown parents (brief #11)', () => {
+  it('draws a dot for siblings with unknown parents, with a child edge each', () => {
+    const { nodes, edges, families } = graphToFlow(unknownParentsGraph(), ctx);
+    const dot = nodes.find((n) => n.id === 'u:u0')!;
+    expect(dot.type === 'union' && dot.data.label).toBe('Siblings with unknown parents');
+    expect(edges.filter((e) => e.source === 'u:u0').map((e) => e.id)).toEqual([
+      'child:l-ann',
+      'child:l-ben',
+    ]);
+    expect(edges.find((e) => e.id === 'child:l-ann')!.ariaLabel).toBe(
+      'Ann Hale, child of unknown parents',
+    );
+    expect(families.find((f) => f.id === 'u0')).toEqual({
+      id: 'u0',
+      partnerIds: [],
+      childIds: ['ann', 'ben'],
+    });
+  });
+
+  it('skips a parents-unknown union with no child shown', () => {
+    const g = unknownParentsGraph();
+    const { nodes } = graphToFlow({ ...g, links: g.links.filter((l) => l.unionId !== 'u0') }, ctx);
+    expect(nodes.some((n) => n.id === 'u:u0')).toBe(false);
   });
 });

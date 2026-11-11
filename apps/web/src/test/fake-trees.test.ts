@@ -272,6 +272,9 @@ describe('FakeTreesApi graph, similar and child-order', () => {
               endDate: null,
               childCount: 2,
               canEdit: true,
+              parentsUnknown: false,
+              partnerAOrder: null,
+              partnerBOrder: null,
             },
           ],
           links: [

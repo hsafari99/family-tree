@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { applyElkLayout, toElkGraph } from './elk-graph';
 import { assignGenerations } from './generations';
 import { CARD_HEIGHT, CARD_WIDTH, graphToFlow } from './graph-to-flow';
-import { haleGraph } from './test-fixtures';
+import { haleGraph, unknownParentsGraph } from './test-fixtures';
 
 const flow = () => graphToFlow(haleGraph(), { focusId: null, meId: null });
 const part = (g: ReturnType<typeof toElkGraph>, id: string) =>
@@ -17,12 +17,12 @@ describe('toElkGraph', () => {
       'elk.direction': 'DOWN',
       'elk.partitioning.activate': 'true',
     });
-    expect(part(g, 'p:robert')).toBe('0');
-    expect(part(g, 'u:u-rm')).toBe('1');
-    expect(part(g, 'p:david')).toBe('2');
-    expect(part(g, 'p:anna')).toBe('2');
-    expect(part(g, 'u:u-dl')).toBe('3');
-    expect(part(g, 'p:leo')).toBe('4');
+    expect(part(g, 'p:robert')).toBe('2');
+    expect(part(g, 'u:u-rm')).toBe('3');
+    expect(part(g, 'p:david')).toBe('4');
+    expect(part(g, 'p:anna')).toBe('4');
+    expect(part(g, 'u:u-dl')).toBe('5');
+    expect(part(g, 'p:leo')).toBe('6');
     const card = g.children!.find((c) => c.id === 'p:robert')!;
     expect([card.width, card.height]).toEqual([CARD_WIDTH, CARD_HEIGHT]);
     expect(g.edges![0]).toEqual({
@@ -30,6 +30,20 @@ describe('toElkGraph', () => {
       sources: [f.edges[0]!.source],
       targets: [f.edges[0]!.target],
     });
+  });
+
+  it('puts a parents-unknown dot just above its children, never negative (brief #11)', () => {
+    const f = graphToFlow(unknownParentsGraph(), { focusId: null, meId: null });
+    const g = toElkGraph(f, assignGenerations(f));
+    expect(part(g, 'p:ann')).toBe('2');
+    expect(part(g, 'p:ben')).toBe('2');
+    expect(part(g, 'u:u0')).toBe('1');
+    expect(part(g, 'u:u-ap')).toBe('3');
+    expect(part(g, 'p:kim')).toBe('4');
+    for (const c of g.children!) {
+      const p = Number(c.layoutOptions?.['elk.partitioning.partition']);
+      expect(Number.isInteger(p) && p >= 0).toBe(true);
+    }
   });
 
   it('has no partitioning without rows', () => {

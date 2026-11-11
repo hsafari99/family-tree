@@ -509,11 +509,31 @@ describe('PersonPanel add parameter', () => {
     expect(screen.queryByRole('form', { name: 'Add child' })).toBeNull();
   });
 
-  it('opens nothing for add=sibling when there are no parents', async () => {
+  it('opens Add sibling for add=sibling even when there are no parents (brief #11)', async () => {
     const s = setup();
     renderAt(at(s, '?tab=relations&add=sibling'), s);
-    expect(await screen.findByText('Add a parent first')).toBeInTheDocument();
-    expect(screen.queryByRole('form', { name: 'Add sibling' })).toBeNull();
+    expect(await screen.findByRole('form', { name: 'Add sibling' })).toBeInTheDocument();
+    expect(screen.queryByText('Add a parent first')).toBeNull();
+  });
+
+  it('labels a parents-unknown entry "Parents unknown" (brief #11)', async () => {
+    const s = setup({
+      relations: {
+        parents: [
+          {
+            linkId: crypto.randomUUID(),
+            kind: 'biological',
+            union: { id: crypto.randomUUID(), type: 'partnership', status: 'partners' },
+            parents: [],
+          },
+        ],
+        unions: [],
+        siblings: [],
+      },
+    });
+    renderAt(at(s, '?tab=relations'), s);
+    expect(await screen.findByText('Parents unknown', { exact: false })).toBeInTheDocument();
+    expect(screen.queryByText('Unknown parent', { exact: false })).toBeNull();
   });
 });
 

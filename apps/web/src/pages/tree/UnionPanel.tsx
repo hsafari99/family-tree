@@ -53,6 +53,14 @@ export function UnionPanel({
     const p = persons.find((x) => x.id === id);
     return p ? personName(p) : 'Unknown partner';
   };
+  if (union.parentsUnknown && union.partnerAId === null && union.partnerBId === null) {
+    return (
+      <div className="union-panel">
+        <h2>Siblings with unknown parents</h2>
+        <p>These siblings’ parents aren’t recorded.</p>
+      </div>
+    );
+  }
   const from = formatFuzzyDate(union.startDate);
   const to = formatFuzzyDate(union.endDate);
   return (

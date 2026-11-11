@@ -39,6 +39,9 @@ export function gu(
     endDate: null,
     childCount: 0,
     canEdit: true,
+    parentsUnknown: false,
+    partnerAOrder: null,
+    partnerBOrder: null,
     ...extra,
   };
 }
@@ -84,5 +87,34 @@ export function haleGraph(o: { leoOrder?: number; miaOrder?: number } = {}): Tre
       gl('l-mia', 'u-dl', 'mia', 'adoptive'),
       gl('l-noah', 'u-s', 'noah'),
     ],
+  };
+}
+
+/** Ann and Ben share a parents-unknown union; Ann has a partner Pat and a child Kim. */
+export function unknownParentsGraph(): TreeGraph {
+  const persons = [
+    gp('ann', 'Ann', 1960),
+    gp('ben', 'Ben', 1962),
+    gp('pat', 'Pat', 1958),
+    gp('kim', 'Kim', 1990, { hasParents: true }),
+  ];
+  return {
+    mode: 'full',
+    focusId: null,
+    branchId: null,
+    total: persons.length,
+    truncated: false,
+    needsBranch: false,
+    persons,
+    unions: [
+      gu('u0', null, null, {
+        parentsUnknown: true,
+        type: 'partnership',
+        status: 'partners',
+        childCount: 2,
+      }),
+      gu('u-ap', 'ann', 'pat', { childCount: 1 }),
+    ],
+    links: [gl('l-ann', 'u0', 'ann'), gl('l-ben', 'u0', 'ben'), gl('l-kim', 'u-ap', 'kim')],
   };
 }

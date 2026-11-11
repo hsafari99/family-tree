@@ -19,11 +19,18 @@ export const ELK_LAYOUT_OPTIONS: Record<string, string> = {
 export function toElkGraph(flow: Flow, generations: ReadonlyMap<string, number> | null): ElkNode {
   const partition = (n: CanvasNode): number | undefined => {
     if (!generations) return undefined;
-    if (n.type === 'person') return 2 * (generations.get(n.data.person.id) ?? 0);
+    // Shifted up by 2 so a parents-unknown dot above row 0 is still non-negative.
+    if (n.type === 'person') return 2 * (generations.get(n.data.person.id) ?? 0) + 2;
     const rows = [n.data.union.partnerAId, n.data.union.partnerBId]
       .map((id) => (id === null ? undefined : generations.get(id)))
       .filter((g): g is number => g !== undefined);
-    return 2 * Math.min(...rows) + 1;
+    if (rows.length > 0) return 2 * Math.min(...rows) + 3;
+    // Parents unknown (brief #11): the slot just above the children.
+    const fam = flow.families.find((f) => f.id === n.data.union.id);
+    const kids = (fam?.childIds ?? [])
+      .map((c) => generations.get(c))
+      .filter((g): g is number => g !== undefined);
+    return kids.length > 0 ? 2 * Math.min(...kids) + 1 : undefined;
   };
   return {
     id: 'root',

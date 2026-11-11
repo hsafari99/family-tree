@@ -1298,7 +1298,10 @@ export class FakeTreesApi implements TreesApi {
     const graph = this.kinGraph(t);
     if (!graph || !byId.has(from) || !byId.has(to)) return notFound();
     const steps = relationshipPath(graph, from, to);
-    const people = [from, ...(steps ?? []).map((s) => s.personId)].map((id) => byId.get(id)!);
+    // Like the API: virtual steps (a parents-unknown union) name a union, not a person.
+    const people = [from, ...(steps ?? []).filter((s) => !s.virtual).map((s) => s.personId)].map(
+      (id) => byId.get(id)!,
+    );
     return ok({
       steps,
       persons: people.map(
