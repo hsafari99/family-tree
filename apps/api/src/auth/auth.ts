@@ -5,12 +5,15 @@ import {
   passwordSchema,
 } from '@family-tree/shared';
 import { betterAuth } from 'better-auth';
+import { eq } from 'drizzle-orm';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { APIError, createAuthMiddleware, getSessionFromCtx } from 'better-auth/api';
 import { twoFactor } from 'better-auth/plugins';
 import type { Config } from '../config.js';
 import type { Db } from '../db/client.js';
 import { safeError } from '../errors.js';
+import { drainStorageDeletions, queueObjectDeletes } from '../storage/deletions.js';
+import type { ObjectStore } from '../storage/objects.js';
 import { accounts, sessions, twoFactors, users, verifications } from '../db/schema.js';
 import { CLIENT_IP_HEADER } from './fastify-adapter.js';
 import { holdsTwoFactorRole, ownsLiveTree } from '../trees/roles.js';
@@ -37,6 +40,8 @@ export interface AuthOptions {
   rateLimitEnabled?: boolean;
   /** Better Auth logs here instead of the console. */
   log?: AuthLogSink;
+  /** Deletes a deleted account's profile picture straight away; without it the outbox does. */
+  storage?: ObjectStore;
 }
 
 /**
@@ -79,7 +84,10 @@ const serialiseArg = (arg: unknown) => {
     : safe;
 };
 
-export function createAuth({ config, db, rateLimitEnabled, log }: AuthOptions) {
+export function createAuth({ config, db, rateLimitEnabled, log, storage }: AuthOptions) {
+  // A deleted account's profile picture: read before the delete (the row is gone afterwards),
+  // queued for deletion only once the account is really gone.
+  const avatarsOfDeleted = new Map<string, string>();
   return betterAuth({
     appName: 'Family Tree',
     baseURL: config.AUTH_BASE_URL,
@@ -156,6 +164,23 @@ export function createAuth({ config, db, rateLimitEnabled, log }: AuthOptions) {
               code: 'OWNS_TREES',
               message: 'Transfer or delete the trees you own first',
             });
+          }
+          const [row] = await db
+            .select({ key: users.avatarKey })
+            .from(users)
+            .where(eq(users.id, user.id));
+          if (row?.key) avatarsOfDeleted.set(user.id, row.key);
+        },
+        afterDelete: async (user) => {
+          const key = avatarsOfDeleted.get(user.id);
+          if (!key) return;
+          avatarsOfDeleted.delete(user.id);
+          await queueObjectDeletes(db, [key]);
+          if (!storage) return;
+          try {
+            await drainStorageDeletions(db, storage, { keys: [key] });
+          } catch (err) {
+            log?.error({ err: safeError(err) }, 'avatar delete failed; the key stays queued');
           }
         },
       },

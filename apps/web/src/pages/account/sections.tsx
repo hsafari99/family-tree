@@ -1,8 +1,14 @@
-import { passwordSchema } from '@family-tree/shared';
+import {
+  AVATAR_UPLOAD_MAX_BYTES,
+  PHOTO_MEDIA_TYPES,
+  type PhotoMediaType,
+  passwordSchema,
+} from '@family-tree/shared';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { MESSAGES, type SessionUser } from '../../auth/api';
 import { useAuth } from '../../auth/AuthContext';
+import { Avatar } from '../../components/Avatar';
 import { ConfirmButton } from '../../components/ConfirmButton';
 import {
   ErrorSummary,
@@ -24,12 +30,13 @@ import { TwoFactorSetup } from '../TwoFactorSetup';
 
 type SectionProps = { user: SessionUser; refresh: () => Promise<void> };
 
-export function ProfileSection({ user }: { user: SessionUser }) {
+export function ProfileSection({ user, refresh }: SectionProps) {
   return (
     <section aria-labelledby="profile-heading">
       <h2 id="profile-heading" tabIndex={-1}>
         Profile
       </h2>
+      <ProfilePicture user={user} refresh={refresh} />
       <dl className="details">
         <dt>Name</dt>
         <dd>{user.name}</dd>
@@ -37,6 +44,81 @@ export function ProfileSection({ user }: { user: SessionUser }) {
         <dd>{user.email}</dd>
       </dl>
     </section>
+  );
+}
+
+/** Upload, replace or remove the profile picture; the server crops it to a square. */
+function ProfilePicture({ user, refresh }: SectionProps) {
+  const { api } = useAuth();
+  const input = useRef<HTMLInputElement>(null);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+  const has = user.avatarUrl !== null;
+
+  async function choose(file: File | undefined) {
+    setError(null);
+    setDone(null);
+    if (input.current) input.current.value = '';
+    if (!file) return;
+    if (!PHOTO_MEDIA_TYPES.includes(file.type as PhotoMediaType)) {
+      return setError(MESSAGES.photoType);
+    }
+    if (file.size > AVATAR_UPLOAD_MAX_BYTES) return setError(MESSAGES.avatarTooLarge);
+    setPending(true);
+    const res = await api.uploadAvatar(file);
+    if (res.ok) await refresh();
+    setPending(false);
+    if (!res.ok) return setError(res.error.message);
+    setDone(has ? 'Profile picture replaced.' : 'Profile picture added.');
+  }
+
+  async function remove() {
+    setError(null);
+    setDone(null);
+    setPending(true);
+    const res = await api.removeAvatar();
+    if (res.ok) await refresh();
+    setPending(false);
+    if (!res.ok) return setError(res.error.message);
+    setDone('Profile picture removed.');
+  }
+
+  return (
+    <div className="profile-picture">
+      <Avatar name={user.name} url={user.avatarUrl} size={96} />
+      <div className="profile-picture-actions">
+        <div className="actions">
+          <label className={pending ? 'button-like is-disabled' : 'button-like'}>
+            {pending ? 'Saving…' : has ? 'Replace picture' : 'Upload a picture'}
+            <input
+              ref={input}
+              type="file"
+              className="sr-only"
+              accept={PHOTO_MEDIA_TYPES.join(',')}
+              disabled={pending}
+              onChange={(e) => void choose(e.target.files?.[0])}
+            />
+          </label>
+          {has && (
+            <ConfirmButton
+              label="Remove picture"
+              confirmLabel="Yes, remove"
+              danger
+              pending={pending}
+              onConfirm={() => void remove()}
+            />
+          )}
+        </div>
+        <p className="hint">JPEG, PNG or WebP, at most 5 MB. It is cropped to a square.</p>
+        <FormError>{error}</FormError>
+        {done && (
+          <Success>
+            <p>{done}</p>
+          </Success>
+        )}
+      </div>
+    </div>
   );
 }
 

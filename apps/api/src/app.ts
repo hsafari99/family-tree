@@ -12,6 +12,7 @@ import { invitesRoutes } from './routes/invites.js';
 import { membersRoutes } from './routes/members.js';
 import { stewardsRoutes } from './routes/stewards.js';
 import { meRoutes } from './routes/me.js';
+import { avatarRoutes } from './routes/avatar.js';
 import { authProvidersRoutes } from './routes/auth-providers.js';
 import { accountRoutes } from './routes/account.js';
 import { twoFactorMoveRoutes } from './routes/two-factor-move.js';
@@ -131,7 +132,8 @@ export function buildApp({
   if (auth && !storage) app.addHook('onClose', async () => store!.close());
   if (auth) {
     app.register(authRoutes, { auth });
-    app.register(meRoutes, { auth, db });
+    app.register(meRoutes, { auth, db, storage: store! });
+    app.register(avatarRoutes, { auth, db, storage: store! });
     app.register(authProvidersRoutes, { auth });
     app.register(accountRoutes, { auth, db });
     app.register(twoFactorMoveRoutes, { auth, db });

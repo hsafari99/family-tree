@@ -2,6 +2,7 @@ import {
   PASSWORD_CLASSES_MESSAGE,
   apiErrorSchema,
   type AuthProviders,
+  avatarResponseSchema,
   authProvidersSchema,
   type MeResponse,
   meResponseSchema,
@@ -68,6 +69,10 @@ export interface AuthApi {
   confirmTwoFactorMove(input: { code: string }): Promise<Result<{ backupCodes: string[] }>>;
   /** Discards the pending new phone; the current one keeps working. */
   cancelTwoFactorMove(): Promise<Result<void>>;
+  /** Uploads (or replaces) the signed-in user's profile picture; returns its new URL. */
+  uploadAvatar(file: Blob): Promise<Result<{ avatarUrl: string }>>;
+  /** Removes the profile picture; the default picture shows again. */
+  removeAvatar(): Promise<Result<void>>;
 }
 
 export const MESSAGES = {
@@ -111,6 +116,8 @@ export const MESSAGES = {
   photoDimensions: 'This photo has too many pixels. Use one of at most 50 megapixels.',
   photoUnreadable: 'This photo couldn’t be read. Try another file.',
   photoTooMany: 'This person already has 50 photos. Remove one first.',
+  avatarTooLarge: 'Profile pictures can be at most 5 MB.',
+  avatarBusy: 'Too many photos are being processed, try again shortly.',
   photoQuota: 'This tree has used all of its photo storage. Remove some photos first.',
   searchFailed: 'Search isn’t available right now. Try again.',
   noRelationship: 'They aren’t connected in this tree.',
@@ -289,6 +296,26 @@ export function createAuthApi({ baseUrl }: { baseUrl: string }): AuthApi {
     return { ok: false, error: toAuthError(res.status, err?.code, kind) };
   }
 
+  /** An upload refusal as a fixed message, by the server's `details.reason`. */
+  async function avatarError(res: Response): Promise<Result<never>> {
+    const body: unknown = await res.json().catch(() => null);
+    const parsed = apiErrorSchema.safeParse(body);
+    const err = parsed.success ? parsed.data.error : undefined;
+    const reason = (err?.details as { reason?: unknown } | undefined)?.reason;
+    const byReason: Record<string, string> = {
+      type: MESSAGES.photoType,
+      tooLarge: MESSAGES.avatarTooLarge,
+      dimensions: MESSAGES.photoDimensions,
+      unreadable: MESSAGES.photoUnreadable,
+    };
+    if (err?.code === 'VALIDATION' && typeof reason === 'string' && byReason[reason]) {
+      return { ok: false, error: { code: 'VALIDATION', message: byReason[reason] } };
+    }
+    if (res.status === 503)
+      return { ok: false, error: { code: 'BUSY', message: MESSAGES.avatarBusy } };
+    return { ok: false, error: toAuthError(res.status, err?.code, 'session') };
+  }
+
   async function v1Post(
     path: string,
     body: unknown,
@@ -427,5 +454,35 @@ export function createAuthApi({ baseUrl }: { baseUrl: string }): AuthApi {
     confirmTwoFactorMove: (input) =>
       v1PostFor('/account/two-factor/move/confirm', input, twoFactorMovedSchema),
     cancelTwoFactorMove: () => v1Post('/account/two-factor/move/cancel', {}, 'session'),
+    uploadAvatar: async (file) => {
+      let res: Response;
+      try {
+        res = await fetch(`${origin}/api/v1/account/avatar`, {
+          method: 'PUT',
+          credentials: 'include',
+          headers: { 'content-type': file.type || 'application/octet-stream' },
+          body: file,
+        });
+      } catch {
+        return networkError();
+      }
+      if (!res.ok) return avatarError(res);
+      const parsed = avatarResponseSchema.safeParse(await res.json().catch(() => null));
+      if (!parsed.success) return { ok: false, error: toAuthError(500) };
+      return { ok: true, data: parsed.data };
+    },
+    removeAvatar: async () => {
+      let res: Response;
+      try {
+        res = await fetch(`${origin}/api/v1/account/avatar`, {
+          method: 'DELETE',
+          credentials: 'include',
+        });
+      } catch {
+        return networkError();
+      }
+      if (!res.ok) return v1Error(res, 'session');
+      return { ok: true, data: undefined };
+    },
   };
 }

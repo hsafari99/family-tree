@@ -23,6 +23,14 @@ export const PHOTO_REJECT_REASONS = [
 ] as const;
 export type PhotoRejectReason = (typeof PHOTO_REJECT_REASONS)[number];
 
+/**
+ * A user's profile picture goes through the photo pipeline (sniffed by magic bytes, re-encoded
+ * as WebP with no metadata) and is kept as one PHOTO_THUMB_SIDE square. Smaller cap than photos.
+ */
+export const AVATAR_UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
+export const avatarResponseSchema = z.object({ avatarUrl: z.string() });
+export type AvatarResponse = z.infer<typeof avatarResponseSchema>;
+
 export const photoSchema = z.object({
   id: z.uuid(),
   /** Of the full version. */

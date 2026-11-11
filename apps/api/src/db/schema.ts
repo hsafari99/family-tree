@@ -320,6 +320,11 @@ export const users = pgTable('users', {
   emailVerified: boolean('email_verified').notNull().default(false),
   image: text('image'),
   twoFactorEnabled: boolean('two_factor_enabled').notNull().default(false),
+  /**
+   * The user's own profile picture: a storage key under users/<id>/avatar/. Not `image`, which
+   * Better Auth fills from Google's profile.
+   */
+  avatarKey: text('avatar_key'),
   ...authTimestamps(),
 });
 

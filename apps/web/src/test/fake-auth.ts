@@ -27,6 +27,8 @@ interface FakeUser {
   /** False for an account that only ever signed in with Google. */
   hasPassword: boolean;
   googleConnected: boolean;
+  /** The profile picture's URL, or null for the default picture. */
+  avatarUrl: string | null;
 }
 
 type Method = keyof AuthApi;
@@ -75,6 +77,7 @@ export class FakeAuthApi implements AuthApi {
       recoveryCodes: [],
       hasPassword: true,
       googleConnected: false,
+      avatarUrl: null,
       ...input,
     };
     if (user.twoFactorEnabled && user.recoveryCodes.length === 0) {
@@ -128,6 +131,7 @@ export class FakeAuthApi implements AuthApi {
       requiresTwoFactor: u.requiresTwoFactor,
       hasPassword: u.hasPassword,
       googleConnected: u.googleConnected,
+      avatarUrl: u.avatarUrl,
     };
   }
 
@@ -337,6 +341,27 @@ export class FakeAuthApi implements AuthApi {
     }
     u.password = input.newPassword;
     u.hasPassword = true;
+    return ok(undefined);
+  }
+
+  async uploadAvatar(file: Blob) {
+    const forced = await this.enter('uploadAvatar', file);
+    if (forced) return { ok: false as const, error: forced };
+    const u = this.me();
+    if (!u) return fail(SESSION_EXPIRED, MESSAGES.sessionExpired);
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      return fail('VALIDATION', MESSAGES.photoType);
+    }
+    u.avatarUrl = `https://s3.test/users/${u.id}/avatar/${crypto.randomUUID()}.webp`;
+    return ok({ avatarUrl: u.avatarUrl });
+  }
+
+  async removeAvatar() {
+    const forced = await this.enter('removeAvatar');
+    if (forced) return { ok: false as const, error: forced };
+    const u = this.me();
+    if (!u) return fail(SESSION_EXPIRED, MESSAGES.sessionExpired);
+    u.avatarUrl = null;
     return ok(undefined);
   }
 

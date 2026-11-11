@@ -11,7 +11,7 @@ export function createDeps(config: Config) {
   const s3 = createS3(config);
   const storage = createObjectStore(config, s3);
   const authLog = createAuthLogBridge();
-  const auth = createAuth({ config, db, log: authLog.sink });
+  const auth = createAuth({ config, db, log: authLog.sink, storage });
   const checks: HealthChecks = {
     checkDb: async () => {
       await sql`select 1`;

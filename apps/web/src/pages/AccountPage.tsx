@@ -90,7 +90,7 @@ function SectionBody({
 }) {
   switch (id) {
     case 'profile':
-      return <ProfileSection user={user} />;
+      return <ProfileSection user={user} refresh={refresh} />;
     case 'password':
       return <PasswordSection user={user} refresh={refresh} />;
     case 'two-step':

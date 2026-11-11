@@ -37,6 +37,7 @@ const user = {
   requiresTwoFactor: false,
   hasPassword: true,
   googleConnected: false,
+  avatarUrl: null,
 };
 
 describe('toAuthError for tree roles', () => {
@@ -441,5 +442,61 @@ describe('moving 2FA to a new phone', () => {
       const res = await createAuthApi({ baseUrl: BASE }).confirmTwoFactorMove({ code: '654321' });
       expect(res).toEqual({ ok: false, error: { code, message } });
     }
+  });
+});
+
+describe('profile picture', () => {
+  const file = () => new Blob([new Uint8Array([0x89, 0x50])], { type: 'image/png' });
+
+  it('PUTs the image bytes with their type and returns the new URL', async () => {
+    const fetchMock = stubFetch({ status: 200, body: { avatarUrl: 'https://s3/u.webp' } });
+    const res = await createAuthApi({ baseUrl: BASE }).uploadAvatar(file());
+    expect(res).toEqual({ ok: true, data: { avatarUrl: 'https://s3/u.webp' } });
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe(`${BASE}/api/v1/account/avatar`);
+    expect(init).toMatchObject({
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'content-type': 'image/png' },
+    });
+  });
+
+  it.each([
+    ['type', 400, MESSAGES.photoType],
+    ['tooLarge', 413, MESSAGES.avatarTooLarge],
+    ['dimensions', 400, MESSAGES.photoDimensions],
+    ['unreadable', 400, MESSAGES.photoUnreadable],
+  ])('maps a %s refusal to its fixed message', async (reason, status, message) => {
+    stubFetch({
+      status,
+      body: { error: { code: 'VALIDATION', message: 'server text', details: { reason } } },
+    });
+    const res = await createAuthApi({ baseUrl: BASE }).uploadAvatar(file());
+    expect(res).toEqual({ ok: false, error: { code: 'VALIDATION', message } });
+  });
+
+  it('maps a busy server and an expired session', async () => {
+    stubFetch(
+      { status: 503, body: { error: { code: 'RATE_LIMITED', message: 'x' } } },
+      { status: 401, body: { error: { code: 'UNAUTHENTICATED', message: 'x' } } },
+    );
+    const api = createAuthApi({ baseUrl: BASE });
+    expect(await api.uploadAvatar(file())).toEqual({
+      ok: false,
+      error: { code: 'BUSY', message: MESSAGES.avatarBusy },
+    });
+    expect((await api.uploadAvatar(file())) as unknown).toMatchObject({
+      ok: false,
+      error: { code: SESSION_EXPIRED },
+    });
+  });
+
+  it('removes with a DELETE', async () => {
+    const fetchMock = stubFetch({ status: 204 });
+    expect(await createAuthApi({ baseUrl: BASE }).removeAvatar()).toEqual({
+      ok: true,
+      data: undefined,
+    });
+    expect(fetchMock.mock.calls[0]![1]).toMatchObject({ method: 'DELETE' });
   });
 });

@@ -54,6 +54,8 @@ const METHODS = Object.keys({
   startTwoFactorMove: true,
   confirmTwoFactorMove: true,
   cancelTwoFactorMove: true,
+  uploadAvatar: true,
+  removeAvatar: true,
 } satisfies Record<keyof AuthApi, true>) as (keyof AuthApi)[];
 
 /**

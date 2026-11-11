@@ -117,6 +117,58 @@ describe('AccountPage', () => {
     expect(within(profile).getByText('ada@example.com')).toBeInTheDocument();
   });
 
+  describe('profile picture', () => {
+    const pick = (name: string, file: File) =>
+      fireEvent.change(screen.getByLabelText(name), { target: { files: [file] } });
+    const image = (type = 'image/png', size = 100) =>
+      new File([new Uint8Array(size)], 'me.png', { type });
+
+    it('shows the default picture, then uploads, replaces and removes one', async () => {
+      const { api, user } = signedIn();
+      renderAt('/account/profile', { auth: api });
+      const profile = await screen.findByRole('region', { name: 'Profile' });
+      expect(within(profile).getByRole('img', { name: 'Ada' })).toHaveTextContent('A');
+      expect(within(profile).queryByRole('button', { name: 'Remove picture' })).toBeNull();
+
+      pick('Upload a picture', image());
+      expect(await within(profile).findByText('Profile picture added.')).toBeInTheDocument();
+      const first = user.avatarUrl!;
+      expect(within(profile).getByRole('img', { name: 'Ada' })).toHaveAttribute('src', first);
+      expect(api.callsTo('uploadAvatar')).toHaveLength(1);
+
+      pick('Replace picture', image('image/webp'));
+      expect(await within(profile).findByText('Profile picture replaced.')).toBeInTheDocument();
+      expect(within(profile).getByRole('img', { name: 'Ada' })).not.toHaveAttribute('src', first);
+
+      fireEvent.click(within(profile).getByRole('button', { name: 'Remove picture' }));
+      fireEvent.click(within(profile).getByRole('button', { name: 'Yes, remove' }));
+      expect(await within(profile).findByText('Profile picture removed.')).toBeInTheDocument();
+      expect(user.avatarUrl).toBeNull();
+      expect(within(profile).getByRole('img', { name: 'Ada' }).tagName).toBe('SPAN');
+      expect(within(profile).getByLabelText('Upload a picture')).toBeInTheDocument();
+    });
+
+    it('refuses a wrong type or a too-large file without calling the server', async () => {
+      const { api } = signedIn();
+      renderAt('/account/profile', { auth: api });
+      await screen.findByRole('region', { name: 'Profile' });
+      pick('Upload a picture', image('image/gif'));
+      expect(await screen.findByRole('alert')).toHaveTextContent(MESSAGES.photoType);
+      pick('Upload a picture', image('image/png', 5 * 1024 * 1024 + 1));
+      expect(await screen.findByRole('alert')).toHaveTextContent(MESSAGES.avatarTooLarge);
+      expect(api.callsTo('uploadAvatar')).toHaveLength(0);
+    });
+
+    it('shows a server refusal as its fixed message', async () => {
+      const { api } = signedIn();
+      api.failNext('uploadAvatar', { code: 'VALIDATION', message: MESSAGES.photoUnreadable });
+      renderAt('/account/profile', { auth: api });
+      await screen.findByRole('region', { name: 'Profile' });
+      pick('Upload a picture', image());
+      expect(await screen.findByRole('alert')).toHaveTextContent(MESSAGES.photoUnreadable);
+    });
+  });
+
   it('changes the password', async () => {
     const { api } = signedIn();
     renderAt('/account/password', { auth: api });

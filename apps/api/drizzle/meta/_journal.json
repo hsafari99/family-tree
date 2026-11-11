@@ -64,6 +64,13 @@
       "when": 1794359576564,
       "tag": "0008_two_factor_moves",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794426266462,
+      "tag": "0009_user_avatar",
+      "breakpoints": true
     }
   ]
 }

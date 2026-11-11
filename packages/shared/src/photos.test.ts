@@ -53,3 +53,31 @@ describe('photo limits (spec §8)', () => {
     expect(HISTORY_ACTION_PREFIXES).toContain('photo.');
   });
 });
+
+describe('profile pictures', () => {
+  it('caps uploads below the photo limit and returns a URL', async () => {
+    const { AVATAR_UPLOAD_MAX_BYTES, avatarResponseSchema } = await import('./index.js');
+    expect(AVATAR_UPLOAD_MAX_BYTES).toBe(5 * 1024 * 1024);
+    expect(AVATAR_UPLOAD_MAX_BYTES).toBeLessThan(PHOTO_UPLOAD_MAX_BYTES);
+    expect(avatarResponseSchema.parse({ avatarUrl: 'http://s3/x.webp' })).toEqual({
+      avatarUrl: 'http://s3/x.webp',
+    });
+    expect(avatarResponseSchema.safeParse({}).success).toBe(false);
+  });
+
+  it('the session carries the avatar URL, or null for the default picture', async () => {
+    const { meResponseSchema } = await import('./index.js');
+    const user = {
+      id: '00000000-0000-4000-8000-000000000001',
+      name: 'Ada',
+      email: 'ada@example.com',
+      twoFactorEnabled: false,
+      requiresTwoFactor: false,
+      hasPassword: true,
+      googleConnected: false,
+    };
+    expect(meResponseSchema.safeParse({ user: { ...user, avatarUrl: null } }).success).toBe(true);
+    expect(meResponseSchema.safeParse({ user: { ...user, avatarUrl: 'u' } }).success).toBe(true);
+    expect(meResponseSchema.safeParse({ user }).success).toBe(false);
+  });
+});

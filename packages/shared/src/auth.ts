@@ -69,6 +69,8 @@ export const meResponseSchema = z.object({
     /** Whether the account has a password login (Google-only accounts don't). */
     hasPassword: z.boolean(),
     googleConnected: z.boolean(),
+    /** A signed URL of the user's square profile picture, or null for the default picture. */
+    avatarUrl: z.string().nullable(),
   }),
 });
 // Spec §5: moving 2FA to a new phone. Start re-checks the password (none for a Google-only

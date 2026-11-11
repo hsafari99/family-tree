@@ -15,7 +15,7 @@ export type SweepRefusal = 'noPhotoRows' | 'tooMany';
 
 /**
  * Deletes stored objects under `prefix` that are older than `minAgeMs` and known to no photos
- * row and no storage_deletions row (the outbox deletes those itself). This covers a crash between
+ * row, no user's avatar and no storage_deletions row (the outbox deletes those itself). This covers a crash between
  * upload and insert, and a database restored to before some uploads.
  *
  * Candidates are collected first. Nothing is deleted when the database has no photo rows at all
@@ -55,7 +55,10 @@ export async function sweepOrphans(
       (await db.execute(sql`
         select storage_key_full as k from photos
         union all select storage_key_thumb from photos
-        union all select key from storage_deletions`)) as unknown as { k: string }[]
+        union all select key from storage_deletions
+        union all select avatar_key from users where avatar_key is not null`)) as unknown as {
+        k: string;
+      }[]
     ).map((r) => r.k),
   );
   let scanned = 0;
