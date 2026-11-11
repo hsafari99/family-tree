@@ -20,7 +20,7 @@ import {
 import { userWith2fa } from '../../test/tree-helpers.js';
 import { buildApp } from '../app.js';
 import { loadConfig } from '../config.js';
-import { accounts } from '../db/schema.js';
+import { accounts, sessions } from '../db/schema.js';
 import { createDeps } from '../deps.js';
 import { createAuth } from './auth.js';
 
@@ -200,6 +200,27 @@ describe('Set a password (Google-only accounts)', () => {
     expect((await call(app, 'POST', '/api/v1/account/google/disconnect', { jar })).statusCode).toBe(
       204,
     );
+  });
+
+  it('needs a sign-in from the last 10 minutes', async () => {
+    const { jar, user } = await googleOnlyUser();
+    await db
+      .update(sessions)
+      .set({ createdAt: new Date(Date.now() - 11 * 60 * 1000) })
+      .where(eq(sessions.userId, user.id));
+    const res = await setPassword(jar, 'a brand new password');
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe('RECENT_SIGN_IN_REQUIRED');
+    expect((await me(jar)).hasPassword).toBe(false);
+  });
+
+  it('signs the account out everywhere else', async () => {
+    const { jar, profile, user } = await googleOnlyUser();
+    const elsewhere = await googleSignIn(app, profile);
+    expect((await me(elsewhere.jar)).id).toBe(user.id);
+    expect((await setPassword(jar, 'a brand new password')).statusCode).toBe(204);
+    expect((await call(app, 'GET', '/api/v1/me', { jar: elsewhere.jar })).statusCode).toBe(401);
+    expect((await me(jar)).id).toBe(user.id);
   });
 
   it('is refused once a password exists, and checks the length', async () => {

@@ -130,6 +130,21 @@ describe('Account settings: Google', () => {
     ).toBeInTheDocument();
   });
 
+  it('sends a stale sign-in back through Google before setting a password', async () => {
+    const { api, user } = account({ googleConnected: true, hasPassword: false });
+    api.recentSignIn = false;
+    renderAt('/account', { auth: api });
+    const setPassword = await screen.findByRole('region', { name: 'Set a password' });
+    type('New password', 'a brand new password');
+    fireEvent.click(within(setPassword).getByRole('button', { name: 'Set password' }));
+    expect(await within(setPassword).findByRole('alert')).toHaveTextContent(
+      MESSAGES.recentSignInRequired,
+    );
+    expect(user.hasPassword).toBe(false);
+    fireEvent.click(within(setPassword).getByRole('button', { name: 'Sign in with Google again' }));
+    await waitFor(() => expect(api.callsTo('startGoogleSignIn')).toEqual([{ next: '/account' }]));
+  });
+
   it('is hidden while Google sign-in is off and not connected', async () => {
     const { api } = account({ google: false });
     renderAt('/account', { auth: api });

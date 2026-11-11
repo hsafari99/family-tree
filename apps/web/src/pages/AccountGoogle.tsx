@@ -189,11 +189,23 @@ export function SetPassword({ onDone }: { onDone: () => Promise<void> }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | undefined>();
   const [serverError, setServerError] = useState<string | null>(null);
+  const [needsGoogle, setNeedsGoogle] = useState(false);
   const [pending, setPending] = useState(false);
+
+  async function confirmWithGoogle() {
+    setPending(true);
+    const res = await api.startGoogleSignIn({ next: '/account' });
+    // On success the page is leaving for Google.
+    if (!res.ok) {
+      setPending(false);
+      setServerError(res.error.message);
+    }
+  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setServerError(null);
+    setNeedsGoogle(false);
     const checked = validate(passwordSchema, password);
     setError(checked.ok ? undefined : checked.errors['']);
     if (!checked.ok) return;
@@ -202,6 +214,7 @@ export function SetPassword({ onDone }: { onDone: () => Promise<void> }) {
     setPending(false);
     if (!res.ok) {
       setServerError(res.error.message);
+      setNeedsGoogle(res.error.code === 'RECENT_SIGN_IN_REQUIRED');
       return;
     }
     await onDone();
@@ -226,9 +239,21 @@ export function SetPassword({ onDone }: { onDone: () => Promise<void> }) {
           error={error}
         />
         <FormError>{serverError}</FormError>
-        <button type="submit" disabled={pending}>
-          {pending ? 'Saving…' : 'Set password'}
-        </button>
+        <div className="actions">
+          <button type="submit" disabled={pending}>
+            {pending ? 'Saving…' : 'Set password'}
+          </button>
+          {needsGoogle && (
+            <button
+              type="button"
+              className="secondary"
+              disabled={pending}
+              onClick={() => void confirmWithGoogle()}
+            >
+              Sign in with Google again
+            </button>
+          )}
+        </div>
       </form>
     </section>
   );

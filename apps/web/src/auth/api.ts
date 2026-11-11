@@ -112,6 +112,8 @@ export const MESSAGES = {
   codeRequired: 'Enter the 6-digit code from your authenticator app, or a recovery code.',
   passwordRequiredToDisconnect: 'Set a password first, so you can still sign in without Google.',
   passwordAlreadySet: 'This account already has a password.',
+  recentSignInRequired:
+    'To set a password, confirm it’s you: sign in with Google again, then try once more.',
 } as const;
 
 /** The error code AuthProvider reacts to by re-reading the session. */
@@ -144,6 +146,7 @@ const BY_CODE: Record<string, string> = {
   GOOGLE_NOT_CONNECTED: MESSAGES.googleNotConnected,
   PASSWORD_REQUIRED_TO_DISCONNECT: MESSAGES.passwordRequiredToDisconnect,
   PASSWORD_ALREADY_SET: MESSAGES.passwordAlreadySet,
+  RECENT_SIGN_IN_REQUIRED: MESSAGES.recentSignInRequired,
   PROVIDER_NOT_FOUND: MESSAGES.googleUnavailable,
 };
 

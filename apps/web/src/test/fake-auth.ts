@@ -47,6 +47,8 @@ export class FakeAuthApi implements AuthApi {
   calls: { method: Method; input: unknown }[] = [];
   /** What getProviders answers. */
   providers = { google: true };
+  /** False makes setPassword answer RECENT_SIGN_IN_REQUIRED, as for a session over 10 minutes old. */
+  recentSignIn = true;
   private forced = new Map<Method, AuthError>();
   private pending = new Set<Method>();
   private waiting: (() => void)[] = [];
@@ -316,6 +318,9 @@ export class FakeAuthApi implements AuthApi {
     const u = this.me();
     if (!u) return fail(SESSION_EXPIRED, MESSAGES.sessionExpired);
     if (u.hasPassword) return fail('PASSWORD_ALREADY_SET', MESSAGES.passwordAlreadySet);
+    if (!this.recentSignIn) {
+      return fail('RECENT_SIGN_IN_REQUIRED', MESSAGES.recentSignInRequired);
+    }
     u.password = input.newPassword;
     u.hasPassword = true;
     return ok(undefined);

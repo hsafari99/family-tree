@@ -1,14 +1,17 @@
 import { setPasswordSchema } from '@family-tree/shared';
 import { isAPIError } from 'better-auth/api';
 import { fromNodeHeaders } from 'better-auth/node';
-import { and, eq, isNotNull } from 'drizzle-orm';
+import { and, eq, isNotNull, ne } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 import type { Auth } from '../auth/auth.js';
 import { GOOGLE_PROVIDER_ID } from '../auth/google.js';
 import { requireSession } from '../auth/session-guard.js';
 import type { Db } from '../db/client.js';
-import { accounts } from '../db/schema.js';
+import { accounts, sessions } from '../db/schema.js';
 import { AppError, parseBody } from '../errors.js';
+
+/** Setting a password on a Google-only account needs a sign-in at most this old. */
+export const RECENT_SIGN_IN_MS = 10 * 60 * 1000;
 
 const ACCOUNT_LIMIT = { rateLimit: { max: 10, timeWindow: '15 minutes' } };
 
@@ -55,12 +58,26 @@ export const accountRoutes: FastifyPluginAsync<{ auth: Auth; db: Db }> = async (
     { config: ACCOUNT_LIMIT, preHandler: requireSession(auth) },
     async (req, reply) => {
       const { newPassword } = parseBody(setPasswordSchema, req.body);
+      const userId = req.user!.id;
+      // There's no password to re-check, so the proof is a fresh Google sign-in: otherwise a
+      // borrowed or stolen session could add a permanent password login.
+      const [current] = await db
+        .select({ createdAt: sessions.createdAt })
+        .from(sessions)
+        .where(eq(sessions.id, req.sessionId!));
+      if (!current || Date.now() - current.createdAt.getTime() > RECENT_SIGN_IN_MS) {
+        throw new AppError(
+          'RECENT_SIGN_IN_REQUIRED',
+          403,
+          'Sign in with Google again to set a password',
+        );
+      }
       const [existing] = await db
         .select({ id: accounts.id })
         .from(accounts)
         .where(
           and(
-            eq(accounts.userId, req.user!.id),
+            eq(accounts.userId, userId),
             eq(accounts.providerId, 'credential'),
             isNotNull(accounts.password),
           ),
@@ -79,6 +96,10 @@ export const accountRoutes: FastifyPluginAsync<{ auth: Auth; db: Db }> = async (
         }
         throw err;
       }
+      // A new way in: end every other session, as a password change does.
+      await db
+        .delete(sessions)
+        .where(and(eq(sessions.userId, userId), ne(sessions.id, req.sessionId!)));
       return reply.code(204).send();
     },
   );
