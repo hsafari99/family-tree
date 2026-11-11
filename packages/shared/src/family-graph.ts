@@ -10,6 +10,8 @@ export interface GraphUnion {
   id: string;
   partnerAId: string | null;
   partnerBId: string | null;
+  /** Groups siblings whose parents are unknown (brief #11); kept with no partner. */
+  parentsUnknown?: boolean;
 }
 export interface GraphLink {
   id: string;
@@ -19,6 +21,10 @@ export interface GraphLink {
 
 export const partnersOf = (u: GraphUnion): string[] =>
   [u.partnerAId, u.partnerBId].filter((p): p is string => p !== null);
+
+/** The can() ends of a union: its partners, or its children when it has none (brief #11). */
+export const unionEnds = (u: GraphUnion, childIds: readonly string[]): string[] =>
+  partnersOf(u).length > 0 ? partnersOf(u) : [...childIds];
 
 const add = <K, V>(m: Map<K, V[]>, k: K, v: V) => {
   const list = m.get(k);
@@ -158,13 +164,26 @@ export function planPersonDeletion(
   for (const u of graph.unions) {
     const a = u.partnerAId !== null && doomed.has(u.partnerAId);
     const b = u.partnerBId !== null && doomed.has(u.partnerBId);
-    if (!a && !b) continue;
+    const kids = ix.linksByUnion.get(u.id) ?? [];
+    const keptKids = kids.some((l) => !doomed.has(l.childId));
+    if (!a && !b) {
+      // A parents-unknown union goes with its last child (brief #11): it is never left childless.
+      if (u.parentsUnknown && partnersOf(u).length === 0 && kids.length > 0 && !keptKids) {
+        unionIds.push(u.id);
+        for (const l of kids) links.add(l.id);
+      }
+      continue;
+    }
     for (const p of partnersOf(u)) touched.add(p);
-    for (const l of ix.linksByUnion.get(u.id) ?? []) touched.add(l.childId);
-    const survivor = (u.partnerAId !== null && !a) || (u.partnerBId !== null && !b);
+    for (const l of kids) touched.add(l.childId);
+    // A parents-unknown union outlives its partners while it still holds a child.
+    const survivor =
+      (u.partnerAId !== null && !a) ||
+      (u.partnerBId !== null && !b) ||
+      (u.parentsUnknown === true && keptKids);
     if (!survivor) {
       unionIds.push(u.id);
-      for (const l of ix.linksByUnion.get(u.id) ?? []) links.add(l.id);
+      for (const l of kids) links.add(l.id);
     } else {
       if (a) slots.push({ unionId: u.id, slot: 'a', personId: u.partnerAId! });
       if (b) slots.push({ unionId: u.id, slot: 'b', personId: u.partnerBId! });
@@ -205,11 +224,14 @@ export function planLinkDeletion(graph: LiveGraph, linkId: string): DeletionPlan
   const ix = indexGraph(graph);
   const l = graph.parentChild.find((x) => x.id === linkId);
   if (!l) throw new Error('link is not in the graph');
+  const u = ix.unionById.get(l.unionId)!;
+  // The last child link of a partnerless parents-unknown union takes the union with it (brief #11).
+  const last = (ix.linksByUnion.get(u.id) ?? []).every((x) => x.id === linkId);
   return {
     personIds: [],
-    unionIds: [],
+    unionIds: u.parentsUnknown && partnersOf(u).length === 0 && last ? [u.id] : [],
     parentChildIds: [linkId],
     slots: [],
-    touchedPersonIds: [l.childId, ...partnersOf(ix.unionById.get(l.unionId)!)],
+    touchedPersonIds: [l.childId, ...partnersOf(u)],
   };
 }

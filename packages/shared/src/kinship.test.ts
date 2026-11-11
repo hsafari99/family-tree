@@ -266,3 +266,39 @@ describe('step links inside longer blood patterns', () => {
     expect(kinshipTerm(s)).toBeNull();
   });
 });
+
+describe('siblings with unknown parents (brief #11)', () => {
+  const A = '00000000-0000-4000-8000-00000000000a';
+  const B = '00000000-0000-4000-8000-00000000000b';
+  const U = '00000000-0000-4000-8000-0000000000a1';
+  const L1 = '00000000-0000-4000-8000-0000000000b1';
+  const L2 = '00000000-0000-4000-8000-0000000000b2';
+  it('are brother and sister through a virtual parent step', () => {
+    const g: KinGraph = {
+      persons: [
+        { id: A, sex: 'male' },
+        { id: B, sex: 'female' },
+      ],
+      unions: [
+        {
+          id: U,
+          partnerAId: null,
+          partnerBId: null,
+          type: 'partnership',
+          status: 'partners',
+          parentsUnknown: true,
+        },
+      ],
+      parentChild: [
+        { id: L1, unionId: U, childId: A, kind: 'biological' },
+        { id: L2, unionId: U, childId: B, kind: 'biological' },
+      ],
+    };
+    const steps = relationshipPath(g, A, B)!;
+    expect(steps.map((s) => s.move)).toEqual(['parent', 'child']);
+    expect(steps[0]!.virtual).toBe(true);
+    expect(steps[0]!.personId).toBe(U);
+    expect(kinshipTerm(steps)).toBe('sister');
+    expect(kinshipTerm(relationshipPath(g, B, A)!)).toBe('brother');
+  });
+});

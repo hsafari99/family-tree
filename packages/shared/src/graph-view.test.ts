@@ -109,3 +109,19 @@ describe('withHiddenRelatives', () => {
     expect(sorted(withHiddenRelatives(kin, ids))).toEqual(['kid', 'ma', 'pa']);
   });
 });
+
+describe('visibleRelations with parents-unknown unions (brief #11)', () => {
+  it('shows a parents-unknown union when one of its children is shown', () => {
+    const sibs: LiveGraph = {
+      persons: [{ id: 'ann' }, { id: 'ben' }],
+      unions: [{ id: 'u0', partnerAId: null, partnerBId: null, parentsUnknown: true }],
+      parentChild: [
+        { id: 'l1', unionId: 'u0', childId: 'ann' },
+        { id: 'l2', unionId: 'u0', childId: 'ben' },
+      ],
+    };
+    expect(visibleRelations(sibs, new Set(['ann', 'ben'])).unionIds).toEqual(new Set(['u0']));
+    expect(visibleRelations(sibs, new Set(['ann'])).linkIds).toEqual(new Set(['l1']));
+    expect(kinIndex(sibs).get('ann')).toEqual(new Set(['ben']));
+  });
+});

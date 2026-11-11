@@ -1,6 +1,12 @@
 export interface FamilyGraph {
   persons: readonly { id: string; createdBy: string | null }[];
-  unions: readonly { id: string; partnerAId: string | null; partnerBId: string | null }[];
+  unions: readonly {
+    id: string;
+    partnerAId: string | null;
+    partnerBId: string | null;
+    /** Siblings with unknown parents (brief #11): the union is their shared virtual parent. */
+    parentsUnknown?: boolean;
+  }[];
   parentChild: readonly { unionId: string; childId: string }[];
 }
 
@@ -27,6 +33,11 @@ const push = (m: Map<string, string[]>, k: string, v: string) => {
 /**
  * The branch of `anchorId` (spec §4). Pure twin of the API's SQL `branchQuery`; both are tested
  * against BRANCH_CASES. `graph` must contain live rows only.
+ *
+ * 1. The anchor's ancestors, 2. everyone descended from them, 3. their live partners who have
+ * no recorded parents, 4. people the steward created. A parents-unknown union counts as its
+ * children's (virtual) parent: siblings share a branch, and in rule 3 a partner with recorded
+ * siblings counts as having parents, so they are "on their own side" and not added (brief #11).
  */
 export function branchOf(
   graph: FamilyGraph,
@@ -40,6 +51,11 @@ export function branchOf(
   for (const pc of graph.parentChild) {
     const u = unionById.get(pc.unionId);
     if (!u) continue;
+    if (u.parentsUnknown) {
+      // A virtual parent, so siblings with unknown parents share a branch. `core` drops the id.
+      push(parents, pc.childId, `u:${u.id}`);
+      push(children, `u:${u.id}`, pc.childId);
+    }
     for (const p of [u.partnerAId, u.partnerBId]) {
       if (p === null) continue;
       push(parents, pc.childId, p);

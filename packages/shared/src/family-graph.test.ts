@@ -7,6 +7,7 @@ import {
   planLinkDeletion,
   planPersonDeletion,
   planUnionDeletion,
+  unionEnds,
   wouldCycle,
 } from './family-graph.js';
 
@@ -172,5 +173,49 @@ describe('relation plans', () => {
     const p = planLinkDeletion(g, 'l-kid1');
     expect(p).toMatchObject({ personIds: [], unionIds: [], parentChildIds: ['l-kid1'] });
     expect(sorted(p.touchedPersonIds)).toEqual(sorted(['kid1', 'dad', 'mum']));
+  });
+});
+
+describe('parents-unknown unions (brief #11)', () => {
+  const sibs: LiveGraph = {
+    persons: [{ id: 'ann' }, { id: 'ben' }, { id: 'pat' }],
+    unions: [{ id: 'u0', partnerAId: null, partnerBId: null, parentsUnknown: true }],
+    parentChild: [
+      { id: 'l1', unionId: 'u0', childId: 'ann' },
+      { id: 'l2', unionId: 'u0', childId: 'ben' },
+    ],
+  };
+  const one: LiveGraph = { ...sibs, parentChild: [sibs.parentChild[0]!] };
+
+  it('deleting one sibling keeps the parents-unknown union for the other', () => {
+    const plan = planPersonDeletion(sibs, 'ann', 'person');
+    expect(plan.unionIds).toEqual([]);
+    expect(plan.parentChildIds).toEqual(['l1']);
+  });
+  it('deleting the last child removes the parents-unknown union too', () => {
+    expect(planPersonDeletion(one, 'ann', 'person').unionIds).toEqual(['u0']);
+  });
+  it('removing the last child link removes the parents-unknown union with it', () => {
+    expect(planLinkDeletion(one, 'l1')).toMatchObject({ unionIds: ['u0'], parentChildIds: ['l1'] });
+    // another child still holds it
+    expect(planLinkDeletion(sibs, 'l1').unionIds).toEqual([]);
+    // once a parent fills a slot it is an ordinary single-parent union and stays
+    const filled = { ...one, unions: [{ ...sibs.unions[0]!, partnerAId: 'pat' }] };
+    expect(planLinkDeletion(filled, 'l1').unionIds).toEqual([]);
+  });
+  it('deleting a parents-unknown union takes all its child links and touches the children', () => {
+    const plan = planUnionDeletion(sibs, 'u0');
+    expect(plan.parentChildIds).toEqual(['l1', 'l2']);
+    expect(plan.touchedPersonIds).toEqual(['ann', 'ben']);
+  });
+  it('a parent added later and then deleted leaves the siblings together', () => {
+    const filled = { ...sibs, unions: [{ ...sibs.unions[0]!, partnerAId: 'pat' }] };
+    const plan = planPersonDeletion(filled, 'pat', 'person');
+    expect(plan.unionIds).toEqual([]);
+    expect(plan.slots).toEqual([{ unionId: 'u0', slot: 'a', personId: 'pat' }]);
+  });
+  it('gives a partnerless union its children as can() ends', () => {
+    expect(unionEnds(sibs.unions[0]!, ['ann', 'ben'])).toEqual(['ann', 'ben']);
+    expect(unionEnds({ id: 'x', partnerAId: 'pat', partnerBId: null }, ['ann'])).toEqual(['pat']);
   });
 });

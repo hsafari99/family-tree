@@ -79,8 +79,16 @@ export function visibleRelations(graph: LiveGraph, ids: ReadonlySet<string>) {
   for (const l of graph.parentChild) if (ids.has(l.childId)) childShown.add(l.unionId);
   const unionIds = new Set<string>();
   for (const u of graph.unions) {
-    const shown = partnersOf(u).filter((p) => ids.has(p)).length;
-    if (shown === 2 || (shown === 1 && childShown.has(u.id))) unionIds.add(u.id);
+    const partners = partnersOf(u);
+    const shown = partners.filter((p) => ids.has(p)).length;
+    // A parents-unknown union (no partners) is drawn whenever one of its children is (brief #11).
+    if (
+      shown === 2 ||
+      (shown === 1 && childShown.has(u.id)) ||
+      (partners.length === 0 && childShown.has(u.id))
+    ) {
+      unionIds.add(u.id);
+    }
   }
   const linkIds = new Set<string>();
   for (const l of graph.parentChild) {

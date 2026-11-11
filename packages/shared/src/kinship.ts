@@ -25,6 +25,11 @@ export const kinStepSchema = z.object({
   /** partner moves only. */
   unionType: z.enum(UNION_TYPES).nullable(),
   unionStatus: z.enum(UNION_STATUSES).nullable(),
+  /**
+   * Parent/child steps through a parents-unknown union (brief #11): personId is the union's id,
+   * not a person.
+   */
+  virtual: z.boolean().optional(),
 });
 export type KinStep = z.infer<typeof kinStepSchema>;
 
@@ -37,6 +42,7 @@ export interface KinGraph {
     partnerBId: string | null;
     type: UnionType;
     status: UnionStatus;
+    parentsUnknown?: boolean;
   }[];
   parentChild: readonly { id: string; unionId: string; childId: string; kind: ChildKind }[];
 }
@@ -58,6 +64,20 @@ function kinEdges(graph: KinGraph): Map<string, KinStep[]> {
     const u = unionById.get(l.unionId);
     const childSex = sex.get(l.childId);
     if (!u || childSex === undefined) continue;
+    if (u.partnerAId === null && u.partnerBId === null && u.parentsUnknown) {
+      // The union stands in for the unknown parents, so siblings still read as "sister".
+      const link = {
+        unionId: u.id,
+        linkId: l.id,
+        kind: l.kind,
+        unionType: null,
+        unionStatus: null,
+        virtual: true,
+      };
+      add(l.childId, { move: 'parent', personId: u.id, sex: 'unknown', ...link });
+      add(u.id, { move: 'child', personId: l.childId, sex: childSex, ...link });
+      continue;
+    }
     for (const p of [u.partnerAId, u.partnerBId]) {
       const parentSex = p === null ? undefined : sex.get(p);
       if (p === null || parentSex === undefined) continue;

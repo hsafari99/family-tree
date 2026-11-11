@@ -118,4 +118,26 @@ export const BRANCH_CASES: BranchCase[] = [
     steward: 'u1',
     expected: ['kim'],
   },
+  {
+    name: 'siblings with unknown parents share a branch; a partner with recorded siblings is on their own side',
+    graph: {
+      persons: ['ann', 'ben', 'cal', 'dee', 'eve'].map((id) => ({ id, createdBy: null })),
+      unions: [
+        { id: 'u0', partnerAId: null, partnerBId: null, parentsUnknown: true },
+        { id: 'u_bc', partnerAId: 'ben', partnerBId: 'cal' },
+        { id: 'u_ad', partnerAId: 'ann', partnerBId: 'dee' },
+        { id: 'u1', partnerAId: null, partnerBId: null, parentsUnknown: true },
+      ],
+      parentChild: [
+        { unionId: 'u0', childId: 'ann' },
+        { unionId: 'u0', childId: 'ben' },
+        { unionId: 'u1', childId: 'dee' },
+        { unionId: 'u1', childId: 'eve' },
+      ],
+    },
+    anchor: 'ann',
+    steward: null,
+    // Dee has recorded siblings, so Dee is on her own side (rule 3).
+    expected: ['ann', 'ben', 'cal'],
+  },
 ];
