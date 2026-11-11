@@ -14,6 +14,9 @@ export function CanvasToolbar({
   hrefOf,
   selectedId,
   onChange,
+  panelShown = false,
+  canTogglePanel = false,
+  onTogglePanel,
 }: {
   treeId: string;
   detail: TreeDetail;
@@ -23,12 +26,28 @@ export function CanvasToolbar({
   hrefOf: (personId: string) => string;
   selectedId?: string | null;
   onChange: (change: CanvasChange) => void;
+  /** The details panel (brief #15): shown, and whether the toggle has anything to show. */
+  panelShown?: boolean;
+  canTogglePanel?: boolean;
+  onTogglePanel?: () => void;
 }) {
   const [search] = useSearchParams();
   const { me, capabilities } = detail;
   const full = params.mode === 'full';
   return (
     <div className="canvas-toolbar">
+      {onTogglePanel && (
+        <button
+          type="button"
+          className="secondary panel-toggle"
+          aria-pressed={panelShown}
+          aria-controls="tree-panel"
+          disabled={!canTogglePanel}
+          onClick={onTogglePanel}
+        >
+          Details
+        </button>
+      )}
       <SearchBox treeId={treeId} persons={persons} meId={detail.me.personId} />
       <Link
         to={`/trees/${treeId}/relationship${canvasSearch(search, { tab: null, add: null, ...(selectedId ? { to: selectedId } : {}) })}`}

@@ -50,7 +50,7 @@ describe('TreeWorkspace', () => {
     expect(screen.queryByRole('complementary', { name: 'Details' })).toBeNull();
   });
 
-  it('opens a person, re-centres, and closes back to the focus', async () => {
+  it('opens a person, re-centres, and closes the panel', async () => {
     const s = setup();
     renderAt(`/trees/${s.id}`, s);
     fireEvent.click(await card('David Hale, b. 1956'));
@@ -63,9 +63,6 @@ describe('TreeWorkspace', () => {
     await waitFor(() =>
       expect(screen.queryByRole('complementary', { name: 'Details' })).toBeNull(),
     );
-    expect(
-      screen.getByText('Select someone on the tree to see their details.'),
-    ).toBeInTheDocument();
   });
 
   it('switches to the full view and picks a branch', async () => {
@@ -373,15 +370,17 @@ describe('TreeWorkspace relationships', () => {
     await waitFor(() => expect(graphCalls(s.trees)).toContainEqual({ mode: 'full' }));
   });
 
-  it('Close clears the highlight and drops from and to', async () => {
+  it('Close collapses the panel and keeps the path on the tree', async () => {
     const s = relSetup();
-    renderAt(`/trees/${s.id}/relationship?from=leo&to=robert`, s);
+    const r = renderAt(`/trees/${s.id}/relationship?from=leo&to=robert`, s);
     fireEvent.click(await screen.findByRole('button', { name: 'Show on the tree' }));
     await waitFor(() => expect(isPath().length).toBeGreaterThan(0));
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
-    await waitFor(() => expect(isPath()).toHaveLength(0));
-    const href = screen.getByRole('link', { name: 'How are we related?' }).getAttribute('href')!;
-    expect(href).not.toMatch(/from=|to=/);
+    await waitFor(() =>
+      expect(screen.queryByRole('complementary', { name: 'Details' })).toBeNull(),
+    );
+    expect(isPath().length).toBeGreaterThan(0);
+    expect(r.where()).toMatch(/from=leo&to=robert/);
   });
 
   it('drops the highlight when To changes', async () => {
@@ -398,5 +397,84 @@ describe('TreeWorkspace relationships', () => {
     renderAt(`/trees/${s.id}/relationship?from=leo&to=robert`, s);
     const link = await screen.findByRole('link', { name: 'How are we related?' });
     expect(link.getAttribute('href')).toContain('to=robert');
+  });
+});
+
+describe('TreeWorkspace collapsible panel (brief #15)', () => {
+  const details = () => screen.queryByRole('complementary', { name: 'Details' });
+  const toggle = () => screen.getByRole('button', { name: 'Details' });
+
+  it('Close hides the panel, keeps the person in the URL, and Details shows it again', async () => {
+    const s = setup();
+    const r = renderAt(`/trees/${s.id}/people/david`, s);
+    await screen.findByRole('heading', { level: 2, name: /David Hale/ });
+    expect(toggle()).toHaveAttribute('aria-pressed', 'true');
+    expect(toggle()).toHaveAttribute('aria-controls', 'tree-panel');
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(details()).toBeNull());
+    expect(r.where()).toMatch(/\/people\/david/);
+    expect(toggle()).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(toggle());
+    expect(await screen.findByRole('complementary', { name: 'Details' })).toBeInTheDocument();
+    expect(toggle()).toHaveAttribute('aria-pressed', 'true');
+    // The toggle collapses it too.
+    fireEvent.click(toggle());
+    await waitFor(() => expect(details()).toBeNull());
+  });
+
+  it('Escape collapses, but not from a field', async () => {
+    const s = setup();
+    const r = renderAt(`/trees/${s.id}/people/david`, s);
+    const heading = await screen.findByRole('heading', { level: 2, name: /David Hale/ });
+    const field = document.createElement('input');
+    heading.after(field);
+    fireEvent.keyDown(field, { key: 'Escape' });
+    expect(details()).not.toBeNull();
+    fireEvent.keyDown(heading, { key: 'Escape' });
+    await waitFor(() => expect(details()).toBeNull());
+    expect(r.where()).toMatch(/\/people\/david/);
+  });
+
+  it('expands when another card is clicked', async () => {
+    const s = setup();
+    renderAt(`/trees/${s.id}/people/david`, s);
+    await screen.findByRole('heading', { level: 2, name: /David Hale/ });
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(details()).toBeNull());
+    fireEvent.click(await card(ROBERT));
+    expect(await screen.findByRole('heading', { level: 2, name: /Robert Hale/ })).toBeVisible();
+    expect(details()).not.toBeNull();
+  });
+
+  it('stays collapsed after a reload', async () => {
+    const s = setup();
+    const first = renderAt(`/trees/${s.id}/people/david`, s);
+    await screen.findByRole('heading', { level: 2, name: /David Hale/ });
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(details()).toBeNull());
+    first.unmount();
+    renderAt(`/trees/${s.id}/people/david`, s);
+    await card(ROBERT);
+    expect(toggle()).toHaveAttribute('aria-pressed', 'false');
+    expect(details()).toBeNull();
+  });
+
+  it('comes before the canvas, so Tab reaches it first', async () => {
+    const s = setup();
+    renderAt(`/trees/${s.id}/people/david`, s);
+    const aside = await screen.findByRole('complementary', { name: 'Details' });
+    const canvas = screen.getByRole('region', { name: 'Family tree view' });
+    expect(aside.id).toBe('tree-panel');
+    expect(aside.compareDocumentPosition(canvas) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('opens the root person when nothing is selected or was opened', async () => {
+    const s = setup();
+    const r = renderAt(`/trees/${s.id}`, s);
+    await card(ROBERT);
+    expect(toggle()).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(toggle());
+    expect(await screen.findByRole('heading', { level: 2, name: /Robert Hale/ })).toBeVisible();
+    expect(r.where()).toMatch(/\/people\/robert/);
   });
 });

@@ -23,6 +23,7 @@ import { applyHighlight, type PathHighlight, pathHighlight } from '../../canvas/
 import { useTreeGraph } from '../../canvas/useTreeGraph';
 import { useTreesApi } from '../../trees/TreesApiContext';
 import { AddPersonForm } from './AddPersonForm';
+import { readCollapsed, writeCollapsed } from './panel-state';
 import { PeopleList } from './PeopleList';
 import { PersonPanel } from './PersonPanel';
 import { RelationshipPanel } from './RelationshipPanel';
@@ -91,15 +92,29 @@ export function TreeWorkspace({
     const { navigate: nav, params: current } = latest.current;
     void nav(`${path}${canvasSearch(current, change)}`);
   }, []);
+  // The panel can be collapsed while something stays selected; the choice is remembered (brief #15).
+  const [collapsed, setCollapsedState] = useState(readCollapsed);
+  const setCollapsed = useCallback((v: boolean) => {
+    setCollapsedState(v);
+    writeCollapsed(v);
+  }, []);
+  // Opening something from the canvas always shows it.
   const actions = useMemo(
     () => ({
-      openPerson: (id: string) => go(`${base}/people/${id}`, { focus: null, tab: null, add: null }),
-      addRelative: (id: string, as: RelativeRole) =>
-        go(`${base}/people/${id}`, { focus: null, tab: 'relations', add: as }),
-      openUnion: (id: string) =>
-        go(`${base}/unions/${id}`, { focus: latest.current.keepFocus, tab: null, add: null }),
+      openPerson: (id: string) => {
+        setCollapsed(false);
+        go(`${base}/people/${id}`, { focus: null, tab: null, add: null });
+      },
+      addRelative: (id: string, as: RelativeRole) => {
+        setCollapsed(false);
+        go(`${base}/people/${id}`, { focus: null, tab: 'relations', add: as });
+      },
+      openUnion: (id: string) => {
+        setCollapsed(false);
+        go(`${base}/unions/${id}`, { focus: latest.current.keepFocus, tab: null, add: null });
+      },
     }),
-    [go, base],
+    [go, base, setCollapsed],
   );
   const [notice, setNotice] = useState<string | null>(null);
   const onReorder = useCallback(
@@ -119,13 +134,27 @@ export function TreeWorkspace({
     [api, treeId, changed],
   );
   const returnFocusTo = useRef<{ id: string | null } | null>(null);
+  // Close (and Escape) collapse the panel; the URL keeps the selection, so the card stays marked.
   const close = useCallback(() => {
     returnFocusTo.current = { id: personId ?? null };
-    go(base, { focus: latest.current.keepFocus, tab: null, add: null, from: null, to: null });
-  }, [go, base, personId]);
+    setCollapsed(true);
+  }, [personId, setCollapsed]);
   const canAdd = detail.capabilities.editAnywhere || detail.me.steward.active;
   const selected =
     (newPerson && canAdd) || personId !== undefined || unionId !== undefined || relationship;
+  const shown = selected && !collapsed;
+  // The last person shown this session, for the Details toggle when nothing is selected.
+  const lastPerson = useRef<string | null>(null);
+  useEffect(() => {
+    if (personId) lastPerson.current = personId;
+  }, [personId]);
+  const reopenId = lastPerson.current ?? personId ?? detail.tree.rootPersonId;
+  const togglePanel = useCallback(() => {
+    if (shown) return close();
+    if (selected) return setCollapsed(false);
+    const id = lastPerson.current ?? detail.tree.rootPersonId;
+    if (id) actions.openPerson(id);
+  }, [shown, selected, close, setCollapsed, actions, detail.tree.rootPersonId]);
   const ready = graph.status === 'ready' ? graph : null;
   const [highlight, setHighlight] = useState<PathHighlight | null>(null);
   // The drawn path belongs to one From/To pair: another pair, or leaving the panel, clears it.
@@ -161,11 +190,20 @@ export function TreeWorkspace({
   const panel = useRef<HTMLElement>(null);
   const canvasArea = useRef<HTMLElement>(null);
   const panelKey = `${newPerson}/${personId}/${unionId}/${relationship}`;
+  // Anything newly opened (a toolbar link, search, the people list) expands the panel. Not on the
+  // first render, so a remembered collapse survives a reload (a ref of the last key, not a
+  // first-run flag, so StrictMode's double effects don't count as a change).
+  const lastKey = useRef(panelKey);
+  useEffect(() => {
+    if (lastKey.current === panelKey) return;
+    lastKey.current = panelKey;
+    setCollapsed(false);
+  }, [panelKey, setCollapsed]);
 
   // Opening the panel moves focus to its heading, once the panel has rendered one.
   useEffect(() => {
     const el = panel.current;
-    if (!selected || !el) return;
+    if (!shown || !el) return;
     const focusHeading = () => {
       const h = el.querySelector('h2');
       if (!h) return false;
@@ -179,12 +217,12 @@ export function TreeWorkspace({
     });
     observer.observe(el, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, [selected, panelKey]);
+  }, [shown, panelKey]);
 
   // Closing returns focus to the card that was open, or to the canvas if it isn't rendered.
   useEffect(() => {
     const pending = returnFocusTo.current;
-    if (selected || !pending) return;
+    if (shown || !pending) return;
     returnFocusTo.current = null;
     const card = pending.id
       ? canvasArea.current?.querySelector<HTMLElement>(
@@ -192,20 +230,21 @@ export function TreeWorkspace({
         )
       : null;
     (card ?? canvasArea.current)?.focus();
-  }, [selected]);
+  }, [shown]);
 
-  // Escape closes the panel (but not while it is cancelling a field inside a form control).
+  // Escape collapses the panel (but not while it is cancelling a field inside a form control, or
+  // closing a menu or a dialog, which handle their own Escape).
   useEffect(() => {
-    if (!selected) return;
+    if (!shown) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
       const t = e.target;
-      if (t instanceof HTMLElement && t.closest('input, select, textarea')) return;
+      if (t instanceof HTMLElement && t.closest('input, select, textarea, dialog')) return;
       close();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [selected, close]);
+  }, [shown, close]);
 
   return (
     <>
@@ -218,6 +257,9 @@ export function TreeWorkspace({
         hrefOf={hrefOf}
         selectedId={personId ?? null}
         onChange={(change) => go(pathname, change)}
+        panelShown={shown}
+        canTogglePanel={selected || reopenId !== null}
+        onTogglePanel={togglePanel}
       />
       {notice && (
         <p role="status" className="notice">
@@ -225,13 +267,70 @@ export function TreeWorkspace({
         </p>
       )}
       <PhotoRefreshContext.Provider value={refreshPhotos}>
-        <div className={selected ? 'tree-workspace has-panel' : 'tree-workspace'}>
+        <div className={shown ? 'tree-workspace has-panel' : 'tree-workspace'}>
+          {/* Kept mounted while collapsed, so a half-filled form survives hiding the panel. */}
+          {selected && (
+            <aside
+              id="tree-panel"
+              className="tree-panel"
+              aria-label="Details"
+              ref={panel}
+              hidden={!shown}
+            >
+              <p className="panel-close">
+                <button type="button" className="secondary" onClick={close}>
+                  Close
+                </button>
+              </p>
+              {newPerson && canAdd ? (
+                <AddPersonForm
+                  treeId={treeId}
+                  persons={persons}
+                  detail={detail}
+                  onCreated={changed}
+                />
+              ) : personId ? (
+                <PersonPanel
+                  key={personId}
+                  treeId={treeId}
+                  personId={personId}
+                  persons={persons}
+                  onChanged={changed}
+                />
+              ) : relationship ? (
+                <RelationshipPanel
+                  treeId={treeId}
+                  detail={detail}
+                  persons={persons}
+                  onShow={showPath}
+                />
+              ) : (
+                <UnionPanel
+                  key={unionId}
+                  treeId={treeId}
+                  union={ready?.graph.unions.find((u) => u.id === unionId)}
+                  loading={graph.status === 'loading'}
+                  persons={persons}
+                  onChanged={changed}
+                />
+              )}
+            </aside>
+          )}
           <section
             className="canvas-area"
             aria-label="Family tree view"
             tabIndex={-1}
             ref={canvasArea}
           >
+            {!selected && (
+              <p className="hint canvas-hint">
+                <span>Select someone on the tree to see their details.</span>{' '}
+                <span>
+                  With a mouse, drag the dot end of a child’s line onto other parents to move them;
+                  Relations → Change parents… does the same from the keyboard.
+                </span>
+              </p>
+            )}
             {graph.status === 'loading' && <p role="status">Drawing the tree…</p>}
             {graph.status === 'error' && (
               <>
@@ -273,55 +372,6 @@ export function TreeWorkspace({
               />
             )}
           </section>
-          {selected ? (
-            <aside className="tree-panel" aria-label="Details" ref={panel}>
-              <p className="panel-close">
-                <button type="button" className="secondary" onClick={close}>
-                  Close
-                </button>
-              </p>
-              {newPerson && canAdd ? (
-                <AddPersonForm
-                  treeId={treeId}
-                  persons={persons}
-                  detail={detail}
-                  onCreated={changed}
-                />
-              ) : personId ? (
-                <PersonPanel
-                  key={personId}
-                  treeId={treeId}
-                  personId={personId}
-                  persons={persons}
-                  onChanged={changed}
-                />
-              ) : relationship ? (
-                <RelationshipPanel
-                  treeId={treeId}
-                  detail={detail}
-                  persons={persons}
-                  onShow={showPath}
-                />
-              ) : (
-                <UnionPanel
-                  key={unionId}
-                  treeId={treeId}
-                  union={ready?.graph.unions.find((u) => u.id === unionId)}
-                  loading={graph.status === 'loading'}
-                  persons={persons}
-                  onChanged={changed}
-                />
-              )}
-            </aside>
-          ) : (
-            <p className="hint canvas-hint">
-              <span>Select someone on the tree to see their details.</span>{' '}
-              <span>
-                With a mouse, drag the dot end of a child’s line onto other parents to move them;
-                Relations → Change parents… does the same from the keyboard.
-              </span>
-            </p>
-          )}
         </div>
       </PhotoRefreshContext.Provider>
       {/* Opened when the layout timed out, so people stay reachable (decision 4). */}

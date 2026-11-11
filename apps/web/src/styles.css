@@ -615,8 +615,23 @@ img.card-photo {
   gap: 1rem;
 }
 .tree-workspace.has-panel {
-  /* minmax(0, ...): a grid track won't shrink below its content's min-width by default. */
-  grid-template-columns: minmax(0, 1fr) 400px;
+  /* The panel is on the left and first in the DOM, so Tab reaches it first (brief #15).
+     minmax(0, ...): a grid track won't shrink below its content's min-width by default. */
+  grid-template-columns: 400px minmax(0, 1fr);
+}
+/* Floats over the top of the canvas, clear of React Flow's controls (bottom left) and minimap
+   (bottom right); clicks go through to the canvas. */
+.canvas-hint {
+  position: absolute;
+  z-index: 5;
+  top: 0.5rem;
+  left: 0.5rem;
+  right: 0.5rem;
+  max-width: 44rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 6px;
+  background: color-mix(in srgb, Canvas 85%, transparent);
+  pointer-events: none;
 }
 .canvas-area {
   position: relative;
@@ -688,6 +703,10 @@ img.card-photo {
   }
   .canvas-area {
     height: 70vh;
+  }
+  /* Dragging a line is for a mouse; on a phone the hint is just the first sentence. */
+  .canvas-hint span + span {
+    display: none;
   }
   /* The side panel becomes a bottom sheet (spec §6). */
   .tree-panel {

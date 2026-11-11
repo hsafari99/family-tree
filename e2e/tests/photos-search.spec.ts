@@ -61,6 +61,8 @@ test('"How are we related?" words the path and highlights it', async ({ page }) 
   await expect(page.getByText('Emma Hale is your half-sister.')).toBeVisible();
   await page.getByRole('button', { name: 'Show on the tree' }).click();
   await expect.poll(() => page.locator('.is-path').count()).toBeGreaterThanOrEqual(3);
+  // Close only collapses the panel (brief #15): the path stays drawn.
   await page.getByRole('button', { name: 'Close' }).click();
-  await expect(page.locator('.is-path')).toHaveCount(0);
+  await expect(page.getByRole('complementary', { name: 'Details' })).toBeHidden();
+  await expect.poll(() => page.locator('.is-path').count()).toBeGreaterThanOrEqual(3);
 });

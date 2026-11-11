@@ -8,6 +8,8 @@ configure({ asyncUtilTimeout: 10_000 });
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  // Remembered UI state (the collapsed panel) must not leak from one test into the next.
+  if (typeof localStorage !== 'undefined') localStorage.clear();
 });
 
 // React Flow measures with ResizeObserver and reads DOMMatrixReadOnly; jsdom has neither.
