@@ -78,7 +78,6 @@ export function DeletePerson({
                 name="delete-mode"
                 checked={mode === 'person'}
                 onChange={() => setMode('person')}
-                style={{ width: 'auto' }}
               />{' '}
               Just this person
             </label>
@@ -88,7 +87,6 @@ export function DeletePerson({
                 name="delete-mode"
                 checked={mode === 'descendants'}
                 onChange={() => setMode('descendants')}
-                style={{ width: 'auto' }}
               />{' '}
               This person and their descendants
             </label>

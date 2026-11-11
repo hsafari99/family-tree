@@ -185,7 +185,6 @@ export function AddRelativeForm({
             name="mode"
             checked={mode === 'new'}
             onChange={() => setMode('new')}
-            style={{ width: 'auto' }}
           />{' '}
           A new person
         </label>
@@ -195,7 +194,6 @@ export function AddRelativeForm({
             name="mode"
             checked={mode === 'existing'}
             onChange={() => setMode('existing')}
-            style={{ width: 'auto' }}
           />{' '}
           Someone already in the tree
         </label>

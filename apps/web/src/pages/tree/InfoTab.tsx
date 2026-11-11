@@ -252,7 +252,6 @@ function InfoForm({
             type="checkbox"
             checked={isLiving}
             onChange={(e) => set('isLiving')(e.target.checked)}
-            style={{ width: 'auto' }}
           />{' '}
           Living
         </label>

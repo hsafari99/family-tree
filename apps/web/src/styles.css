@@ -86,7 +86,9 @@ form {
 label {
   font-weight: 600;
 }
-input {
+input,
+select,
+textarea {
   font: inherit;
   width: 100%;
   padding: 0.6rem 0.7rem;
@@ -95,8 +97,26 @@ input {
   background: Canvas;
   color: CanvasText;
 }
-input[aria-invalid='true'] {
+/* Same outer height as a text input in every engine (#3). */
+select {
+  min-height: 2.75rem;
+  line-height: 1.5;
+}
+input[type='checkbox'],
+input[type='radio'] {
+  width: auto;
+}
+:is(input, select, textarea)[aria-invalid='true'] {
   border-color: var(--bad);
+}
+/* A button straight after a field outside a form grid (Delete account, #5). */
+:not(form) > .field + :is(button, .confirm, .actions) {
+  margin-top: 1rem;
+}
+/* The form grid stretches its children; buttons keep their own width
+   (Tree settings: Rename, Starting person). */
+form > :is(button, .confirm) {
+  justify-self: start;
 }
 .hint {
   margin: 0;
@@ -306,16 +326,6 @@ button.google:hover:not(:disabled) {
 .person-panel dd {
   margin: 0;
 }
-textarea {
-  font: inherit;
-  width: 100%;
-  padding: 0.6rem 0.7rem;
-  border: 1px solid var(--border);
-  border-radius: 0.4rem;
-  background: Canvas;
-  color: CanvasText;
-}
-
 .person-card {
   position: relative;
   box-sizing: border-box;
