@@ -22,12 +22,21 @@ const type = (label: string, value: string) =>
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
 const click = (name: string) => fireEvent.click(screen.getByRole('button', { name }));
 const stepHeading = (step: RegExp) => screen.findByRole('heading', { name: step });
+/**
+ * Waits for the heading to appear and then to take focus. Focus moves in an effect, and a step
+ * reached after an API call renders outside act(), so the heading can be in the DOM a moment
+ * before the effect has focused it.
+ */
+async function expectFocused(heading: HTMLElement | Promise<HTMLElement>) {
+  const el = await heading;
+  await waitFor(() => expect(el).toHaveFocus());
+}
 
 async function startMove(api: FakeAuthApi, code = FAKE_TOTP) {
   renderAt('/account', { auth: api });
   const region = await section();
   fireEvent.click(within(region).getByRole('button', { name: 'Move to a new phone' }));
-  expect(await stepHeading(/Step 1 of 3/)).toHaveFocus();
+  await expectFocused(stepHeading(/Step 1 of 3/));
   type('Your password', 'correct-horse');
   type('Code from your current phone, or a recovery code', code);
   click('Continue');
@@ -47,7 +56,7 @@ describe('Account settings: move two-step verification to a new phone', () => {
     const { api } = account();
     const region = await startMove(api);
 
-    expect(await stepHeading(/Step 2 of 3/)).toHaveFocus();
+    await expectFocused(stepHeading(/Step 2 of 3/));
     expect(api.callsTo('startTwoFactorMove')).toEqual([
       { password: 'correct-horse', code: FAKE_TOTP },
     ]);
@@ -55,7 +64,7 @@ describe('Account settings: move two-step verification to a new phone', () => {
     type('6-digit code from the new phone', '654 321');
     click('Move to this phone');
 
-    expect(await stepHeading(/Step 3 of 3/)).toHaveFocus();
+    await expectFocused(stepHeading(/Step 3 of 3/));
     expect(api.callsTo('confirmTwoFactorMove')).toEqual([{ code: FAKE_NEW_TOTP }]);
     const codes = within(region).getByRole('list', { name: 'Recovery codes' });
     expect(within(codes).getAllByRole('listitem')).toHaveLength(8);
@@ -64,7 +73,7 @@ describe('Account settings: move two-step verification to a new phone', () => {
     expect(await within(region).findByRole('status')).toHaveTextContent(
       'Two-step verification now uses your new phone',
     );
-    expect(screen.getByRole('heading', { name: 'Move to a new phone' })).toHaveFocus();
+    await expectFocused(screen.getByRole('heading', { name: 'Move to a new phone' }));
     expect(within(region).queryByRole('list', { name: 'Recovery codes' })).toBeNull();
     expect(alert).not.toHaveBeenCalled();
     expect(confirm).not.toHaveBeenCalled();
@@ -124,7 +133,7 @@ describe('Account settings: move two-step verification to a new phone', () => {
     click('Move to this phone');
     expect(await within(region).findByRole('alert')).toHaveTextContent(MESSAGES.moveExpired);
     click('Start again');
-    expect(await stepHeading(/Step 1 of 3/)).toHaveFocus();
+    await expectFocused(stepHeading(/Step 1 of 3/));
   });
 
   it('cancel discards the new secret and leaves the current phone in use', async () => {
@@ -136,7 +145,7 @@ describe('Account settings: move two-step verification to a new phone', () => {
     expect(await within(region).findByRole('status')).toHaveTextContent(
       'Nothing changed. Your current phone still works.',
     );
-    expect(screen.getByRole('heading', { name: 'Move to a new phone' })).toHaveFocus();
+    await expectFocused(screen.getByRole('heading', { name: 'Move to a new phone' }));
   });
 
   it('cancel on the first step needs no server call', async () => {
