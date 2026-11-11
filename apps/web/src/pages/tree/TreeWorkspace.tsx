@@ -110,6 +110,14 @@ export function TreeWorkspace({
     },
     [api, treeId, changed],
   );
+  const onReparent = useCallback(
+    async (linkId: string, unionId: string) => {
+      const res = await api.reparentLink(treeId, linkId, unionId);
+      setNotice(res.ok ? 'Parents changed.' : res.error.message);
+      changed();
+    },
+    [api, treeId, changed],
+  );
   const returnFocusTo = useRef<{ id: string | null } | null>(null);
   const close = useCallback(() => {
     returnFocusTo.current = { id: personId ?? null };
@@ -261,6 +269,7 @@ export function TreeWorkspace({
                 actions={actions}
                 selectedId={personId ?? null}
                 onReorder={(u, ids) => void onReorder(u, ids)}
+                onReparent={(l, u) => void onReparent(l, u)}
               />
             )}
           </section>
@@ -305,7 +314,13 @@ export function TreeWorkspace({
               )}
             </aside>
           ) : (
-            <p className="hint canvas-hint">Select someone on the tree to see their details.</p>
+            <p className="hint canvas-hint">
+              <span>Select someone on the tree to see their details.</span>{' '}
+              <span>
+                With a mouse, drag the dot end of a child’s line onto other parents to move them;
+                Relations → Change parents… does the same from the keyboard.
+              </span>
+            </p>
           )}
         </div>
       </PhotoRefreshContext.Provider>

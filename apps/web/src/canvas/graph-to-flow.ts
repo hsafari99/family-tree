@@ -121,6 +121,8 @@ export function graphToFlow(
         className: `edge-child edge-${l.kind}`,
         selectable: false,
         focusable: false,
+        // Its dot end can be dragged onto another union dot to re-link the child (brief #13).
+        reconnectable: u.canEdit ? 'source' : false,
         ariaLabel: `${personName(byId.get(l.childId)!)}, child of ${names.join(' and ')}`,
       });
     }

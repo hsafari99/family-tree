@@ -15,10 +15,14 @@ export function UnionNode({ data }: NodeProps<UnionFlowNode>) {
         title={data.label}
         onClick={() => actions.openUnion(data.union.id)}
       />
+      {/* A child's line can be dropped here to move them to these parents (brief #13). Nobody
+          can start a brand-new line from a dot. */}
       <Handle
         type="source"
         position={Position.Bottom}
-        isConnectable={false}
+        isConnectable={data.union.canEdit}
+        isConnectableStart={false}
+        isConnectableEnd={data.union.canEdit}
         className="card-handle"
       />
     </>

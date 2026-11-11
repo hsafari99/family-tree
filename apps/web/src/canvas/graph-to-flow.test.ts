@@ -147,3 +147,16 @@ describe('graphToFlow with unknown parents (brief #11)', () => {
     expect(nodes.some((n) => n.id === 'u:u0')).toBe(false);
   });
 });
+
+describe('graphToFlow reconnectable child edges (brief #13)', () => {
+  it('lets the dot end of an editable union’s child edge be dragged, and nothing else', () => {
+    const g = haleGraph();
+    g.unions = g.unions.map((u) => (u.id === 'u-s' ? { ...u, canEdit: false } : u));
+    const { edges } = graphToFlow(g, ctx);
+    expect(edges.find((e) => e.id === 'child:l-leo')!.reconnectable).toBe('source');
+    expect(edges.find((e) => e.id === 'child:l-noah')!.reconnectable).toBe(false);
+    expect(edges.filter((e) => e.id.startsWith('partner:')).every((e) => !e.reconnectable)).toBe(
+      true,
+    );
+  });
+});

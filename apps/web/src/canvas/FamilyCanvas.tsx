@@ -2,6 +2,7 @@ import {
   applyNodeChanges,
   Background,
   Controls,
+  type Connection,
   type Edge,
   MiniMap,
   type NodeChange,
@@ -24,6 +25,7 @@ import {
   personNodeId,
 } from './graph-to-flow';
 import { PersonNode } from './PersonCard';
+import { reparentFromReconnect } from './reparent';
 import { UnionNode } from './UnionNode';
 
 const NODE_TYPES = { person: PersonNode, union: UnionNode } satisfies NodeTypes;
@@ -39,6 +41,8 @@ export interface FamilyCanvasProps {
   selectedId: string | null;
   /** Sibling drag (Task 17). */
   onReorder?: (unionId: string, childIds: string[]) => void;
+  /** A child's line dropped on another union dot (brief #13). */
+  onReparent?: (linkId: string, unionId: string) => void;
 }
 
 export function FamilyCanvas(props: FamilyCanvasProps) {
@@ -59,6 +63,7 @@ function CanvasInner({
   actions,
   selectedId,
   onReorder,
+  onReparent,
 }: FamilyCanvasProps) {
   const flow = useReactFlow<CanvasNode>();
   const pane = useRef<HTMLDivElement>(null);
@@ -114,6 +119,19 @@ function CanvasInner({
     [flow, families, nodes, onReorder],
   );
 
+  // No local edge update: the reload after the API call redraws them.
+  const onReconnect = useCallback(
+    (old: Edge, c: Connection) => {
+      const r = reparentFromReconnect(old, c);
+      if (r) onReparent?.(r.linkId, r.unionId);
+    },
+    [onReparent],
+  );
+  const isValidConnection = useCallback(
+    (c: Edge | Connection) => c.source.startsWith('u:') && c.target.startsWith('p:'),
+    [],
+  );
+
   const reveal = useCallback(
     (personId: string) => {
       const node = flow.getNode(personNodeId(personId));
@@ -148,6 +166,9 @@ function CanvasInner({
             colorMode="system"
             onNodesChange={onNodesChange}
             onNodeDragStop={onNodeDragStop}
+            edgesReconnectable={false}
+            onReconnect={onReparent ? onReconnect : undefined}
+            isValidConnection={isValidConnection}
             nodesDraggable={false}
             nodesConnectable={false}
             elementsSelectable={false}
