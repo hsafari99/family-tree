@@ -68,9 +68,10 @@ How it works:
   visitor; it comes back to where you started (same-site paths only).
 - A Google email that already has a password account is **refused, never linked**: emails aren't
   verified, so the address alone proves nothing. Sign in with the password, then **Account →
-  Google → Connect Google** (password again, plus a code when 2FA is on). **Disconnect Google** is
-  only offered while the account has a password; a Google-only account can **set a password**
-  there first, which it also needs before it can turn on two-step verification.
+  Google → Connect Google** (password again, plus a code when 2FA is on). **Disconnect Google**
+  asks for the same and is only offered while the account has a password; a Google-only account
+  can **set a password** there first (within 10 minutes of a Google sign-in; other sessions are
+  signed out), which it also needs before it can turn on two-step verification.
 - Two-step verification applies to Google sign-ins too.
 - Tests never call Google: integration tests answer Google's token endpoint themselves, and the
   E2E test (`e2e/tests/google.spec.ts`) stops at Google's authorization page. It skips when the
@@ -204,9 +205,11 @@ stack on this machine only, with a local certificate authority and SeaweedFS sta
 - **E2E needs `AUTH_RATE_LIMIT_ENABLED=false`** on the dev stack.
 - **Google sign-in skips the "trust this device" shortcut:** a user with 2FA enters a code on
   every Google sign-in, as with passwords (the app never offers it).
+- **Wrong 2FA codes on Connect or Disconnect Google don't count toward the 2FA lockout.** Those
+  routes are capped at 5 attempts per 15 minutes instead.
 - **Connecting or disconnecting Google isn't in an audit log.** The audit log is per tree; a
   disconnect is only written to the API log (user id, no email).
-- **One Google account per user.**
+- **One Google account per user** (a database constraint enforces it).
 
 ## License
 

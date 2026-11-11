@@ -299,11 +299,15 @@ button.
   Google in Account settings."
 - **Connect Google** (Account settings, signed in) asks for the password again, plus an
   authenticator or recovery code when two-step verification is on. The Google address may differ
-  from the account's email. **Disconnect Google** is offered only while the account has a
-  password; an account that only uses Google can set a password there first.
+  from the account's email. **Disconnect Google** asks for the same, and is offered only while
+  the account has a password. An account that only uses Google can set a password there first,
+  within 10 minutes of a Google sign-in; that signs out its other sessions.
+- **Wrong codes on Connect or Disconnect Google are capped by those routes' rate limit** (5
+  attempts per 15 minutes), not by the two-step verification lockout, which only counts failed
+  sign-ins.
 - **Two-step verification still applies.** A user with 2FA who signs in with Google gets no
   session until they enter an authenticator or recovery code, so owners and stewards keep their
-  guarantee.
+  guarantee. Google sign-ins never offer "trust this device": the code is asked every time.
 - **Headers and CSP need no change.** "Continue with Google" asks the API for Google's address
   (`connect-src` already allows the API) and then moves the whole page there, which the CSP
   doesn't restrict; nothing is loaded from Google into the app. Google sends the browser back to
