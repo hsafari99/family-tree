@@ -45,6 +45,37 @@ pnpm test:int         # integration tests (needs `pnpm dev` or `docker compose u
 
   In a later phase, tree owners will create these links in the app.
 
+## Google sign-in (dev)
+
+Optional; without it the Google button is hidden and everything else works.
+
+1. Create a Google OAuth client of type **Web application** whose authorised redirect URI is
+   `http://localhost:5173/api/auth/callback/google` (docs/self-hosting.md, "Google sign-in", has
+   the console steps). While the client is in **Testing**, add your Google account as a test user.
+2. Put both values in `.env.development.local` (git-ignored; `compose.yml` loads it when present):
+
+   ```bash
+   GOOGLE_CLIENT_ID=...
+   GOOGLE_CLIENT_SECRET=...
+   ```
+
+3. `docker compose up -d api`. `curl localhost:5173/api/v1/auth/providers` should say
+   `{"google":true}`.
+
+How it works:
+
+- **Continue with Google** is on the sign-in and sign-up pages, and on an invite for a signed-out
+  visitor; it comes back to where you started (same-site paths only).
+- A Google email that already has a password account is **refused, never linked**: emails aren't
+  verified, so the address alone proves nothing. Sign in with the password, then **Account →
+  Google → Connect Google** (password again, plus a code when 2FA is on). **Disconnect Google** is
+  only offered while the account has a password; a Google-only account can **set a password**
+  there first, which it also needs before it can turn on two-step verification.
+- Two-step verification applies to Google sign-ins too.
+- Tests never call Google: integration tests answer Google's token endpoint themselves, and the
+  E2E test (`e2e/tests/google.spec.ts`) stops at Google's authorization page. It skips when the
+  stack has no Google client.
+
 ## Trees, invites and stewards (dev)
 
 - **Start a tree** from _Your trees_. Owners must have two-step verification, so the page asks
@@ -171,6 +202,11 @@ stack on this machine only, with a local certificate authority and SeaweedFS sta
 - **The export doesn't hide living people.** Only the owner can export.
 - **The photo backup mirror isn't encrypted** (the database dump is).
 - **E2E needs `AUTH_RATE_LIMIT_ENABLED=false`** on the dev stack.
+- **Google sign-in skips the "trust this device" shortcut:** a user with 2FA enters a code on
+  every Google sign-in, as with passwords (the app never offers it).
+- **Connecting or disconnecting Google isn't in an audit log.** The audit log is per tree; a
+  disconnect is only written to the API log (user id, no email).
+- **One Google account per user.**
 
 ## License
 

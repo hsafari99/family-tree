@@ -116,6 +116,8 @@ Fill in every empty value. Generate each secret with `openssl rand -hex 32`. The
   so they stay on the one origin the web app's CSP allows. `compose.prod.yml` sets
   `S3_FORCE_PATH_STYLE=true` itself, and the API refuses to start in production with it `false`.
 - `AGE_RECIPIENT`, `BACKUP_PHOTOS_*`, `BACKUP_S3_*`, `BACKUP_ROOT`: see "Backups".
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`: optional, see "Google sign-in". Leave both blank to
+  keep Google sign-in off; the API refuses to start with only one of them.
 
 Never commit it: `.gitignore` covers `.env.production`, and CI runs gitleaks.
 
@@ -235,4 +237,78 @@ minor upgrade, change the image tag in `compose.prod.yml`. A major upgrade means
 - [ ] The R2 tokens are scoped to one bucket each, and the mirror token is read-only.
 - [ ] The age private key is offline.
 - [ ] Owners and stewards have two-step verification on (the app requires it).
+- [ ] If Google sign-in is on: the OAuth client's only redirect URI is the production callback,
+      and its secret is only in `.env.production`.
 - [ ] gitleaks passes in CI.
+
+## 17. Google sign-in (optional)
+
+Email and password sign-in works on its own. Google sign-in stays off (no button, no provider)
+until both `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set.
+
+### Create the OAuth client
+
+In the [Google Cloud console](https://console.cloud.google.com/), create a project (for example
+"Family Tree"), then open **Google Auth Platform**:
+
+1. **Branding:** app name "Family Tree", a support email, the home page
+   `https://family.cortextechservices.com`, and `cortextechservices.com` as an authorised domain.
+2. **Audience:** user type **External**.
+3. **Data access:** add only `openid`, `.../auth/userinfo.email` and `.../auth/userinfo.profile`.
+   These are the only scopes the app asks for. They are non-sensitive, so Google doesn't need to
+   review the app before it can be published.
+4. **Clients → Create client → Web application.** Under **Authorised redirect URIs** add exactly:
+
+   ```
+   https://api.family.cortextechservices.com/api/auth/callback/google
+   ```
+
+   No JavaScript origins are needed: the browser never calls Google's APIs itself. Use a separate
+   client for development, whose redirect URI is `http://localhost:5173/api/auth/callback/google`
+   (README, "Google sign-in (dev)"), so a development secret never works in production.
+
+5. Copy the client ID and the client secret into `.env.production`. Copy the secret when it is
+   shown: the console may not show it again (you can add a new secret later).
+6. Restart the API and check:
+
+   ```bash
+   docker compose --env-file .env.production -f compose.prod.yml up -d api
+   curl https://api.family.cortextechservices.com/api/v1/auth/providers   # {"google":true}
+   ```
+
+### Testing or In production
+
+The **Audience** page has a publishing status:
+
+- **Testing** (the default): only the **test users** you list there (up to 100 Google accounts)
+  can sign in; Google shows anyone else an "Access blocked" page. Add family members' Google
+  addresses as test users while you try it out.
+- **In production** (**Publish app**): any Google account can sign in. With only the three scopes
+  above there is no verification review. Uploading a logo can trigger a brand check by Google.
+
+Sign-up is open either way (spec §5); the publishing status only decides who can use the Google
+button.
+
+### How it behaves
+
+- **A new Google user** gets an account named from their Google profile. An invite link opened
+  while signed out comes back to the invite after Google, ready to join.
+- **No linking by email.** Emails are never verified here, so anyone could have registered someone
+  else's address with a password. A Google sign-in whose email already has an account is refused
+  with "An account with this email already exists. Sign in with your password, then connect
+  Google in Account settings."
+- **Connect Google** (Account settings, signed in) asks for the password again, plus an
+  authenticator or recovery code when two-step verification is on. The Google address may differ
+  from the account's email. **Disconnect Google** is offered only while the account has a
+  password; an account that only uses Google can set a password there first.
+- **Two-step verification still applies.** A user with 2FA who signs in with Google gets no
+  session until they enter an authenticator or recovery code, so owners and stewards keep their
+  guarantee.
+- **Headers and CSP need no change.** "Continue with Google" asks the API for Google's address
+  (`connect-src` already allows the API) and then moves the whole page there, which the CSP
+  doesn't restrict; nothing is loaded from Google into the app. Google sends the browser back to
+  the API's callback as a top-level GET, so the `SameSite=Lax` cookies arrive, and the API
+  redirects to the web app. There are no pop-ups, so `Cross-Origin-Opener-Policy: same-origin`
+  is fine.
+- **Rotating the secret:** add a new secret to the client, put it in `.env.production`, restart
+  the API, then delete the old secret.

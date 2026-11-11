@@ -148,6 +148,7 @@ The branch is computed with a recursive CTE whenever it's needed, so it grows au
 ## 5. Authentication and accounts
 
 - Sign in with email and password or with Google, both through Better Auth. Emails are not verified and no email is ever sent; the email address is only a login name.
+- **Google sign-in** never links to an existing account by email (emails are unverified, so that would allow pre-account takeover). A matching email is refused; the user signs in with the password and connects Google in Account settings, which re-asks for the password and, with 2FA on, a code. Google can be disconnected only while the account has a password. 2FA applies to Google sign-ins too.
 - **Sign-up is open to anyone.**
 - **Invites:**
   - The owner or a steward creates an invite link with a role, an optional steward anchor, and an optional target person ("this is you").
