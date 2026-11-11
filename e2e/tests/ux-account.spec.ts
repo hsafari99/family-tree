@@ -65,18 +65,26 @@ test('icons: one per nav item, a back-home icon link top left, and the Google st
 
   await expect(nav(page).getByRole('link', { name: 'Profile' })).toBeVisible();
   const icons = nav(page).getByRole('link').locator('svg[aria-hidden="true"]');
-  await expect(icons).toHaveCount(await nav(page).getByRole('link').count());
+  // Every link has one (the Google link may arrive a moment later).
+  await expect(
+    nav(page)
+      .getByRole('link')
+      .filter({ hasNot: page.locator('svg') }),
+  ).toHaveCount(0);
   const box = (await icons.first().boundingBox())!;
   expect(box.width).toBeGreaterThanOrEqual(16);
   expect(box.width).toBeLessThanOrEqual(20);
 
-  // Back to home: an icon link above the title, at the card's left, big enough to tap.
+  // Back to home: an icon link before the title, big enough to tap.
   const home = page.getByRole('link', { name: 'Back to home' });
   await expect(home).toHaveAttribute('title', 'Back to home');
   const homeBox = (await home.boundingBox())!;
   const titleBox = (await page.getByRole('heading', { level: 1, name: 'Account' }).boundingBox())!;
-  expect(homeBox.y + homeBox.height).toBeLessThanOrEqual(titleBox.y + 1);
-  expect(homeBox.x).toBeLessThanOrEqual(titleBox.x);
+  // On one row: the icon, then the title, centred on each other.
+  expect(homeBox.x + homeBox.width).toBeLessThanOrEqual(titleBox.x);
+  expect(
+    Math.abs(homeBox.y + homeBox.height / 2 - (titleBox.y + titleBox.height / 2)),
+  ).toBeLessThanOrEqual(3);
   expect(homeBox.width).toBeGreaterThanOrEqual(24);
   expect(homeBox.height).toBeGreaterThanOrEqual(24);
   await home.focus();

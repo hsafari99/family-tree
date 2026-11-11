@@ -44,8 +44,20 @@ test('a profile picture: default, upload, see it, replace, remove, default again
   await expect(remove).toHaveAttribute('title', 'Remove picture');
   const box = (await remove.boundingBox())!;
   expect(Math.min(box.width, box.height)).toBeGreaterThanOrEqual(24);
+  // A modal confirm: Esc closes it with focus back on the trash button, nothing removed.
+  const sectionTop = (await profile.boundingBox())!.y;
   await remove.click();
-  await profile.getByRole('button', { name: 'Yes, remove' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Remove profile picture?' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeFocused();
+  // It doesn't push the page about.
+  expect((await profile.boundingBox())!.y).toBe(sectionTop);
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await expect(remove).toBeFocused();
+  await expect(profile.locator('img.avatar')).toBeVisible();
+  await remove.click();
+  await dialog.getByRole('button', { name: 'Remove' }).click();
   await expect(profile.getByText('Profile picture removed.')).toBeVisible();
   await expect(profile.locator('img.avatar')).toHaveCount(0);
   await expect(profile.getByRole('img', { name: ada.name })).toHaveText('AP');
@@ -72,38 +84,56 @@ test('Profile: details on the left, the picture on the right; stacked picture-fi
   const ada = await signUpViaUi(page, 'Ada Layout');
   await page.goto('/account/profile');
   const profile = page.getByRole('region', { name: 'Profile' });
+  await profile.getByLabel('Upload a picture').setInputFiles(GPS_JPEG);
+  await expect(profile.getByText('Profile picture added.')).toBeVisible();
+  await expect(profile.getByRole('button', { name: 'Remove picture' })).toBeVisible();
   const picture = profile.getByRole('img', { name: ada.name });
+  await expect
+    .poll(() => picture.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth))
+    .toBeTruthy();
   const details = profile.locator('dl');
-  const upload = profile.locator('label.icon-button');
+  const upload = profile.locator('label.link-button');
 
   const pic = (await picture.boundingBox())!;
   const dl = (await details.boundingBox())!;
-  expect(pic.width).toBeGreaterThanOrEqual(128);
-  expect(pic.width).toBeLessThanOrEqual(160);
+  // Large and square, its top level with the name and email.
+  expect(pic.width).toBeGreaterThanOrEqual(160);
+  expect(pic.width).toBeLessThanOrEqual(200);
+  expect(Math.abs(pic.height - pic.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(pic.y - dl.y)).toBeLessThanOrEqual(2);
   expect(pic.x).toBeGreaterThanOrEqual(dl.x + dl.width);
-  // Compact icon controls under the picture, each at least 24px, with a tooltip.
+  await expect(upload.locator('svg')).toBeVisible();
+  // Compact controls under the picture (not over it), then the hint, all inside the column.
+  const column = (await profile.locator('.profile-picture').boundingBox())!;
   const up = (await upload.boundingBox())!;
-  expect(up.y).toBeGreaterThan(pic.y + pic.height);
-  expect(up.width).toBeGreaterThanOrEqual(24);
+  const hint = (await profile.locator('.profile-picture .hint').boundingBox())!;
+  expect(up.y).toBeGreaterThanOrEqual(pic.y + pic.height);
   expect(up.height).toBeGreaterThanOrEqual(24);
-  await expect(upload).toHaveAttribute('title', 'Upload a picture');
-  await page.keyboard.press('Tab');
-  await profile.getByLabel('Upload a picture').focus();
-  await expect(profile.getByLabel('Upload a picture')).toBeFocused();
+  expect(hint.y).toBeGreaterThanOrEqual(up.y + up.height);
+  for (const b of [pic, up, hint]) {
+    expect(b.x).toBeGreaterThanOrEqual(column.x - 1);
+    expect(b.x + b.width).toBeLessThanOrEqual(column.x + column.width + 1);
+  }
+  expect(column.x).toBeGreaterThanOrEqual(dl.x + dl.width);
+  await expect(upload).toHaveAttribute('title', 'Replace picture');
+  await profile.getByLabel('Replace picture').focus();
+  await expect(profile.getByLabel('Replace picture')).toBeFocused();
   // The hint is smaller than the body text.
-  const [hint, body] = await profile
-    .locator('.hint')
+  const [hintSize, body] = await profile
+    .locator('.profile-picture .hint')
     .evaluate((el) => [
       parseFloat(getComputedStyle(el).fontSize),
       parseFloat(getComputedStyle(document.body).fontSize),
     ]);
-  expect(hint).toBeLessThan(body!);
+  expect(hintSize).toBeLessThan(body!);
 
+  await page.screenshot({ path: test.info().outputPath('profile-desktop.png') });
   await page.setViewportSize({ width: 390, height: 844 });
   const narrowPic = (await picture.boundingBox())!;
   const narrowDl = (await details.boundingBox())!;
   expect(narrowPic.y + narrowPic.height).toBeLessThanOrEqual(narrowDl.y);
   const width = await page.evaluate(() => document.documentElement.scrollWidth);
   expect(width).toBeLessThanOrEqual(390);
+  await page.screenshot({ path: test.info().outputPath('profile-narrow.png'), fullPage: true });
   await context.close();
 });

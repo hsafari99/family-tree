@@ -20,6 +20,14 @@ describe('Avatar', () => {
     expect(fallback).toHaveStyle({ width: '40px' });
   });
 
+  it('fluid: fills its container up to the size, staying square', () => {
+    render(<Avatar name="Ada" url={null} size={200} fluid />);
+    expect(screen.getByRole('img', { name: 'Ada' })).toHaveStyle({
+      width: '100%',
+      maxWidth: '200px',
+    });
+  });
+
   it('falls back to the initials when the picture fails to load', () => {
     render(<Avatar name="Ada" url="https://s3.test/expired.webp" />);
     fireEvent.error(screen.getByRole('img', { name: 'Ada' }));

@@ -18,8 +18,14 @@ export function Page({
   return (
     <main className="page">
       <div className={full ? 'card card-full' : wide ? 'card card-wide' : 'card'}>
-        {back}
-        <h1>{title}</h1>
+        {back ? (
+          <div className="page-title-row">
+            {back}
+            <h1>{title}</h1>
+          </div>
+        ) : (
+          <h1>{title}</h1>
+        )}
         {children}
       </div>
     </main>

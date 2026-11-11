@@ -18,15 +18,21 @@ export function Avatar({
   name,
   url,
   size = 40,
+  fluid = false,
   className,
 }: {
   name: string;
   url: string | null;
   size?: number;
+  /** Fill the container's width, up to `size`, staying square. */
+  fluid?: boolean;
   className?: string;
 }) {
   const [failed, setFailed] = useState<string | null>(null);
-  const style = { width: size, height: size, fontSize: Math.max(10, Math.round(size * 0.4)) };
+  const fontSize = Math.max(10, Math.round(size * 0.4));
+  const style = fluid
+    ? { width: '100%', maxWidth: size, height: 'auto', aspectRatio: '1 / 1', fontSize }
+    : { width: size, height: size, fontSize };
   const classes = className ? `avatar ${className}` : 'avatar';
   if (!url || failed === url) {
     return (

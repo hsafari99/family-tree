@@ -4,13 +4,14 @@ import {
   type PhotoMediaType,
   passwordSchema,
 } from '@family-tree/shared';
-import { type FormEvent, useEffect, useRef, useState } from 'react';
+import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { MESSAGES, type SessionUser } from '../../auth/api';
 import { useAuth } from '../../auth/AuthContext';
 import { Avatar } from '../../components/Avatar';
 import { ConfirmButton } from '../../components/ConfirmButton';
-import { CameraIcon, TrashIcon } from '../../components/icons';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { UploadIcon, TrashIcon } from '../../components/icons';
 import {
   ErrorSummary,
   Field,
@@ -37,25 +38,24 @@ export function ProfileSection({ user, refresh }: SectionProps) {
       <h2 id="profile-heading" tabIndex={-1}>
         Profile
       </h2>
-      {/* Two columns: the details, then the picture with its controls under it. */}
-      <div className="profile-layout">
+      {/* Two equal-height columns: the details, and the picture with its controls on it. */}
+      <ProfilePicture user={user} refresh={refresh}>
         <dl className="details profile-details">
           <dt>Name</dt>
           <dd>{user.name}</dd>
           <dt>Email</dt>
           <dd>{user.email}</dd>
         </dl>
-        <ProfilePicture user={user} refresh={refresh} />
-      </div>
+      </ProfilePicture>
     </section>
   );
 }
 
-/** The profile picture's size in Account > Profile, in CSS pixels. */
-export const PROFILE_AVATAR_SIZE = 160;
+/** The profile picture's largest size in Account > Profile, in CSS pixels (it fills its column). */
+export const PROFILE_AVATAR_SIZE = 200;
 
 /** Upload, replace or remove the profile picture; the server crops it to a square. */
-function ProfilePicture({ user, refresh }: SectionProps) {
+function ProfilePicture({ user, refresh, children }: SectionProps & { children: ReactNode }) {
   const { api } = useAuth();
   const input = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState(false);
@@ -63,6 +63,7 @@ function ProfilePicture({ user, refresh }: SectionProps) {
   const [done, setDone] = useState<string | null>(null);
   const has = user.avatarUrl !== null;
   const chooseLabel = has ? 'Replace picture' : 'Upload a picture';
+  const [asking, setAsking] = useState(false);
 
   async function choose(file: File | undefined) {
     setError(null);
@@ -93,15 +94,25 @@ function ProfilePicture({ user, refresh }: SectionProps) {
   }
 
   return (
-    <div className="profile-picture">
-      <Avatar name={user.name} url={user.avatarUrl} size={PROFILE_AVATAR_SIZE} />
-      <div className="profile-picture-actions">
-        <div className="actions icon-actions">
+    <div className="profile-layout">
+      <div className="profile-main">
+        {children}
+        <FormError>{error}</FormError>
+        {done && (
+          <Success>
+            <p>{done}</p>
+          </Success>
+        )}
+      </div>
+      <div className="profile-picture">
+        <Avatar name={user.name} url={user.avatarUrl} size={PROFILE_AVATAR_SIZE} fluid />
+        <div className="profile-picture-actions">
           <label
-            className={pending ? 'icon-button is-disabled' : 'icon-button'}
+            className={pending ? 'link-button is-disabled' : 'link-button'}
             title={pending ? 'Saving…' : chooseLabel}
           >
-            <CameraIcon />
+            <UploadIcon />
+            {has ? 'Replace' : 'Upload'}
             <input
               ref={input}
               type="file"
@@ -113,24 +124,35 @@ function ProfilePicture({ user, refresh }: SectionProps) {
             />
           </label>
           {has && (
-            <ConfirmButton
-              label="Remove picture"
-              confirmLabel="Yes, remove"
-              danger
-              icon={<TrashIcon />}
-              pending={pending}
-              onConfirm={() => void remove()}
-            />
+            <button
+              type="button"
+              className="link-button danger"
+              aria-label="Remove picture"
+              title="Remove picture"
+              disabled={pending}
+              onClick={() => setAsking(true)}
+            >
+              <TrashIcon />
+              Remove
+            </button>
           )}
         </div>
-        <p className="hint">JPEG, PNG or WebP, at most 5 MB. Cropped to a square.</p>
-        <FormError>{error}</FormError>
-        {done && (
-          <Success>
-            <p>{done}</p>
-          </Success>
-        )}
+        <p className="hint">JPEG, PNG or WebP, up to 5 MB. Cropped to a square.</p>
       </div>
+      <ConfirmDialog
+        open={asking}
+        title="Remove profile picture?"
+        confirmLabel="Remove"
+        danger
+        pending={pending}
+        onCancel={() => setAsking(false)}
+        onConfirm={() => {
+          setAsking(false);
+          void remove();
+        }}
+      >
+        <p>Your initials show instead until you upload a new one.</p>
+      </ConfirmDialog>
     </div>
   );
 }

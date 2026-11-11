@@ -131,11 +131,12 @@ describe('AccountPage', () => {
       expect(within(profile).queryByRole('button', { name: 'Remove picture' })).toBeNull();
       // Details first (left column), then the picture, shown large, with its controls under it.
       const picture = within(profile).getByRole('img', { name: 'Ada' });
-      expect(picture).toHaveStyle({ width: '160px', height: '160px' });
+      expect(picture).toHaveStyle({ width: '100%', maxWidth: '200px' });
       // Compact icon controls, named for assistive tech and titled for a tooltip.
       const choose = within(profile).getByLabelText('Upload a picture');
       expect(choose.closest('label')).toHaveAttribute('title', 'Upload a picture');
-      expect(choose.closest('label')).toHaveClass('icon-button');
+      expect(choose.closest('label')).toHaveClass('link-button');
+      expect(choose.closest('label')).toHaveTextContent('Upload');
       const details = within(profile).getByText('ada@example.com').closest('dl')!;
       expect(
         details.compareDocumentPosition(picture) & Node.DOCUMENT_POSITION_FOLLOWING,
@@ -157,12 +158,24 @@ describe('AccountPage', () => {
 
       const removeButton = within(profile).getByRole('button', { name: 'Remove picture' });
       expect(removeButton).toHaveAttribute('title', 'Remove picture');
-      expect(removeButton).toHaveTextContent('');
+      expect(removeButton).toHaveTextContent('Remove');
       expect(removeButton.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+      removeButton.focus();
       fireEvent.click(removeButton);
-      // The confirm step stays.
+      // A modal asks first; nothing changes until it is confirmed.
+      const dialog = screen.getByRole('dialog', { name: 'Remove profile picture?' });
+      expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus();
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(removeButton).toHaveFocus();
       expect(user.avatarUrl).not.toBeNull();
-      fireEvent.click(within(profile).getByRole('button', { name: 'Yes, remove' }));
+      fireEvent.click(removeButton);
+      fireEvent.click(
+        within(screen.getByRole('dialog', { name: 'Remove profile picture?' })).getByRole(
+          'button',
+          { name: 'Remove' },
+        ),
+      );
       expect(await within(profile).findByText('Profile picture removed.')).toBeInTheDocument();
       expect(user.avatarUrl).toBeNull();
       expect(within(profile).getByRole('img', { name: 'Ada' }).tagName).toBe('SPAN');

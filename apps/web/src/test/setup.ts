@@ -56,3 +56,16 @@ if (!URL.createObjectURL) {
   URL.createObjectURL = () => 'blob:fake';
   URL.revokeObjectURL = () => {};
 }
+
+// jsdom has <dialog> but no showModal()/close() (ConfirmDialog). Open and close it by attribute;
+// close() fires "close" as browsers do. Esc is tested by dispatching "cancel".
+if (typeof HTMLDialogElement !== 'undefined' && !HTMLDialogElement.prototype.showModal) {
+  HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) {
+    this.setAttribute('open', '');
+  };
+  HTMLDialogElement.prototype.close = function (this: HTMLDialogElement) {
+    if (!this.hasAttribute('open')) return;
+    this.removeAttribute('open');
+    this.dispatchEvent(new Event('close'));
+  };
+}
