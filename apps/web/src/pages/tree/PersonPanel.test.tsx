@@ -271,7 +271,7 @@ describe('PersonPanel', () => {
       fireEvent.change(screen.getByLabelText('Death place'), { target: { value: 'Leeds' } });
     };
     const LIVING_MSG =
-      'This person is marked as living. Tick “Mark as deceased” to add a death place.';
+      'This person is marked as living. To add a death place, tick the box below to mark them as deceased.';
 
     it('explains the error at the Death place field and in the summary, without calling', async () => {
       const s = living();
@@ -284,6 +284,9 @@ describe('PersonPanel', () => {
       ).toBeInTheDocument();
       expect(screen.getByLabelText('Death place')).toHaveAccessibleDescription(LIVING_MSG);
       expect(s.trees.callsTo('updatePerson')).toEqual([]);
+      // The fix is the box, so the summary link goes there.
+      fireEvent.click(within(summary).getByRole('button', { name: `Death place: ${LIVING_MSG}` }));
+      expect(screen.getByRole('checkbox', { name: 'Mark Ada as deceased' })).toHaveFocus();
     });
 
     it('maps the server’s isLiving key onto the Death place field', async () => {

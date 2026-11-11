@@ -27,18 +27,21 @@ import { useTreesApi } from '../../trees/TreesApiContext';
 import { type TabProps, usePersonSave } from './usePersonSave';
 
 const LIVING_DEATH_PLACE =
-  'This person is marked as living. Tick “Mark as deceased” to add a death place.';
+  'This person is marked as living. To add a death place, tick the box below to mark them as deceased.';
+/** The "mark as deceased" error is about the death place, but its fix is the box: it is shown
+ *  at the death place and its summary link focuses the box. */
 const PLACE_LABELS: Record<string, string> = {
   birthPlace: 'Birth place',
   deathPlace: 'Death place',
+  markDeceased: 'Death place',
 };
 /** Server field keys -> this form's fields, with fixed text (brief #8). The server names
- *  `isLiving`, which this form has no field for: it belongs to the death place. */
-const PLACE_FIELDS: Record<string, { field: string; message: string }> = {
-  isLiving: { field: 'deathPlace', message: LIVING_DEATH_PLACE },
+ *  `isLiving`, which this form has no field for: it goes to the box when it is shown. */
+const placeFields = (box: boolean): Record<string, { field: string; message: string }> => ({
+  isLiving: { field: box ? 'markDeceased' : 'deathPlace', message: LIVING_DEATH_PLACE },
   birthPlace: { field: 'birthPlace', message: 'Check the birth place' },
   deathPlace: { field: 'deathPlace', message: 'Check the death place' },
-};
+});
 
 export function PlacesTab(props: TabProps) {
   const { view } = props;
@@ -78,7 +81,7 @@ export function PlacesTab(props: TabProps) {
       deathPlace,
     });
     if (!v.ok) return setErrors(v.errors);
-    if (asksDeceased && !markDeceased) return setErrors({ deathPlace: LIVING_DEATH_PLACE });
+    if (asksDeceased && !markDeceased) return setErrors({ markDeceased: LIVING_DEATH_PLACE });
     setErrors({});
     const fields = {
       ...(birthPlace.trim() !== opened.current.birth ? { birthPlace: v.data.birthPlace } : {}),
@@ -88,7 +91,7 @@ export function PlacesTab(props: TabProps) {
     if (Object.keys(fields).length === 0) return setEditing(false);
     const res = await s.save(fields);
     if (res.ok) setEditing(false);
-    else if (res.fields) setErrors(serverFieldErrors(res.fields, PLACE_FIELDS));
+    else if (res.fields) setErrors(serverFieldErrors(res.fields, placeFields(asksDeceased)));
   }
 
   return (
@@ -129,7 +132,7 @@ export function PlacesTab(props: TabProps) {
             name="deathPlace"
             value={deathPlace}
             onChange={setDeathPlace}
-            error={errors.deathPlace}
+            error={errors.deathPlace ?? errors.markDeceased}
           />
           {asksDeceased && (
             <div className="field">
@@ -138,6 +141,7 @@ export function PlacesTab(props: TabProps) {
                   type="checkbox"
                   data-field="markDeceased"
                   aria-describedby={`${uid}-deceased-hint`}
+                  aria-invalid={errors.markDeceased ? true : undefined}
                   checked={markDeceased}
                   onChange={(e) => setMarkDeceased(e.target.checked)}
                 />{' '}

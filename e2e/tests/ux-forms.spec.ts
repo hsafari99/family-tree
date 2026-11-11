@@ -108,9 +108,12 @@ test('dates with a calendar and a precision, and a death place on a living perso
   await page.getByRole('button', { name: 'Edit places' }).click();
   await page.getByLabel('Death place').fill('Leeds');
   await page.getByRole('button', { name: 'Save places' }).click();
-  const message = 'This person is marked as living. Tick “Mark as deceased” to add a death place.';
+  const message =
+    'This person is marked as living. To add a death place, tick the box below to mark them as deceased.';
   await expect(page.getByLabel('Death place')).toHaveAccessibleDescription(message);
   await expect(page.getByRole('alert')).toContainText(`Death place: ${message}`);
+  await page.getByRole('button', { name: `Death place: ${message}` }).click();
+  await expect(page.getByRole('checkbox', { name: 'Mark Dora as deceased' })).toBeFocused();
   await page.getByRole('checkbox', { name: 'Mark Dora as deceased' }).check();
   await page.getByRole('button', { name: 'Save places' }).click();
   await expect(page.getByText('Saved')).toBeVisible();
