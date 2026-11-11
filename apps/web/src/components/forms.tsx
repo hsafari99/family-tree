@@ -1,4 +1,4 @@
-import { type InputHTMLAttributes, type ReactNode, useId } from 'react';
+import { type InputHTMLAttributes, type ReactNode, useId, useState } from 'react';
 
 export type FieldErrors = Partial<Record<string, string>>;
 
@@ -49,12 +49,26 @@ type FieldProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'id' | 'onChange'>
   hint?: ReactNode;
 };
 
-/** A labelled input with its hint and validation message tied to it for screen readers. */
-export function Field({ label, error, hint, onChange, ...input }: FieldProps) {
+/** A labelled input with its hint and validation message tied to it for screen readers.
+ *  A password input gets a Show/Hide toggle (#1). */
+export function Field({ label, error, hint, onChange, type, ...input }: FieldProps) {
   const id = useId();
+  const [shown, setShown] = useState(false);
   const hintId = `${id}-hint`;
   const errorId = `${id}-error`;
   const describedBy = [hint ? hintId : null, error ? errorId : null].filter(Boolean).join(' ');
+  const isPassword = type === 'password';
+  const control = (
+    <input
+      id={id}
+      {...input}
+      type={isPassword && shown ? 'text' : type}
+      data-field={input.name}
+      onChange={(e) => onChange(e.target.value)}
+      aria-invalid={error ? true : undefined}
+      aria-describedby={describedBy || undefined}
+    />
+  );
   return (
     <div className="field">
       <label htmlFor={id}>{label}</label>
@@ -63,13 +77,24 @@ export function Field({ label, error, hint, onChange, ...input }: FieldProps) {
           {hint}
         </p>
       )}
-      <input
-        id={id}
-        {...input}
-        onChange={(e) => onChange(e.target.value)}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={describedBy || undefined}
-      />
+      {isPassword ? (
+        <div className="password-input">
+          {control}
+          {/* The label stays fixed; aria-pressed carries the state (WAI-ARIA toggle button). */}
+          <button
+            type="button"
+            className="secondary compact"
+            aria-label="Show password"
+            aria-pressed={shown}
+            aria-controls={id}
+            onClick={() => setShown((s) => !s)}
+          >
+            <span aria-hidden="true">{shown ? 'Hide' : 'Show'}</span>
+          </button>
+        </div>
+      ) : (
+        control
+      )}
       {error && (
         <p id={errorId} className="field-error">
           {error}
