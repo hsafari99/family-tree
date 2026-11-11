@@ -128,17 +128,19 @@ test('dates with a calendar and a precision, and a death place on a living perso
 
   // #8: a death place on a living person says what to do, at the field.
   await page.getByRole('tab', { name: 'Places' }).click();
-  await page.getByRole('button', { name: 'Edit places' }).click();
-  await page.getByLabel('Death place').fill('Leeds');
-  await page.getByRole('button', { name: 'Save places' }).click();
+  await page.getByRole('button', { name: 'Add place' }).click();
+  const placeForm = page.getByRole('form', { name: 'Add place' });
+  await placeForm.getByLabel('Kind').selectOption('death');
+  await placeForm.getByLabel('Place').fill('Leeds');
+  await placeForm.getByRole('button', { name: 'Add place' }).click();
   const message =
     'This person is marked as living. To add a death place, tick the box below to mark them as deceased.';
-  await expect(page.getByLabel('Death place')).toHaveAccessibleDescription(message);
+  await expect(placeForm.getByLabel('Place')).toHaveAccessibleDescription(message);
   await expect(page.getByRole('alert')).toContainText(`Death place: ${message}`);
   await page.getByRole('button', { name: `Death place: ${message}` }).click();
   await expect(page.getByRole('checkbox', { name: 'Mark Dora as deceased' })).toBeFocused();
   await page.getByRole('checkbox', { name: 'Mark Dora as deceased' }).check();
-  await page.getByRole('button', { name: 'Save places' }).click();
+  await placeForm.getByRole('button', { name: 'Add place' }).click();
   await expect(page.getByText('Saved')).toBeVisible();
   await page.getByRole('tab', { name: 'Info' }).click();
   await expect(details).not.toContainText('Living');

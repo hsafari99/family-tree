@@ -1,4 +1,5 @@
 import {
+  type FuzzyDate,
   type Residence,
   type ResidenceInput,
   residenceInputSchema,
@@ -22,18 +23,23 @@ import {
   validate,
   type FieldErrors,
 } from '../../components/forms';
+import { MenuButton } from '../../components/MenuButton';
 import { formatFuzzyDate } from '../../trees/format';
 import { useTreesApi } from '../../trees/TreesApiContext';
+import { SelectField } from './RelationSelects';
 import { type TabProps, usePersonSave } from './usePersonSave';
 
 const LIVING_DEATH_PLACE =
   'This person is marked as living. To add a death place, tick the box below to mark them as deceased.';
 /** The "mark as deceased" error is about the death place, but its fix is the box: it is shown
- *  at the death place and its summary link focuses the box. */
+ *  at the place field and its summary link focuses the box. */
 const PLACE_LABELS: Record<string, string> = {
   birthPlace: 'Birth place',
   deathPlace: 'Death place',
   markDeceased: 'Death place',
+  place: 'Place',
+  fromDate: 'From',
+  toDate: 'To',
 };
 /** Server field keys -> this form's fields, with fixed text (brief #8). The server names
  *  `isLiving`, which this form has no field for: it goes to the box when it is shown. */
@@ -43,143 +49,205 @@ const placeFields = (box: boolean): Record<string, { field: string; message: str
   deathPlace: { field: 'deathPlace', message: 'Check the death place' },
 });
 
+type Kind = 'birth' | 'lived' | 'death';
+const BADGE: Record<Kind, string> = { birth: 'Born', lived: 'Lived', death: 'Died' };
+
+interface Row {
+  key: string;
+  kind: Kind;
+  place: string;
+  meta: string;
+  residence?: Residence;
+}
+
+const dateOf = (d: FuzzyDate | null) => formatFuzzyDate(d) ?? '';
+const range = (r: Residence) => {
+  const from = dateOf(r.fromDate);
+  const to = dateOf(r.toDate);
+  return from || to ? `${from}–${to}` : '';
+};
+
+/** Which form is open: one at a time (brief #7). */
+type Open = null | { mode: 'add' } | { mode: 'edit'; key: string };
+
+/** Places as one compact list: born, lived (in the server's order), died (brief #7). */
 export function PlacesTab(props: TabProps) {
-  const { view } = props;
+  const { view, treeId, reload } = props;
+  const api = useTreesApi();
   const canEdit = view.capabilities.edit;
   const s = usePersonSave(props);
-  const [editing, setEditing] = useState(false);
-  const [birthPlace, setBirthPlace] = useState('');
-  const [deathPlace, setDeathPlace] = useState('');
-  const [markDeceased, setMarkDeceased] = useState(false);
-  const [errors, setErrors] = useState<FieldErrors>({});
-  const uid = useId();
+  const [open, setOpen] = useState<Open>(null);
+  const [asking, setAsking] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const list = useRef<HTMLUListElement>(null);
+  const addRef = useRef<HTMLButtonElement>(null);
+  const alive = useAlive();
 
-  // What the form was opened from: only fields the user changed are saved.
-  const opened = useRef({ birth: '', death: '' });
+  const p = view.person;
+  const rows: Row[] = [
+    ...(p.birthPlace
+      ? [{ key: 'birth', kind: 'birth' as const, place: p.birthPlace, meta: dateOf(p.birthDate) }]
+      : []),
+    ...view.residences.map((r) => ({
+      key: `r:${r.id}`,
+      kind: 'lived' as const,
+      place: r.place,
+      meta: range(r),
+      residence: r,
+    })),
+    ...(p.deathPlace
+      ? [{ key: 'death', kind: 'death' as const, place: p.deathPlace, meta: dateOf(p.deathDate) }]
+      : []),
+  ];
 
-  function open() {
-    opened.current = {
-      birth: (view.person.birthPlace ?? '').trim(),
-      death: (view.person.deathPlace ?? '').trim(),
-    };
-    setBirthPlace(view.person.birthPlace ?? '');
-    setDeathPlace(view.person.deathPlace ?? '');
-    setMarkDeceased(false);
-    setErrors({});
-    setEditing(true);
-  }
-
-  // A living person can't have a death place: adding one asks to mark them deceased (#8).
-  const asksDeceased =
-    view.person.isLiving && opened.current.death === '' && deathPlace.trim() !== '';
-
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    const v = validate(updatePersonSchema, {
-      version: view.person.version,
-      birthPlace,
-      deathPlace,
+  /** Focus back to the row's menu button, or to Add place. */
+  const refocus = (key: string | null) => {
+    requestAnimationFrame(() => {
+      const trigger = key
+        ? list.current?.querySelector<HTMLButtonElement>(`[data-row="${key}"] .menu-trigger`)
+        : null;
+      (trigger ?? addRef.current)?.focus();
     });
-    if (!v.ok) return setErrors(v.errors);
-    if (asksDeceased && !markDeceased) return setErrors({ markDeceased: LIVING_DEATH_PLACE });
-    setErrors({});
-    const fields = {
-      ...(birthPlace.trim() !== opened.current.birth ? { birthPlace: v.data.birthPlace } : {}),
-      ...(deathPlace.trim() !== opened.current.death ? { deathPlace: v.data.deathPlace } : {}),
-      ...(asksDeceased ? { isLiving: false } : {}),
-    };
-    if (Object.keys(fields).length === 0) return setEditing(false);
-    const res = await s.save(fields);
-    if (res.ok) setEditing(false);
-    else if (res.fields) setErrors(serverFieldErrors(res.fields, placeFields(asksDeceased)));
+  };
+  const close = (key: string | null) => {
+    setOpen(null);
+    refocus(key);
+  };
+
+  async function remove(row: Row) {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    if (row.kind === 'lived') {
+      const res = await api.deleteResidence(treeId, row.residence!.id);
+      if (!alive.current) return;
+      if (!res.ok) {
+        setBusy(false);
+        return setError(res.error.message);
+      }
+      await reload();
+    } else {
+      const res = await s.save(row.kind === 'birth' ? { birthPlace: null } : { deathPlace: null });
+      if (!alive.current) return;
+      if (!res.ok) {
+        setBusy(false);
+        return;
+      }
+    }
+    if (!alive.current) return;
+    setBusy(false);
+    setAsking(null);
+    setNotice('Place removed.');
+    refocus(null);
   }
+
+  const formFor = (kind: Kind | 'add', row?: Row) => (
+    <PlaceForm
+      key={row?.key ?? 'add'}
+      {...props}
+      save={s}
+      kinds={
+        kind === 'add'
+          ? [
+              'lived',
+              ...(p.birthPlace ? [] : (['birth'] as const)),
+              ...(p.deathPlace ? [] : (['death'] as const)),
+            ]
+          : [kind]
+      }
+      residence={row?.residence ?? null}
+      onCancel={() => close(row?.key ?? null)}
+      onDone={() => {
+        setNotice(null);
+        close(row?.key ?? null);
+      }}
+    />
+  );
 
   return (
     <div>
-      {s.saved && !editing && <Success>Saved</Success>}
-      <dl>
-        <dt>Birth place</dt>
-        <dd>{view.person.birthPlace ?? 'Not given'}</dd>
-        <dt>Death place</dt>
-        <dd>{view.person.deathPlace ?? 'Not given'}</dd>
-      </dl>
-      {canEdit && !editing && (
-        <button type="button" className="secondary" onClick={open}>
-          Edit places
-        </button>
-      )}
-      {editing && (
-        <form onSubmit={(e) => void submit(e)}>
-          <FormError>{s.error}</FormError>
-          <ErrorSummary errors={errors} labels={PLACE_LABELS} />
-          {s.stale && (
-            <div role="alert" className="error">
-              {s.staleMessage}{' '}
-              <button type="button" onClick={() => void s.loadLatest()}>
-                Load the latest version
-              </button>
-            </div>
-          )}
-          <Field
-            label="Birth place"
-            name="birthPlace"
-            value={birthPlace}
-            onChange={setBirthPlace}
-            error={errors.birthPlace}
-          />
-          <Field
-            label="Death place"
-            name="deathPlace"
-            value={deathPlace}
-            onChange={setDeathPlace}
-            error={errors.deathPlace ?? errors.markDeceased}
-          />
-          {asksDeceased && (
-            <div className="field">
-              <label>
-                <input
-                  type="checkbox"
-                  data-field="markDeceased"
-                  aria-describedby={`${uid}-deceased-hint`}
-                  aria-invalid={errors.markDeceased ? true : undefined}
-                  checked={markDeceased}
-                  onChange={(e) => setMarkDeceased(e.target.checked)}
-                />{' '}
-                Mark {view.person.givenName} as deceased
-              </label>
-              <p id={`${uid}-deceased-hint`} className="hint">
-                A death place is only kept for someone who has died.
-              </p>
-            </div>
-          )}
-          <p className="actions">
-            <button type="submit" disabled={s.pending}>
-              Save places
-            </button>
-            <button type="button" className="secondary" onClick={() => setEditing(false)}>
-              Cancel
-            </button>
-          </p>
-        </form>
-      )}
-
-      <h3>Places lived</h3>
-      {view.residences.length === 0 && <p>No places added yet.</p>}
-      <ul>
-        {view.residences.map((r) => (
-          <ResidenceRow key={r.id} {...props} residence={r} />
+      {s.saved && !open && <Success>Saved</Success>}
+      {notice && !s.saved && <Success>{notice}</Success>}
+      <FormError>{error ?? (open ? null : s.error)}</FormError>
+      {rows.length === 0 && <p>No places added yet.</p>}
+      <ul className="row-list" aria-label="Places" ref={list}>
+        {rows.map((row) => (
+          <li key={row.key} data-row={row.key}>
+            {open?.mode === 'edit' && open.key === row.key ? (
+              <div className="row-form">{formFor(row.kind, row)}</div>
+            ) : (
+              <>
+                <div className="row-main">
+                  <span className="badge">{BADGE[row.kind]}</span>
+                  <strong>{row.place}</strong>
+                  {row.meta && <span className="row-meta">{row.meta}</span>}
+                </div>
+                {canEdit && (
+                  <div className="row-actions">
+                    {asking === row.key ? (
+                      <ConfirmButton
+                        startAsking
+                        compact
+                        label="Remove"
+                        confirmLabel="Yes, remove"
+                        pending={busy}
+                        onConfirm={() => void remove(row)}
+                        onCancel={() => {
+                          setAsking(null);
+                          refocus(row.key);
+                        }}
+                      />
+                    ) : (
+                      <MenuButton
+                        label={`More actions for ${row.place}`}
+                        items={[
+                          {
+                            label: 'Edit',
+                            onSelect: () => {
+                              setAsking(null);
+                              setOpen({ mode: 'edit', key: row.key });
+                            },
+                          },
+                          {
+                            label: 'Remove',
+                            danger: true,
+                            onSelect: () => {
+                              setOpen(null);
+                              setAsking(row.key);
+                            },
+                          },
+                        ]}
+                      />
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </li>
         ))}
       </ul>
-      {canEdit && <ResidenceAdd {...props} />}
+      {canEdit &&
+        (open?.mode === 'add' ? (
+          formFor('add')
+        ) : (
+          <button
+            ref={addRef}
+            type="button"
+            className="secondary compact"
+            onClick={() => {
+              setAsking(null);
+              setOpen({ mode: 'add' });
+            }}
+          >
+            Add place
+          </button>
+        ))}
     </div>
   );
 }
-
-const range = (r: Residence) => {
-  const from = formatFuzzyDate(r.fromDate);
-  const to = formatFuzzyDate(r.toDate);
-  return from || to ? `, ${from}–${to}` : '';
-};
 
 function useAlive() {
   const alive = useRef(true);
@@ -192,155 +260,168 @@ function useAlive() {
   return alive;
 }
 
-function ResidenceRow({ treeId, view, reload, residence }: TabProps & { residence: Residence }) {
-  const api = useTreesApi();
-  const alive = useAlive();
-  const [editing, setEditing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const [removing, setRemoving] = useState(false);
-
-  async function remove() {
-    if (removing) return;
-    setError(null);
-    setRemoving(true);
-    const res = await api.deleteResidence(treeId, residence.id);
-    if (!alive.current) return;
-    if (!res.ok) {
-      setRemoving(false);
-      return setError(res.error.message);
-    }
-    await reload();
-    if (alive.current) setRemoving(false);
-  }
-
-  return (
-    <li>
-      <FormError>{error}</FormError>
-      {editing ? (
-        <ResidenceForm
-          initial={residence}
-          submitLabel="Save place"
-          onCancel={() => setEditing(false)}
-          onSubmit={async (input) => {
-            const res = await api.updateResidence(treeId, residence.id, input);
-            if (!res.ok) return res.error.message;
-            await reload();
-            if (alive.current) setEditing(false);
-            return null;
-          }}
-        />
-      ) : (
-        <>
-          {residence.place}
-          {range(residence)}
-          {view.capabilities.edit && (
-            <span className="actions">
-              <button type="button" className="secondary" onClick={() => setEditing(true)}>
-                Edit
-              </button>
-              <ConfirmButton
-                label="Remove"
-                pending={removing}
-                confirmLabel="Yes, remove"
-                onConfirm={() => void remove()}
-              />
-            </span>
-          )}
-        </>
-      )}
-    </li>
-  );
-}
-
-function ResidenceAdd({ treeId, view, reload }: TabProps) {
-  const api = useTreesApi();
-  const alive = useAlive();
-  const [open, setOpen] = useState(false);
-  if (!open) {
-    return (
-      <button type="button" className="secondary" onClick={() => setOpen(true)}>
-        Add a place
-      </button>
-    );
-  }
-  return (
-    <ResidenceForm
-      initial={null}
-      submitLabel="Add place"
-      onCancel={() => setOpen(false)}
-      onSubmit={async (input) => {
-        const res = await api.addResidence(treeId, view.person.id, input);
-        if (!res.ok) return res.error.message;
-        await reload();
-        if (alive.current) setOpen(false);
-        return null;
-      }}
-    />
-  );
-}
-
-const RESIDENCE_LABELS: Record<string, string> = {
-  place: 'Place',
-  fromDate: 'From',
-  toDate: 'To',
+const KIND_OPTION: Record<Kind, string> = {
+  lived: 'Lived here',
+  birth: 'Birth place',
+  death: 'Death place',
 };
 
-function ResidenceForm({
-  initial,
-  submitLabel,
-  onSubmit,
+/** One form for adding or editing a place. Its first field takes focus when it opens. */
+function PlaceForm({
+  treeId,
+  view,
+  reload,
+  save,
+  kinds,
+  residence,
   onCancel,
-}: {
-  initial: Residence | null;
-  submitLabel: string;
-  /** Returns an error message, or null on success. */
-  onSubmit: (input: ResidenceInput) => Promise<string | null>;
+  onDone,
+}: TabProps & {
+  save: ReturnType<typeof usePersonSave>;
+  /** The kinds offered (one when editing). */
+  kinds: Kind[];
+  residence: Residence | null;
   onCancel: () => void;
+  onDone: () => void;
 }) {
+  const api = useTreesApi();
   const alive = useAlive();
-  const [place, setPlace] = useState(initial?.place ?? '');
-  const [from, setFrom] = useState<FuzzyDraft>(toDraft(initial?.fromDate ?? null));
-  const [to, setTo] = useState<FuzzyDraft>(toDraft(initial?.toDate ?? null));
+  const uid = useId();
+  const form = useRef<HTMLFormElement>(null);
+  const editing = kinds.length === 1 && (kinds[0] !== 'lived' || residence !== null);
+  const [kind, setKind] = useState<Kind>(kinds[0]!);
+  const p = view.person;
+  const initialPlace =
+    kind === 'birth' ? (p.birthPlace ?? '') : kind === 'death' ? (p.deathPlace ?? '') : '';
+  const [place, setPlace] = useState(residence?.place ?? (editing ? initialPlace : ''));
+  const [from, setFrom] = useState<FuzzyDraft>(toDraft(residence?.fromDate ?? null));
+  const [to, setTo] = useState<FuzzyDraft>(toDraft(residence?.toDate ?? null));
+  const [markDeceased, setMarkDeceased] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
+  useEffect(() => {
+    form.current?.querySelector<HTMLElement>('select, input')?.focus();
+  }, []);
+
+  // A living person can't have a death place: adding one asks to mark them deceased (#8).
+  const asksDeceased =
+    kind === 'death' && p.isLiving && (p.deathPlace ?? '').trim() === '' && place.trim() !== '';
+  const fieldName = kind === 'birth' ? 'birthPlace' : kind === 'death' ? 'deathPlace' : 'place';
+
   async function submit(e: FormEvent) {
     e.preventDefault();
-    const incomplete = draftErrors({ fromDate: from, toDate: to });
-    if (Object.keys(incomplete).length > 0) return setErrors(incomplete);
-    const v = validate(residenceInputSchema, {
-      place,
-      fromDate: fromDraft(from),
-      toDate: fromDraft(to),
-    });
-    if (!v.ok) return setErrors(v.errors);
-    setErrors({});
     setError(null);
-    setPending(true);
-    const message = await onSubmit(v.data);
+    if (kind === 'lived') {
+      const incomplete = draftErrors({ fromDate: from, toDate: to });
+      if (Object.keys(incomplete).length > 0) return setErrors(incomplete);
+      const v = validate(residenceInputSchema, {
+        place,
+        fromDate: fromDraft(from),
+        toDate: fromDraft(to),
+      });
+      if (!v.ok) return setErrors(v.errors);
+      setErrors({});
+      setPending(true);
+      const input: ResidenceInput = v.data;
+      const res = residence
+        ? await api.updateResidence(treeId, residence.id, input)
+        : await api.addResidence(treeId, view.person.id, input);
+      if (!alive.current) return;
+      setPending(false);
+      if (!res.ok) return setError(res.error.message);
+      await reload();
+      if (alive.current) onDone();
+      return;
+    }
+    const v = validate(updatePersonSchema, { version: p.version, [fieldName]: place });
+    if (!v.ok) return setErrors(v.errors);
+    if (asksDeceased && !markDeceased) return setErrors({ markDeceased: LIVING_DEATH_PLACE });
+    setErrors({});
+    const value = (kind === 'birth' ? v.data.birthPlace : v.data.deathPlace) ?? null;
+    const res = await save.save({
+      [fieldName]: value,
+      ...(asksDeceased ? { isLiving: false } : {}),
+    });
     if (!alive.current) return;
-    setPending(false);
-    if (message) setError(message);
+    if (res.ok) onDone();
+    else if (res.fields) setErrors(serverFieldErrors(res.fields, placeFields(asksDeceased)));
   }
 
   return (
-    <form onSubmit={(e) => void submit(e)}>
-      <FormError>{error}</FormError>
-      <ErrorSummary errors={errors} labels={RESIDENCE_LABELS} />
-      <Field label="Place" name="place" value={place} onChange={setPlace} error={errors.place} />
-      <FuzzyDateField
-        label="From"
-        name="fromDate"
-        value={from}
-        onChange={setFrom}
-        error={errors.fromDate}
+    <form
+      ref={form}
+      onSubmit={(e) => void submit(e)}
+      aria-label={editing ? `Edit ${KIND_OPTION[kind].toLowerCase()}` : 'Add place'}
+    >
+      <FormError>{error ?? save.error}</FormError>
+      <ErrorSummary errors={errors} labels={PLACE_LABELS} />
+      {save.stale && (
+        <div role="alert" className="error">
+          {save.staleMessage}{' '}
+          <button type="button" onClick={() => void save.loadLatest()}>
+            Load the latest version
+          </button>
+        </div>
+      )}
+      {!editing && kinds.length > 1 && (
+        <SelectField
+          label="Kind"
+          value={kind}
+          onChange={(k) => {
+            setErrors({});
+            setKind(k as Kind);
+          }}
+          options={kinds.map((k) => ({ value: k, label: KIND_OPTION[k] }))}
+        />
+      )}
+      <Field
+        label="Place"
+        name={fieldName}
+        value={place}
+        onChange={setPlace}
+        error={errors[fieldName] ?? (kind === 'death' ? errors.markDeceased : undefined)}
       />
-      <FuzzyDateField label="To" name="toDate" value={to} onChange={setTo} error={errors.toDate} />
+      {kind === 'lived' && (
+        <>
+          <FuzzyDateField
+            label="From"
+            name="fromDate"
+            value={from}
+            onChange={setFrom}
+            error={errors.fromDate}
+          />
+          <FuzzyDateField
+            label="To"
+            name="toDate"
+            value={to}
+            onChange={setTo}
+            error={errors.toDate}
+          />
+        </>
+      )}
+      {asksDeceased && (
+        <div className="field">
+          <label>
+            <input
+              type="checkbox"
+              data-field="markDeceased"
+              aria-describedby={`${uid}-deceased-hint`}
+              aria-invalid={errors.markDeceased ? true : undefined}
+              checked={markDeceased}
+              onChange={(e) => setMarkDeceased(e.target.checked)}
+            />{' '}
+            Mark {p.givenName} as deceased
+          </label>
+          <p id={`${uid}-deceased-hint`} className="hint">
+            A death place is only kept for someone who has died.
+          </p>
+        </div>
+      )}
       <p className="actions">
-        <button type="submit" disabled={pending}>
-          {submitLabel}
+        <button type="submit" disabled={pending || save.pending}>
+          {editing ? 'Save place' : 'Add place'}
         </button>
         <button type="button" className="secondary" onClick={onCancel}>
           Cancel

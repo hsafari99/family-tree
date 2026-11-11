@@ -1168,3 +1168,39 @@ button.menu-item:focus-visible {
 button.menu-item.danger-text {
   color: var(--bad);
 }
+
+/* Compact rows: a main part and its actions (brief #7, #12) */
+.row-list {
+  list-style: none;
+  margin: 0.5rem 0;
+  padding: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+.row-list > li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+.row-list > li > .row-form {
+  grid-column: 1 / -1;
+}
+.row-main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  align-items: baseline;
+  min-width: 0;
+}
+.row-meta {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.row-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
