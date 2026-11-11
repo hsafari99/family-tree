@@ -40,6 +40,11 @@ export function validateDeep<T>(
   return { ok: false, errors };
 }
 
+/** The error for `key` or for any part under it ("person.birthDate.date1" for "person.birthDate"). */
+export function errorAt(errors: FieldErrors, key: string): string | undefined {
+  return errors[key] ?? Object.entries(errors).find(([k, m]) => m && k.startsWith(`${key}.`))?.[1];
+}
+
 type FieldProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'id' | 'onChange'> & {
   label: string;
   name: string;

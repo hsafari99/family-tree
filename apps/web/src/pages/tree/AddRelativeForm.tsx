@@ -19,7 +19,7 @@ import {
 import { useTreesApi } from '../../trees/TreesApiContext';
 import { DuplicatePrompt } from './DuplicatePrompt';
 import { similarQueryOf, useDuplicateCheck } from './useDuplicateCheck';
-import { emptyQuick, QuickPersonFields, quickPerson } from './QuickPersonFields';
+import { emptyQuick, QuickPersonFields, quickErrors, quickPerson } from './QuickPersonFields';
 
 const names = (people: PersonSummary[], fallback: string) =>
   people.length > 0 ? people.map(personName).join(' and ') : fallback;
@@ -105,6 +105,11 @@ export function AddRelativeForm({
 
   /** The create request for the typed person, or null (errors are shown) when it's invalid. */
   function newInput(): CreatePersonInput | null {
+    const incomplete = quickErrors(quick);
+    if (Object.keys(incomplete).length > 0) {
+      setErrors(incomplete);
+      return null;
+    }
     const input = { person: quickPerson(quick), attach: { to: subject.person.id, ...link } };
     const v = validateDeep(createPersonSchema, input);
     if (!v.ok) {

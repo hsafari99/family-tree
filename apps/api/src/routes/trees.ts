@@ -84,9 +84,10 @@ export const treesRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
       if ((await ownedLiveTreeCount(tx, user.id)) >= config.MAX_TREES_PER_USER) throw quotaError();
       const [tree] = await tx.insert(trees).values({ name }).returning({ id: trees.id });
       const birthDate: FuzzyDate | null =
-        person.birthYear === undefined
+        person.birthDate ??
+        (person.birthYear === undefined
           ? null
-          : { qualifier: 'exact', date1: String(person.birthYear).padStart(4, '0') };
+          : { qualifier: 'exact', date1: String(person.birthYear).padStart(4, '0') });
       const [root] = await tx
         .insert(persons)
         .values({

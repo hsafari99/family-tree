@@ -138,7 +138,7 @@ describe('AddRelativeForm duplicate check', () => {
   const fillChild = (given: string, surname = 'Lovelace', year = '1815') => {
     fireEvent.change(screen.getByLabelText('First name'), { target: { value: given } });
     fireEvent.change(screen.getByLabelText('Last name'), { target: { value: surname } });
-    fireEvent.change(screen.getByLabelText('Birth year'), { target: { value: year } });
+    fireEvent.change(screen.getByLabelText('Year'), { target: { value: year } });
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
   };
 

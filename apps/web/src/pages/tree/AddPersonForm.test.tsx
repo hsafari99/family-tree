@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { FakeAuthApi } from '../../test/fake-auth';
 import { FakeTreesApi, fakePerson } from '../../test/fake-trees';
@@ -68,16 +68,40 @@ describe('AddPersonForm', () => {
     expect(s.trees.callsTo('createPerson')).toEqual([]);
   });
 
-  it('sends the birth year as an exact date', async () => {
+  it('sends the birth year as an exact date (year precision by default)', async () => {
     const s = setup();
     renderAt(`/trees/${s.id}/people/new`, s);
     await screen.findByRole('heading', { name: 'Add a person' });
     fill('Ada');
-    fireEvent.change(screen.getByLabelText('Birth year'), { target: { value: '1990' } });
+    const born = within(screen.getByRole('group', { name: 'Born' }));
+    expect(born.getByLabelText('Precision')).toHaveValue('year');
+    fireEvent.change(born.getByLabelText('Year'), { target: { value: '1990' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add person' }));
     await waitFor(() => expect(s.trees.callsTo('createPerson')).toHaveLength(1));
     expect(s.trees.callsTo('createPerson')[0]).toMatchObject({
       input: { person: { birthDate: { qualifier: 'exact', date1: '1990' } } },
+    });
+  });
+});
+
+describe('AddPersonForm birth date', () => {
+  it('checks the draft, then sends an about-month date', async () => {
+    const s = setup();
+    renderAt(`/trees/${s.id}/people/new`, s);
+    await screen.findByRole('heading', { name: 'Add a person' });
+    fill('Ada');
+    const born = within(screen.getByRole('group', { name: 'Born' }));
+    fireEvent.change(born.getByLabelText('Precision'), { target: { value: 'month' } });
+    fireEvent.change(born.getByLabelText('How certain'), { target: { value: 'about' } });
+    fireEvent.change(born.getByLabelText('Year'), { target: { value: '1990' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add person' }));
+    expect(await screen.findByText('Choose a month')).toBeInTheDocument();
+    expect(s.trees.callsTo('createPerson')).toEqual([]);
+    fireEvent.change(born.getByLabelText('Month'), { target: { value: '05' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add person' }));
+    await waitFor(() => expect(s.trees.callsTo('createPerson')).toHaveLength(1));
+    expect(s.trees.callsTo('createPerson')[0]).toMatchObject({
+      input: { person: { birthDate: { qualifier: 'about', date1: '1990-05' } } },
     });
   });
 });

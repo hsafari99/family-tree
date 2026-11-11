@@ -33,16 +33,16 @@ export function useDuplicateCheck(treeId: string, excludeIds: readonly string[])
   return { matches, check, confirmNew, dismiss: () => setMatches(null) };
 }
 
-/** The check's query from the quick-add fields. */
+/** The check's query from the quick-add fields: the year of the birth date, when it has one. */
 export function similarQueryOf(v: {
   givenName: string;
   surname: string;
-  birthYear: string;
+  birth: { date1: string };
 }): SimilarQuery {
-  const year = Number(v.birthYear.trim());
+  const year = v.birth.date1.slice(0, 4);
   return {
     givenName: v.givenName.trim(),
     ...(v.surname.trim() ? { surname: v.surname.trim() } : {}),
-    ...(v.birthYear.trim() && Number.isInteger(year) ? { birthYear: year } : {}),
+    ...(/^\d{4}$/.test(year) ? { birthYear: Number(year) } : {}),
   };
 }

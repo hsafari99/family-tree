@@ -84,6 +84,35 @@ describe('POST /api/v1/trees', () => {
     expect(row!.birthSortYear).toBe(1990);
   });
 
+  it('stores a fuzzy birth date and its sort year', async () => {
+    const owner = await userWith2fa(app);
+    const birthDate = { qualifier: 'before', date1: '1950-03-07' };
+    const res = await call(app, 'POST', '/api/v1/trees', {
+      jar: owner.jar,
+      body: { name: 'D', person: { givenName: 'D', birthDate } },
+    });
+    expect(res.statusCode).toBe(201);
+    const [row] = await db.select().from(persons).where(eq(persons.treeId, res.json().tree.id));
+    expect(row!.birthDate).toEqual(birthDate);
+    expect(row!.birthSortYear).toBe(1950);
+  });
+
+  it('rejects a birth date and a birth year together', async () => {
+    const owner = await userWith2fa(app);
+    const res = await call(app, 'POST', '/api/v1/trees', {
+      jar: owner.jar,
+      body: {
+        name: 'D',
+        person: {
+          givenName: 'D',
+          birthYear: 1950,
+          birthDate: { qualifier: 'exact', date1: '1950' },
+        },
+      },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
   it('rejects a blank name', async () => {
     const owner = await userWith2fa(app);
     const res = await call(app, 'POST', '/api/v1/trees', {

@@ -4,6 +4,7 @@ import {
   createInviteSchema,
   createTreeSchema,
   grantStewardSchema,
+  quickPersonSchema,
   updateTreeSchema,
 } from './trees.js';
 
@@ -36,6 +37,18 @@ describe('createTreeSchema', () => {
       createTreeSchema.safeParse({ name: 'x', person: { givenName: 'a', birthYear: next } })
         .success,
     ).toBe(false);
+  });
+  it('takes a fuzzy birth date, but not with a birth year too', () => {
+    const date = { qualifier: 'about', date1: '1950-03' } as const;
+    expect(quickPersonSchema.parse({ givenName: 'A', birthDate: date }).birthDate).toEqual(date);
+    const both = quickPersonSchema.safeParse({ givenName: 'A', birthYear: 1950, birthDate: date });
+    expect(both.success).toBe(false);
+    expect(both.error!.issues).toEqual([
+      expect.objectContaining({
+        path: ['birthDate'],
+        message: 'Give a birth date or a birth year, not both',
+      }),
+    ]);
   });
   it('rejects names over 100 characters', () => {
     expect(

@@ -16,15 +16,7 @@ export function personYears(p: YearParts): string {
   return '';
 }
 
-/** A birth-year field's text as a number: undefined when blank, NaN when it isn't a finite number. */
-export function parseYear(text: string): number | undefined {
-  const t = text.trim();
-  if (t === '') return undefined;
-  const n = Number(t);
-  return Number.isFinite(n) ? n : Number.NaN;
-}
-
-const MONTHS = [
+export const MONTHS = [
   'January',
   'February',
   'March',

@@ -1,31 +1,45 @@
 import { SEXES } from '@family-tree/shared';
 import { useId } from 'react';
-import { Field, type FieldErrors } from '../../components/forms';
+import {
+  draftError,
+  type FuzzyDraft,
+  FuzzyDateField,
+  fromDraft,
+  toDraft,
+} from '../../components/FuzzyDateField';
+import { errorAt, Field, type FieldErrors } from '../../components/forms';
 import { SEX_LABEL } from '../../trees/format';
 
 export interface QuickValues {
   givenName: string;
   surname: string;
   sex: string;
-  birthYear: string;
+  birth: FuzzyDraft;
 }
 export const emptyQuick = (surname = ''): QuickValues => ({
   givenName: '',
   surname,
   sex: 'unknown',
-  birthYear: '',
+  // Quick add is for an approximate birth year (spec §6), so it opens at year precision (#4).
+  birth: { ...toDraft(null), precision: 'year' },
 });
 
 /** The `person` part of a create request: blank optional fields are left out. */
 export function quickPerson(v: QuickValues) {
   const surname = v.surname.trim();
-  const year = v.birthYear.trim();
+  const birthDate = fromDraft(v.birth);
   return {
     givenName: v.givenName.trim(),
     ...(surname ? { surname } : {}),
     sex: v.sex,
-    ...(year ? { birthDate: { qualifier: 'exact', date1: year } } : {}),
+    ...(birthDate === null ? {} : { birthDate }),
   };
+}
+
+/** Our own message for a half-typed birth date, keyed like the schema's errors (or {}). */
+export function quickErrors(v: QuickValues): FieldErrors {
+  const message = draftError(v.birth);
+  return message ? { 'person.birthDate': message } : {};
 }
 
 export function QuickPersonFields({
@@ -38,7 +52,8 @@ export function QuickPersonFields({
   errors: FieldErrors;
 }) {
   const uid = useId();
-  const set = (k: keyof QuickValues) => (value: string) => onChange({ ...values, [k]: value });
+  const set = (k: Exclude<keyof QuickValues, 'birth'>) => (value: string) =>
+    onChange({ ...values, [k]: value });
   return (
     <>
       <Field
@@ -65,13 +80,12 @@ export function QuickPersonFields({
           ))}
         </select>
       </div>
-      <Field
-        label="Birth year"
-        name="birthYear"
-        inputMode="numeric"
-        value={values.birthYear}
-        onChange={set('birthYear')}
-        error={errors['person.birthDate']}
+      <FuzzyDateField
+        label="Born"
+        name="person.birthDate"
+        value={values.birth}
+        onChange={(birth) => onChange({ ...values, birth })}
+        error={errorAt(errors, 'person.birthDate')}
       />
     </>
   );

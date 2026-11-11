@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it } from 'vitest';
-import { Field } from './forms';
+import { errorAt, Field } from './forms';
 
 function Pw() {
   const [v, setV] = useState('');
@@ -36,5 +36,13 @@ describe('Field type=password', () => {
   it('marks the input with data-field for the error summary', () => {
     render(<Field label="Email" name="email" value="" onChange={() => {}} />);
     expect(screen.getByLabelText('Email')).toHaveAttribute('data-field', 'email');
+  });
+});
+
+describe('errorAt', () => {
+  it('finds the error for a key or a part under it', () => {
+    expect(errorAt({ 'person.birthDate': 'a' }, 'person.birthDate')).toBe('a');
+    expect(errorAt({ 'person.birthDate.date1': 'b' }, 'person.birthDate')).toBe('b');
+    expect(errorAt({ 'person.birthDateX': 'c' }, 'person.birthDate')).toBeUndefined();
   });
 });

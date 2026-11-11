@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { fuzzyDateSchema } from './fuzzy-date.js';
 import { INVITE_ROLES, ROLES } from './permissions.js';
 
 export const SEXES = ['female', 'male', 'other', 'unknown'] as const;
@@ -18,17 +19,24 @@ const optionalText = z
 
 export const treeNameSchema = requiredText('Enter a name for the tree');
 
-export const quickPersonSchema = z.object({
-  givenName: requiredText('Enter a first name'),
-  surname: optionalText,
-  sex: z.enum(SEXES).default('unknown'),
-  birthYear: z
-    .number()
-    .int('Enter a whole year')
-    .min(1, 'Enter a real year')
-    .refine((y) => y <= new Date().getUTCFullYear(), 'That year is in the future')
-    .optional(),
-});
+export const quickPersonSchema = z
+  .object({
+    givenName: requiredText('Enter a first name'),
+    surname: optionalText,
+    sex: z.enum(SEXES).default('unknown'),
+    /** Older clients; `birthDate` replaces it (UX round 1, #4). */
+    birthYear: z
+      .number()
+      .int('Enter a whole year')
+      .min(1, 'Enter a real year')
+      .refine((y) => y <= new Date().getUTCFullYear(), 'That year is in the future')
+      .optional(),
+    birthDate: fuzzyDateSchema.optional(),
+  })
+  .refine((p) => p.birthYear === undefined || p.birthDate === undefined, {
+    path: ['birthDate'],
+    message: 'Give a birth date or a birth year, not both',
+  });
 export type QuickPerson = z.infer<typeof quickPersonSchema>;
 
 export const createTreeSchema = z.object({ name: treeNameSchema, person: quickPersonSchema });

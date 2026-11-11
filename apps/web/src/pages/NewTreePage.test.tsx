@@ -60,15 +60,16 @@ describe('NewTreePage', () => {
     expect(trees.callsTo('createTree')).toHaveLength(0);
   });
 
-  it('rejects a birth year in the future', async () => {
+  it('explains an incomplete birth date and makes no call', async () => {
     const { auth, trees } = setup();
     renderAt('/trees/new', { auth, trees });
     await screen.findByLabelText('Tree name');
     type('Tree name', 'Hale family');
     type('Your first name', 'Ada');
-    type('Birth year', '3000');
+    type('Precision', 'year');
+    type('Year', '19');
     fireEvent.click(screen.getByRole('button', { name: 'Start tree' }));
-    expect(await screen.findByText('That year is in the future')).toBeInTheDocument();
+    expect(await screen.findByText('Enter a 4-digit year, like 1950')).toBeInTheDocument();
     expect(trees.callsTo('createTree')).toHaveLength(0);
   });
 
@@ -78,13 +79,19 @@ describe('NewTreePage', () => {
     await screen.findByLabelText('Tree name');
     type('Your first name', 'Ada');
     type('Your last name', 'Hale');
-    type('Birth year', '1990');
+    expect(screen.getByLabelText('Precision')).toHaveValue('day');
+    type('Date', '1990-05-01');
     fireEvent.click(screen.getByRole('button', { name: 'Start tree' }));
     expect(await screen.findByRole('heading', { name: 'Hale family' })).toBeInTheDocument();
     expect(trees.callsTo('createTree')).toEqual([
       {
         name: 'Hale family',
-        person: { givenName: 'Ada', surname: 'Hale', sex: 'unknown', birthYear: 1990 },
+        person: {
+          givenName: 'Ada',
+          surname: 'Hale',
+          sex: 'unknown',
+          birthDate: { qualifier: 'exact', date1: '1990-05-01' },
+        },
       },
     ]);
   });

@@ -12,7 +12,7 @@ import { personName } from '../../trees/format';
 import { useTreesApi } from '../../trees/TreesApiContext';
 import { DuplicatePrompt } from './DuplicatePrompt';
 import { similarQueryOf, useDuplicateCheck } from './useDuplicateCheck';
-import { emptyQuick, QuickPersonFields, quickPerson } from './QuickPersonFields';
+import { emptyQuick, QuickPersonFields, quickErrors, quickPerson } from './QuickPersonFields';
 
 const NO_EXCLUDED: readonly string[] = [];
 const ROLE_LABEL = { parent: 'Parent', child: 'Child', partner: 'Partner', sibling: 'Sibling' };
@@ -51,6 +51,11 @@ export function AddPersonForm({
   function newInput(): CreatePersonInput | null {
     if (mustConnect && !to) {
       setErrors({ connect: 'Choose someone in your branch to connect them to.' });
+      return null;
+    }
+    const incomplete = quickErrors(quick);
+    if (Object.keys(incomplete).length > 0) {
+      setErrors(incomplete);
       return null;
     }
     const input = {

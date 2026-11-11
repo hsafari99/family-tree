@@ -7,7 +7,7 @@ import {
   precisionOf,
 } from '@family-tree/shared';
 import { useId } from 'react';
-import { QUALIFIER_LABEL } from '../trees/format';
+import { MONTHS, QUALIFIER_LABEL } from '../trees/format';
 
 export interface FuzzyDraft {
   qualifier: DateQualifier;
@@ -22,20 +22,6 @@ const PRECISION_LABEL: Record<DatePrecision, string> = {
   month: 'Month and year',
   year: 'Year only',
 };
-const MONTHS = [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
-];
 
 export const toDraft = (d: FuzzyDate | null): FuzzyDraft =>
   d

@@ -2,9 +2,9 @@ import { createTreeSchema, SEXES } from '@family-tree/shared';
 import { type FormEvent, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
-import { Field, type FieldErrors, FormError, validateDeep } from '../components/forms';
+import { errorAt, Field, type FieldErrors, FormError, validateDeep } from '../components/forms';
+import { draftError, FuzzyDateField, fromDraft, toDraft } from '../components/FuzzyDateField';
 import { Page } from '../components/Page';
-import { parseYear } from '../trees/format';
 import { useTreesApi } from '../trees/TreesApiContext';
 import { TwoFactorSetup } from './TwoFactorSetup';
 
@@ -65,8 +65,9 @@ function NewTreeForm() {
     givenName: '',
     surname: '',
     sex: 'unknown',
-    birthYear: '',
   });
+  // A calendar by default: the creator usually knows their own birthday (#4).
+  const [birth, setBirth] = useState(() => toDraft(null));
   const [nameTouched, setNameTouched] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [serverError, setServerError] = useState<string | null>(null);
@@ -83,22 +84,21 @@ function NewTreeForm() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setServerError(null);
-    const yearNumber = parseYear(values.birthYear);
-    // Our own text for input that isn't a number at all (the schema's default is English jargon).
-    const yearBad = yearNumber !== undefined && Number.isNaN(yearNumber);
+    const birthIncomplete = draftError(birth);
+    const birthDate = fromDraft(birth);
     const checked = validateDeep(createTreeSchema, {
       name: values.name,
       person: {
         givenName: values.givenName,
         surname: values.surname,
         sex: values.sex,
-        ...(yearNumber === undefined || yearBad ? {} : { birthYear: yearNumber }),
+        ...(birthDate === null || birthIncomplete ? {} : { birthDate }),
       },
     });
-    if (!checked.ok || yearBad) {
+    if (!checked.ok || birthIncomplete) {
       setErrors({
         ...(checked.ok ? {} : checked.errors),
-        ...(yearBad ? { 'person.birthYear': 'Enter a year, like 1990' } : {}),
+        ...(birthIncomplete ? { 'person.birthDate': birthIncomplete } : {}),
       });
       return;
     }
@@ -157,14 +157,12 @@ function NewTreeForm() {
           ))}
         </select>
       </div>
-      <Field
-        label="Birth year"
-        name="birthYear"
-        type="number"
-        inputMode="numeric"
-        value={values.birthYear}
-        onChange={(birthYear) => setValues((v) => ({ ...v, birthYear }))}
-        error={errors['person.birthYear']}
+      <FuzzyDateField
+        label="Born"
+        name="person.birthDate"
+        value={birth}
+        onChange={setBirth}
+        error={errorAt(errors, 'person.birthDate')}
       />
       <FormError>{serverError}</FormError>
       <button type="submit" disabled={pending}>
