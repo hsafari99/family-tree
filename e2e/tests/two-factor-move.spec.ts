@@ -6,12 +6,9 @@ import { enrolTotpViaUi, signUpViaUi } from '../support/ui';
 
 test.skip(PROD_LOCAL, 'dev stack only');
 
-/** The "2FA on/off" status next to Two-step verification in the account settings nav. */
-const twoFactorStatus = (page: Page) =>
-  page
-    .getByRole('navigation', { name: 'Account settings' })
-    .getByRole('link', { name: /Two-step verification/ })
-    .locator('.nav-status');
+/** The Two-step verification section's line saying 2FA is on. */
+const twoFactorOn = (page: Page) =>
+  page.getByText('Signing in needs a code from your authenticator app as well as your password.');
 
 /** A password sign-in through the API, finished with `code`; returns the verify response. */
 async function signInWithCode(email: string, password: string, code: string) {
@@ -51,7 +48,7 @@ test('spec §5: move two-step verification to a new phone without turning it off
   await expect(move.getByRole('img', { name: /QR code/ })).toBeVisible();
   const newRaw = rawSecret((await move.locator('code.secret').textContent())!.replace(/\s+/g, ''));
   expect(newRaw).not.toBe(oldRaw);
-  await expect(twoFactorStatus(page)).toHaveText('2FA on');
+  await expect(twoFactorOn(page)).toBeVisible();
   await move.getByLabel('6-digit code from the new phone').fill(await totpCode(newRaw));
   await move.getByRole('button', { name: 'Move to this phone' }).click();
 
@@ -83,5 +80,5 @@ test('spec §5: move two-step verification to a new phone without turning it off
   await page.getByRole('button', { name: 'Verify' }).click();
   await expect(page).not.toHaveURL(/\/sign-in/);
   await page.goto('/account/two-step');
-  await expect(twoFactorStatus(page)).toHaveText('2FA on');
+  await expect(twoFactorOn(page)).toBeVisible();
 });

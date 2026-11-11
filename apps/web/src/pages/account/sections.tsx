@@ -40,12 +40,16 @@ export function ProfileSection({ user }: { user: SessionUser }) {
   );
 }
 
+/** The password section's name, in the nav and as its heading: what the page lets you do. */
+export const passwordLabel = (user: SessionUser) =>
+  user.hasPassword ? 'Change password' : 'Set a password';
+
 export function PasswordSection({ user, refresh }: SectionProps) {
   const [passwordSet, setPasswordSet] = useState(false);
   return (
     <section aria-labelledby="password-heading">
       <h2 id="password-heading" tabIndex={-1}>
-        Password
+        {passwordLabel(user)}
       </h2>
       {passwordSet && (
         <Success>
@@ -172,37 +176,34 @@ function ChangePassword() {
   }
 
   return (
-    <section aria-labelledby="change-password-heading">
-      <h3 id="change-password-heading">Change password</h3>
-      <form onSubmit={onSubmit} noValidate>
-        <ErrorSummary errors={errors} labels={CHANGE_PASSWORD_LABELS} />
-        <Field
-          label="Current password"
-          name="currentPassword"
-          type="password"
-          autoComplete="current-password"
-          value={values.currentPassword}
-          onChange={set('currentPassword')}
-          error={errors.currentPassword}
-        />
-        <NewPasswordFields
-          password={values.newPassword}
-          repeat={repeat}
-          onPassword={set('newPassword')}
-          onRepeat={setRepeat}
-          errors={errors}
-        />
-        <FormError>{serverError}</FormError>
-        {done && (
-          <Success>
-            <p>Password changed. Your other devices have been signed out.</p>
-          </Success>
-        )}
-        <button type="submit" disabled={pending}>
-          {pending ? 'Saving…' : 'Change password'}
-        </button>
-      </form>
-    </section>
+    <form onSubmit={onSubmit} noValidate>
+      <ErrorSummary errors={errors} labels={CHANGE_PASSWORD_LABELS} />
+      <Field
+        label="Current password"
+        name="currentPassword"
+        type="password"
+        autoComplete="current-password"
+        value={values.currentPassword}
+        onChange={set('currentPassword')}
+        error={errors.currentPassword}
+      />
+      <NewPasswordFields
+        password={values.newPassword}
+        repeat={repeat}
+        onPassword={set('newPassword')}
+        onRepeat={setRepeat}
+        errors={errors}
+      />
+      <FormError>{serverError}</FormError>
+      {done && (
+        <Success>
+          <p>Password changed. Your other devices have been signed out.</p>
+        </Success>
+      )}
+      <button type="submit" disabled={pending}>
+        {pending ? 'Saving…' : 'Change password'}
+      </button>
+    </form>
   );
 }
 

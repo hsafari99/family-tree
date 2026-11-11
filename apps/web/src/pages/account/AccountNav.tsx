@@ -1,10 +1,11 @@
 import { Link } from 'react-router';
 import type { SessionUser } from '../../auth/api';
 import type { AccountSection } from '../AccountPage';
+import { passwordLabel } from './sections';
 
-type NavItem = { id: AccountSection; label: string; status?: string; danger?: boolean };
+type NavItem = { id: AccountSection; label: string; danger?: boolean };
 
-/** The account settings' section list: each links to its page and shows a short status. */
+/** The account settings' section list: one short label per section, each its own page. */
 export function AccountNav({
   user,
   current,
@@ -15,22 +16,10 @@ export function AccountNav({
   googleShown: boolean;
 }) {
   const items: NavItem[] = [
-    { id: 'profile', label: 'Profile', status: user.email },
-    { id: 'password', label: 'Password', status: user.hasPassword ? 'Set' : 'Not set' },
-    {
-      id: 'two-step',
-      label: 'Two-step verification',
-      status: user.twoFactorEnabled ? '2FA on' : '2FA off',
-    },
-    ...(googleShown
-      ? [
-          {
-            id: 'google' as const,
-            label: 'Google',
-            status: user.googleConnected ? 'Google connected' : 'Not connected',
-          },
-        ]
-      : []),
+    { id: 'profile', label: 'Profile' },
+    { id: 'password', label: passwordLabel(user) },
+    { id: 'two-step', label: 'Two-step verification' },
+    ...(googleShown ? [{ id: 'google' as const, label: 'Google sign-in' }] : []),
     { id: 'delete', label: 'Delete account', danger: true },
   ];
   return (
@@ -43,8 +32,7 @@ export function AccountNav({
               aria-current={item.id === current ? 'page' : undefined}
               className={item.danger ? 'danger' : undefined}
             >
-              <span>{item.label}</span>{' '}
-              {item.status && <span className="nav-status">{item.status}</span>}
+              {item.label}
             </Link>
           </li>
         ))}

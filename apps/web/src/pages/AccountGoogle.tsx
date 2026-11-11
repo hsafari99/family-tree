@@ -43,7 +43,7 @@ export function GoogleSection({
     return (
       <section aria-labelledby="google-heading">
         <h2 id="google-heading" tabIndex={-1}>
-          Google
+          Google sign-in
         </h2>
         <p>Signing in with Google isn’t available.</p>
       </section>
@@ -59,7 +59,7 @@ export function GoogleSection({
   return (
     <section aria-labelledby="google-heading">
       <h2 id="google-heading" ref={headingRef} tabIndex={-1}>
-        Google
+        Google sign-in
       </h2>
       <dl className="details">
         <dt>Status</dt>
@@ -284,8 +284,7 @@ export function SetPassword({ onDone }: { onDone: () => Promise<void> }) {
   }
 
   return (
-    <section aria-labelledby="set-password-heading">
-      <h3 id="set-password-heading">Set a password</h3>
+    <>
       <p>
         You sign in with Google. Add a password to sign in without Google, to turn on two-step
         verification, or to delete your account.
@@ -319,6 +318,6 @@ export function SetPassword({ onDone }: { onDone: () => Promise<void> }) {
           )}
         </div>
       </form>
-    </section>
+    </>
   );
 }

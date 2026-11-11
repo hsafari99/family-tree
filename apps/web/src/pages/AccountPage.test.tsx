@@ -13,15 +13,6 @@ function signedIn({ twoFactorEnabled = false, requiresTwoFactor = false, ownsTre
   return { api, user };
 }
 
-/** The status a section shows next to its name in the settings nav. */
-const navStatus = (label: string) =>
-  within(
-    within(screen.getByRole('navigation', { name: 'Account settings' })).getByRole('link', {
-      name: new RegExp(label),
-    }),
-  ).getByText((_, el) => el?.classList.contains('nav-status') ?? false);
-const status = () => navStatus('Two-step verification');
-
 function type(label: string, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
 }
@@ -35,13 +26,20 @@ describe('AccountPage', () => {
   it('lists the sections with their status and opens one per URL', async () => {
     renderAt('/account/two-step', { auth: signedIn({ twoFactorEnabled: true }).api });
     const nav = await screen.findByRole('navigation', { name: 'Account settings' });
-    expect(
-      within(nav).getByRole('link', { name: /Two-step verification.*2FA on/ }),
-    ).toHaveAttribute('aria-current', 'page');
+    expect(within(nav).getByRole('link', { name: 'Two-step verification' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
     expect(
       screen.getByRole('heading', { level: 2, name: 'Two-step verification' }),
     ).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Change password' })).toBeNull();
+    // One short label per item: no status or description line under it.
+    expect(
+      within(nav)
+        .getAllByRole('link')
+        .map((a) => a.textContent),
+    ).toEqual(['Profile', 'Change password', 'Two-step verification', 'Delete account']);
   });
 
   it('/account shows the profile', async () => {
@@ -49,17 +47,19 @@ describe('AccountPage', () => {
     expect(await screen.findByRole('heading', { level: 2, name: 'Profile' })).toBeInTheDocument();
     const nav = screen.getByRole('navigation', { name: 'Account settings' });
     // The default section is the one shown, so it is the one marked current.
-    expect(within(nav).getByRole('link', { current: 'page' })).toHaveAccessibleName(/^Profile/);
+    expect(within(nav).getByRole('link', { current: 'page' })).toHaveAccessibleName('Profile');
   });
 
   it('opening another section moves focus to its heading', async () => {
     renderAt('/account/profile', { auth: signedIn().api });
     const nav = await screen.findByRole('navigation', { name: 'Account settings' });
     expect(screen.getByRole('heading', { level: 2, name: 'Profile' })).not.toHaveFocus();
-    fireEvent.click(within(nav).getByRole('link', { name: /^Password/ }));
-    const heading = await screen.findByRole('heading', { level: 2, name: 'Password' });
+    fireEvent.click(within(nav).getByRole('link', { name: 'Change password' }));
+    const heading = await screen.findByRole('heading', { level: 2, name: 'Change password' });
     await waitFor(() => expect(heading).toHaveFocus());
-    expect(within(nav).getByRole('link', { current: 'page' })).toHaveAccessibleName(/^Password/);
+    expect(within(nav).getByRole('link', { current: 'page' })).toHaveAccessibleName(
+      'Change password',
+    );
   });
 
   it('a section page has a back link to the list (shown on mobile)', async () => {
@@ -74,7 +74,7 @@ describe('AccountPage', () => {
     renderAt('/account/bogus', { auth: signedIn().api });
     expect(await screen.findByRole('heading', { level: 2, name: 'Profile' })).toBeInTheDocument();
     const nav = screen.getByRole('navigation', { name: 'Account settings' });
-    expect(within(nav).getByRole('link', { current: 'page' })).toHaveAccessibleName(/^Profile/);
+    expect(within(nav).getByRole('link', { current: 'page' })).toHaveAccessibleName('Profile');
     expect(screen.queryByRole('heading', { name: /not found/i })).toBeNull();
   });
 
@@ -83,22 +83,14 @@ describe('AccountPage', () => {
     expect(
       await screen.findByRole('heading', { level: 2, name: 'Delete account' }),
     ).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Delete account/ })).toHaveClass('danger');
+    expect(screen.getByRole('link', { name: 'Delete account' })).toHaveClass('danger');
   });
 
-  it('shows the password status in the nav', async () => {
-    renderAt('/account', { auth: signedIn().api });
-    await screen.findByRole('heading', { level: 2, name: 'Profile' });
-    expect(navStatus('Password')).toHaveTextContent('Set');
-    expect(navStatus('Profile')).toHaveTextContent('ada@example.com');
-  });
-
-  it('shows name, email and 2FA status', async () => {
+  it('shows name and email', async () => {
     renderAt('/account/profile', { auth: signedIn().api });
     const profile = await screen.findByRole('region', { name: 'Profile' });
     expect(within(profile).getByText('Ada')).toBeInTheDocument();
     expect(within(profile).getByText('ada@example.com')).toBeInTheDocument();
-    expect(status()).toHaveTextContent('2FA off');
   });
 
   it('changes the password', async () => {
@@ -166,7 +158,6 @@ describe('AccountPage', () => {
     expect(within(list).getAllByRole('listitem')).toHaveLength(8);
     expect(screen.getByRole('button', { name: 'Copy' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Download as .txt' })).toBeInTheDocument();
-    expect(status()).toHaveTextContent('2FA on');
 
     fireEvent.click(screen.getByRole('button', { name: "I've saved these codes" }));
     expect(screen.queryByRole('list', { name: 'Recovery codes' })).not.toBeInTheDocument();
@@ -268,11 +259,9 @@ describe('AccountPage', () => {
     const { api } = signedIn({ twoFactorEnabled: true });
     renderAt('/account/two-step', { auth: api });
     await screen.findByRole('navigation', { name: 'Account settings' });
-    expect(status()).toHaveTextContent('2FA on');
     fireEvent.click(screen.getByRole('button', { name: 'Turn off two-step verification' }));
     await enterPassword('Turn off');
     expect(await screen.findByText('Two-step verification is off.')).toBeInTheDocument();
-    expect(status()).toHaveTextContent('2FA off');
     expect(screen.getByRole('button', { name: 'Turn on two-step verification' })).toBeVisible();
   });
 

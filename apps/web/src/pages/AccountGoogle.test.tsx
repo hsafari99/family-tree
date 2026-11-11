@@ -19,7 +19,7 @@ function account({
   return { api, user };
 }
 
-const section = () => screen.findByRole('region', { name: 'Google' });
+const section = () => screen.findByRole('region', { name: 'Google sign-in' });
 const type = (label: string, value: string) =>
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
 
@@ -112,7 +112,7 @@ describe('Account settings: Google', () => {
     expect(await within(google).findByRole('status')).toHaveTextContent('Google disconnected');
     expect(user.googleConnected).toBe(false);
     expect(within(google).getByText('Not connected')).toBeInTheDocument();
-    expect(within(google).getByRole('heading', { name: 'Google' })).toHaveFocus();
+    expect(within(google).getByRole('heading', { name: 'Google sign-in' })).toHaveFocus();
   });
 
   it('also wants a code to disconnect when two-step verification is on', async () => {
@@ -138,20 +138,21 @@ describe('Account settings: Google', () => {
     expect(within(google).getByText(/only way to sign in/)).toBeInTheDocument();
 
     // Everything else that needs a password waits for one.
-    fireEvent.click(screen.getByRole('link', { name: /Two-step verification/ }));
+    fireEvent.click(screen.getByRole('link', { name: 'Two-step verification' }));
     expect(
       await screen.findByRole('heading', { level: 2, name: 'Two-step verification' }),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Turn on two-step verification' })).toBeNull();
-    expect(screen.getByRole('link', { name: 'Set a password' })).toHaveAttribute(
+    const nav = screen.getByRole('navigation', { name: 'Account settings' });
+    expect(within(nav).getByRole('link', { name: 'Set a password' })).toHaveAttribute(
       'href',
       '/account/password',
     );
-    fireEvent.click(screen.getByRole('link', { name: /Delete account/ }));
+    fireEvent.click(screen.getByRole('link', { name: 'Delete account' }));
     expect(await screen.findByText(/Set a password first/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Delete my account' })).toBeNull();
 
-    fireEvent.click(screen.getByRole('link', { name: /Password.*Not set/ }));
+    fireEvent.click(within(nav).getByRole('link', { name: 'Set a password' }));
     const setPassword = await screen.findByRole('region', { name: 'Set a password' });
     expect(screen.queryByRole('heading', { name: 'Change password' })).toBeNull();
     fireEvent.click(within(setPassword).getByRole('button', { name: 'Set password' }));
@@ -164,8 +165,8 @@ describe('Account settings: Google', () => {
       screen.getByText('Password set. You can now sign in with your email too.'),
     ).toBeVisible();
     expect(user.hasPassword).toBe(true);
-    expect(screen.getByRole('link', { name: /Password.*Set/ })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('link', { name: /Google/ }));
+    expect(within(nav).getByRole('link', { name: 'Change password' })).toBeInTheDocument();
+    fireEvent.click(within(nav).getByRole('link', { name: 'Google sign-in' }));
     expect(
       within(await section()).getByRole('button', { name: 'Disconnect Google' }),
     ).toBeInTheDocument();
@@ -193,16 +194,17 @@ describe('Account settings: Google', () => {
     renderAt('/account', { auth: api });
     const nav = await screen.findByRole('navigation', { name: 'Account settings' });
     await waitFor(() => expect(api.callsTo('getProviders')).toHaveLength(1));
-    expect(within(nav).queryByRole('link', { name: /Google/ })).toBeNull();
-    expect(screen.queryByRole('region', { name: 'Google' })).toBeNull();
+    expect(within(nav).queryByRole('link', { name: 'Google sign-in' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Google sign-in' })).toBeNull();
   });
 
-  it('shows the Google status in the nav', async () => {
+  it('lists Google sign-in in the nav when it is on', async () => {
     renderAt('/account', { auth: account({ googleConnected: true }).api });
     const nav = await screen.findByRole('navigation', { name: 'Account settings' });
-    expect(
-      await within(nav).findByRole('link', { name: /Google.*Google connected/ }),
-    ).toBeInTheDocument();
+    expect(await within(nav).findByRole('link', { name: 'Google sign-in' })).toHaveAttribute(
+      'href',
+      '/account/google',
+    );
   });
 });
 

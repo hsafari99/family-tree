@@ -891,8 +891,8 @@ img.card-photo {
   gap: 0.25rem;
 }
 .account-layout nav a {
-  display: grid;
-  padding: 0.5rem 0.75rem;
+  display: block;
+  padding: 0.4rem 0.75rem;
   border-radius: 0.4rem;
   text-decoration: none;
   color: inherit;
@@ -907,31 +907,24 @@ img.card-photo {
 .account-layout nav a.danger {
   color: var(--bad);
 }
-.nav-status {
-  font-size: 0.85rem;
-  color: var(--muted);
-  overflow-wrap: anywhere;
+/* The nav already names the section: its heading is for screen readers only, and the panel
+   starts with the content, flush with the nav. */
+.account-section section > h2 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.account-section > section > h2 + *,
+.account-section > section > h2 + * > :first-child {
+  margin-top: 0;
 }
 .account-back {
   display: none;
-}
-/* Beside the nav the section's name is already on screen: keep its heading for screen readers
-   only, and start the panel flush with the nav. */
-@media (min-width: 721px) {
-  .account-section section > h2 {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    margin: -1px;
-    padding: 0;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
-  .account-section > section > h2 + *,
-  .account-section > section > h2 + * > :first-child {
-    margin-top: 0;
-  }
 }
 @media (max-width: 720px) {
   .account-layout {
@@ -947,8 +940,5 @@ img.card-photo {
   .account-back {
     display: block;
     margin-top: 0;
-  }
-  .account-section section > h2 {
-    margin-top: 0.5rem;
   }
 }
