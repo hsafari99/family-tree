@@ -87,7 +87,11 @@ test('the reset page checks that the two new passwords match', async ({ page }) 
     await page.getByLabel('New password', { exact: true }).fill('Brand-new-password1');
     await page.getByLabel('Repeat new password', { exact: true }).fill('Brand-new-passw0rd');
     await page.getByRole('button', { name: 'Set new password' }).click();
-    await expect(page.getByText('The passwords don’t match')).toBeVisible();
+    const mismatch = 'The passwords don’t match';
+    await expect(
+      page.getByLabel('Repeat new password', { exact: true }),
+    ).toHaveAccessibleDescription(mismatch);
+    await expect(page.getByRole('alert')).toContainText(`Repeat new password: ${mismatch}`);
     await expect(page).toHaveURL(new RegExp(`/reset/${token}$`));
   } finally {
     await ownerCtx.dispose();
