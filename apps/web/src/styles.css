@@ -1,21 +1,105 @@
 :root {
   color-scheme: light dark;
-  font-family: system-ui, sans-serif;
-  line-height: 1.5;
-  --ok: #1a7f37;
-  --bad: #cf222e;
-  --accent: #0969da;
-  --muted: color-mix(in srgb, currentColor 65%, transparent);
-  --border: color-mix(in srgb, currentColor 25%, transparent);
-  --surface: color-mix(in srgb, Canvas 94%, CanvasText);
+  /* Neutrals lean slightly green-teal, to sit with the accent. */
+  --bg: #f5f7f6; /* page */
+  --surface: #ffffff; /* cards, dialogs, panels */
+  --surface-2: #eef2f0; /* inset areas, hover */
+  --ink: #18221f; /* main text */
+  --ink-2: #4f5d58; /* secondary text (>= 4.5:1 on --bg and --surface) */
+  --line: #d9e1de; /* hairlines */
+  --line-strong: #b9c6c1;
+  --accent: #1f7a68; /* brand teal; links, primary buttons, focus line */
+  --accent-ink: #ffffff; /* text on --accent */
+  --accent-soft: #d6ece6; /* selected rows, pills */
+  --ring: #e3a72f; /* selection ring on the canvas */
+  --pat: #4f7cac; /* father's side (Fan chart) */
+  --mat: #b0587c; /* mother's side */
+  --bark: #7a6552; /* Illustrated tree */
+  --canopy: #9fd1b8;
+  --av1: #cfe3f5;
+  --av2: #f4d8e2;
+  --av3: #d9eddc;
+  --av4: #efe2c8;
+  --av5: #e1dcf3;
+  --av6: #d3ecec;
+  --av-ink: #243330;
   /* Status text (not backgrounds): at least 4.5:1 on the page in each theme. */
   --success: #1a7f37;
   --danger: #cf222e;
+  --warning: #9a6700;
+  --radius-s: 8px;
+  --radius: 12px;
+  --radius-l: 18px;
+  --radius-pill: 999px;
+  --shadow-1: 0 1px 2px rgb(16 24 22 / 0.06), 0 1px 3px rgb(16 24 22 / 0.08);
+  --shadow-2: 0 4px 12px rgb(16 24 22 / 0.08), 0 2px 4px rgb(16 24 22 / 0.06);
+  --shadow-3: 0 12px 32px rgb(16 24 22 / 0.14);
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --font: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --text-xs: 12px;
+  --text-s: 13px;
+  --text-m: 15px;
+  --text-l: 18px;
+  --text-xl: 22px;
+  --text-2xl: 28px;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur: 160ms;
+  /* old names, kept as aliases */
+  --muted: var(--ink-2);
+  --border: var(--line);
+  --ok: var(--success);
+  --bad: var(--danger);
 }
 @media (prefers-color-scheme: dark) {
   :root {
+    --bg: #111715;
+    --surface: #18201d;
+    --surface-2: #1f2925;
+    --ink: #e6ede9;
+    --ink-2: #a3b3ad;
+    --line: #2b3632;
+    --line-strong: #3d4b46;
+    --accent: #5cc7ad;
+    --accent-ink: #0d1f1a;
+    --accent-soft: #1e3a33;
+    --ring: #f0bf55;
+    --pat: #4d7aa8;
+    --mat: #a9557a;
+    --bark: #a68d76;
+    --canopy: #2f5a47;
+    --av1: #2b4560;
+    --av2: #5a3445;
+    --av3: #2f4d36;
+    --av4: #54472e;
+    --av5: #3d3760;
+    --av6: #2a4c4c;
+    --av-ink: #eef3f1;
     --success: #3fb950;
     --danger: #ff7b72;
+    --warning: #d29922;
+    --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-2: 0 4px 12px rgb(0 0 0 / 0.45);
+    --shadow-3: 0 12px 32px rgb(0 0 0 / 0.55);
+  }
+}
+/* High contrast: the system colours win (the browser forces most of them anyway). */
+@media (forced-colors: active) {
+  :root {
+    --accent: LinkText;
+    --accent-ink: Canvas;
+    --surface: Canvas;
+    --surface-2: Canvas;
+    --bg: Canvas;
+    --ink: CanvasText;
+    --ink-2: CanvasText;
+    --line: CanvasText;
+    --line-strong: CanvasText;
   }
 }
 *,
@@ -25,6 +109,21 @@
 }
 body {
   margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 var(--text-m)/1.55 var(--font);
+  -webkit-font-smoothing: antialiased;
+}
+h1,
+h2,
+h3,
+h4 {
+  font-weight: 680;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+table {
+  font-variant-numeric: tabular-nums;
 }
 .app {
   max-width: 40rem;
@@ -103,8 +202,8 @@ textarea {
   padding: 0.6rem 0.7rem;
   border: 1px solid var(--border);
   border-radius: 0.4rem;
-  background: Canvas;
-  color: CanvasText;
+  background: var(--surface);
+  color: var(--ink);
 }
 /* Same outer height as a text input in every engine (#3). */
 select {
@@ -186,7 +285,7 @@ button {
   border: 1px solid var(--accent);
   border-radius: 0.4rem;
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-ink);
   cursor: pointer;
 }
 button.secondary {
@@ -217,7 +316,7 @@ a {
   color: var(--accent);
 }
 :focus-visible {
-  outline: 3px solid var(--accent);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 .actions {
@@ -251,12 +350,12 @@ button.google {
   justify-content: center;
   gap: 0.6rem;
   width: 100%;
-  background: Canvas;
-  color: CanvasText;
+  background: var(--surface);
+  color: var(--ink);
   border-color: var(--border);
 }
 button.google:hover:not(:disabled) {
-  background: var(--surface);
+  background: var(--surface-2);
 }
 .google-logo {
   width: 1.15rem;
@@ -313,7 +412,7 @@ button.google:hover:not(:disabled) {
   padding: 1rem;
   margin: 0;
   list-style: none;
-  background: var(--surface);
+  background: var(--surface-2);
   border-radius: 0.4rem;
 }
 .codes code {
@@ -322,7 +421,7 @@ button.google:hover:not(:disabled) {
 .notice {
   padding: 0.5rem 0.75rem;
   border-radius: 0.4rem;
-  background: var(--surface);
+  background: var(--surface-2);
   color: var(--muted);
 }
 
@@ -380,12 +479,12 @@ button.google:hover:not(:disabled) {
   padding: 0.4rem 0.5rem;
   border: 2px solid #4a6fa5;
   border-radius: 10px;
-  background: Canvas;
-  color: CanvasText;
+  background: var(--surface);
+  color: var(--ink);
 }
 .person-card.is-deceased {
   border-color: #9a9a9a;
-  background: var(--surface);
+  background: var(--surface-2);
 }
 .person-card.is-focus {
   box-shadow: 0 0 0 3px #f0b429;
@@ -405,8 +504,8 @@ img.card-photo {
   border-radius: 50%;
   display: grid;
   place-items: center;
-  background: color-mix(in srgb, #4a6fa5 22%, Canvas);
-  color: CanvasText;
+  background: color-mix(in srgb, #4a6fa5 22%, var(--surface));
+  color: var(--ink);
   font-weight: 700;
 }
 .card-open {
@@ -521,7 +620,7 @@ img.card-photo {
   box-sizing: border-box;
 }
 .union-dot.is-ended::before {
-  background: Canvas;
+  background: var(--surface);
   border: 2px dashed #9a9a9a;
 }
 .union-dot:focus-visible {
@@ -567,7 +666,7 @@ img.card-photo {
   padding: 0.2rem;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: var(--surface);
+  background: var(--surface-2);
 }
 .view-link {
   display: inline-flex;
@@ -576,16 +675,16 @@ img.card-photo {
   padding: 0.3rem 0.85rem;
   border: 1px solid transparent;
   border-radius: 7px;
-  color: CanvasText;
+  color: var(--ink);
   font-size: 0.9rem;
   text-decoration: none;
 }
 .view-link:hover {
-  background: Canvas;
+  background: var(--surface);
   border-color: var(--border);
 }
 .view-link[aria-current='true'] {
-  background: Canvas;
+  background: var(--surface);
   border-color: var(--accent);
   color: var(--accent);
   font-weight: 600;
@@ -697,7 +796,7 @@ img.card-photo {
   padding: 0.05rem 0.5rem;
   border: 1px solid var(--border);
   border-radius: 999px;
-  background: var(--surface);
+  background: var(--surface-2);
   color: var(--muted);
   font-size: 0.75rem;
   font-weight: 600;
@@ -787,7 +886,7 @@ button.section-row > svg {
   padding: 0.75rem;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--surface);
+  background: var(--surface-2);
   overflow: auto;
   /* A vertical scrollbar narrows the content box; nothing inside may force a sideways one. */
   overflow-x: hidden;
@@ -813,7 +912,7 @@ button.icon-button {
   color: inherit;
 }
 button.icon-button:hover {
-  background: var(--surface);
+  background: var(--surface-2);
   border-color: var(--border);
 }
 /* The panel's one toggle, a small tab centred on its right edge (between it and the canvas); when
@@ -832,9 +931,9 @@ button.panel-toggle {
   padding: 0;
   border: 1px solid var(--border);
   border-radius: 999px;
-  background: Canvas;
-  color: CanvasText;
-  box-shadow: 0 1px 4px color-mix(in srgb, CanvasText 18%, transparent);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--ink) 18%, transparent);
 }
 .has-panel > button.panel-toggle {
   left: calc(400px + 0.5rem);
@@ -889,12 +988,12 @@ a.section-row:focus-visible {
 }
 button.section-row:hover,
 a.section-row:hover {
-  background: var(--surface);
+  background: var(--surface-2);
 }
 /* The panel itself is on the surface colour: its rows light up with the page colour instead. */
 .tree-panel button.section-row:hover,
 .tree-panel a.section-row:hover {
-  background: Canvas;
+  background: var(--surface);
 }
 .section-row-title {
   flex: 1;
@@ -912,8 +1011,8 @@ a.section-row:hover {
   padding: 0;
   border: 1px solid var(--border);
   border-radius: 0.6rem;
-  background: Canvas;
-  color: CanvasText;
+  background: var(--surface);
+  color: var(--ink);
   overflow-wrap: anywhere;
 }
 .section-dialog[open] {
@@ -952,7 +1051,7 @@ a.section-row:hover {
 .disconnected-list {
   position: absolute;
   z-index: 10;
-  background: Canvas;
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.5rem 1rem;
@@ -977,7 +1076,7 @@ a.section-row:hover {
   padding: 0.2rem 0.2rem 0.2rem 0.6rem;
   border: 1px solid var(--border);
   border-radius: 0.4rem;
-  background: Canvas;
+  background: var(--surface);
   font-size: 0.9rem;
 }
 /* A search input with a decorative magnifier inside, on the left. */
@@ -1010,7 +1109,7 @@ a.section-row:hover {
   padding: 0.25rem;
   max-height: 40vh;
   overflow: auto;
-  background: Canvas;
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
 }
@@ -1020,7 +1119,7 @@ a.section-row:hover {
   text-align: left;
 }
 .branch-matches button:hover {
-  background: var(--surface);
+  background: var(--surface-2);
 }
 .people-fallback {
   margin-top: 1rem;
@@ -1044,7 +1143,7 @@ a.section-row:hover {
     bottom: 0;
     z-index: 20;
     height: 65dvh;
-    background: Canvas;
+    background: var(--surface);
     border: 0;
     border-top: 1px solid var(--border);
     border-radius: 0;
@@ -1113,8 +1212,8 @@ a.section-row:hover {
   float: right;
   display: grid;
   place-items: center;
-  background: var(--surface);
-  color: CanvasText;
+  background: var(--surface-2);
+  color: var(--ink);
   border: 1px solid var(--border);
   font-weight: 600;
 }
@@ -1132,8 +1231,8 @@ a.section-row:hover {
   border-radius: 8px;
   display: grid;
   place-items: center;
-  background: var(--surface);
-  color: CanvasText;
+  background: var(--surface-2);
+  color: var(--ink);
   border: 1px solid var(--border);
 }
 .photo.is-primary .photo-thumb {
@@ -1143,9 +1242,9 @@ a.section-row:hover {
 .badge {
   display: inline-block;
   font-size: 0.8rem;
-  background: color-mix(in srgb, var(--accent) 18%, Canvas);
-  color: CanvasText;
-  border: 1px solid color-mix(in srgb, var(--accent) 45%, Canvas);
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface));
+  color: var(--ink);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--surface));
   border-radius: 999px;
   padding: 0 0.5rem;
 }
@@ -1170,8 +1269,8 @@ a.section-row:hover {
 /* The dimmed surround is over the photo itself, so a translucent Canvas works in both themes. */
 .crop-box {
   position: absolute;
-  box-shadow: 0 0 0 9999px color-mix(in srgb, Canvas 55%, transparent);
-  outline: 2px solid CanvasText;
+  box-shadow: 0 0 0 9999px color-mix(in srgb, var(--surface) 55%, transparent);
+  outline: 2px solid var(--ink);
   cursor: move;
 }
 .crop-box:focus-visible {
@@ -1185,8 +1284,8 @@ a.section-row:hover {
 .search-filters {
   position: absolute;
   z-index: 15;
-  background: Canvas;
-  color: CanvasText;
+  background: var(--surface);
+  color: var(--ink);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.5rem 0.75rem;
@@ -1212,7 +1311,7 @@ a.section-row:hover {
 }
 .search-result:hover,
 .search-result:focus-visible {
-  background: color-mix(in srgb, var(--accent) 12%, Canvas);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
 }
 .result-photo {
   grid-row: span 3;
@@ -1222,7 +1321,7 @@ a.section-row:hover {
   object-fit: cover;
   display: grid;
   place-items: center;
-  background: var(--surface);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   font-size: 0.75rem;
 }
@@ -1243,7 +1342,7 @@ a.section-row:hover {
 .react-flow__node.is-path .person-card {
   outline: 3px solid var(--accent);
   outline-offset: 2px;
-  background: color-mix(in srgb, var(--accent) 14%, Canvas);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
 }
 .react-flow__node.is-path .union-dot {
   background: var(--accent);
@@ -1309,10 +1408,10 @@ a.section-row:hover {
   color: inherit;
 }
 .account-layout nav a:hover {
-  background: var(--surface);
+  background: var(--surface-2);
 }
 .account-layout nav a[aria-current='page'] {
-  background: var(--surface);
+  background: var(--surface-2);
   outline: 1px solid var(--border);
 }
 .account-layout nav a.danger {
@@ -1394,7 +1493,7 @@ a.section-row:hover {
   margin: 0;
 }
 .icon-link:hover {
-  background: var(--surface);
+  background: var(--surface-2);
 }
 .icon-link .icon {
   width: 20px;
@@ -1410,19 +1509,13 @@ a.section-row:hover {
   border-radius: 50%;
   object-fit: cover;
   border: 1px solid var(--border);
-  background: var(--surface);
+  background: var(--surface-2);
 }
 .avatar-default {
   color: var(--accent);
   font-weight: 600;
   line-height: 1;
   user-select: none;
-}
-/* The accent blue is too dark to read on a dark circle. */
-@media (prefers-color-scheme: dark) {
-  .avatar-default {
-    color: color-mix(in srgb, var(--accent) 55%, CanvasText);
-  }
 }
 .profile-layout {
   display: grid;
@@ -1479,7 +1572,7 @@ a.section-row:hover {
   cursor: pointer;
 }
 .link-button:hover {
-  background: var(--surface);
+  background: var(--surface-2);
   text-decoration: underline;
 }
 .link-button:focus-visible,
@@ -1519,8 +1612,8 @@ a.section-row:hover {
   padding: 1.25rem 1.5rem;
   border: 1px solid var(--border);
   border-radius: 0.6rem;
-  background: Canvas;
-  color: CanvasText;
+  background: var(--surface);
+  color: var(--ink);
 }
 .confirm-dialog::backdrop {
   background: color-mix(in srgb, CanvasText 40%, transparent);
@@ -1551,11 +1644,11 @@ a.section-row:hover {
   margin: 0;
   padding: 0.25rem;
   list-style: none;
-  background: Canvas;
-  color: CanvasText;
+  background: var(--surface);
+  color: var(--ink);
   border: 1px solid var(--border);
   border-radius: 0.5rem;
-  box-shadow: 0 4px 16px color-mix(in srgb, CanvasText 18%, transparent);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--ink) 18%, transparent);
 }
 .menu-list > li {
   margin: 0;
@@ -1572,7 +1665,7 @@ button.menu-item {
 }
 button.menu-item:hover:not(:disabled),
 button.menu-item:focus-visible {
-  background: var(--surface);
+  background: var(--surface-2);
 }
 .danger-text,
 button.menu-item.danger-text {
@@ -1732,8 +1825,8 @@ table.data select {
   top: 0.5rem;
   z-index: 100;
   padding: 0.5rem 0.75rem;
-  background: Canvas;
-  color: CanvasText;
+  background: var(--surface);
+  color: var(--ink);
   border: 2px solid var(--accent);
   border-radius: 0.4rem;
   transform: translateY(-200%);
@@ -1752,7 +1845,7 @@ main:focus {
 }
 .app-header {
   position: relative;
-  background: var(--surface);
+  background: var(--surface-2);
   border-bottom: 1px solid var(--border);
 }
 .app-header-bar {
@@ -1831,7 +1924,7 @@ button.account-trigger > span {
 }
 button.account-trigger:hover,
 button.account-trigger[aria-expanded='true'] {
-  background: Canvas;
+  background: var(--surface);
   border-color: var(--border);
 }
 .account-trigger-name {
@@ -1900,12 +1993,12 @@ a.button-link {
   border: 1px solid var(--accent);
   border-radius: 0.4rem;
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-ink);
   text-decoration: none;
   white-space: nowrap;
 }
 a.button-link:hover {
-  background: color-mix(in srgb, var(--accent) 85%, CanvasText);
+  background: color-mix(in srgb, var(--accent) 85%, var(--ink));
 }
 .tree-cards {
   display: grid;
@@ -1923,7 +2016,7 @@ a.button-link:hover {
   padding: 1rem;
   border: 1px solid var(--border);
   border-radius: 0.6rem;
-  background: var(--surface);
+  background: var(--surface-2);
 }
 .tree-card-head {
   display: flex;
@@ -1969,7 +2062,7 @@ a.button-link:hover {
   padding: 1.25rem;
   border: 1px solid var(--border);
   border-radius: 0.6rem;
-  background: var(--surface);
+  background: var(--surface-2);
 }
 .card .getting-started h2 {
   margin-top: 0;
