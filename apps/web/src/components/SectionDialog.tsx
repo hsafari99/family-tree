@@ -112,7 +112,9 @@ export function XIcon() {
   );
 }
 
-export function ChevronIcon({ direction = 'right' }: { direction?: 'right' | 'up' }) {
+const ROTATION = { right: undefined, up: 'rotate(-90deg)', left: 'rotate(180deg)' } as const;
+
+export function ChevronIcon({ direction = 'right' }: { direction?: 'right' | 'up' | 'left' }) {
   return (
     <svg
       viewBox="0 0 16 16"
@@ -120,7 +122,7 @@ export function ChevronIcon({ direction = 'right' }: { direction?: 'right' | 'up
       height="16"
       aria-hidden="true"
       focusable="false"
-      style={direction === 'up' ? { transform: 'rotate(-90deg)' } : undefined}
+      style={ROTATION[direction] ? { transform: ROTATION[direction] } : undefined}
     >
       <path
         d="M6 3.5l4.5 4.5L6 12.5"

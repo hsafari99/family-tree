@@ -72,7 +72,7 @@ test('"How are we related?" opens as a dialog, words the path and highlights it'
   await expect(dialog).toBeHidden();
   await expect.poll(() => page.locator('.is-path').count()).toBeGreaterThanOrEqual(3);
   // Collapsing the panel (brief #15) keeps the path drawn.
-  await page.getByRole('button', { name: 'Collapse panel' }).click();
+  await page.getByRole('button', { name: 'Collapse side panel' }).click();
   await expect(page.getByRole('complementary', { name: 'Details' })).toBeHidden();
   await expect.poll(() => page.locator('.is-path').count()).toBeGreaterThanOrEqual(3);
 });

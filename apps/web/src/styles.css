@@ -751,13 +751,10 @@ button.section-row > svg {
   margin: 0 0 0.5rem;
 }
 .tree-workspace {
+  position: relative;
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: 1rem;
-}
-.tree-workspace.has-rail {
-  /* Collapsed: a slim rail on the left keeps the way back in sight (brief #15). */
-  grid-template-columns: 40px minmax(0, 1fr);
 }
 .tree-workspace.has-panel {
   /* The panel is on the left and first in the DOM, so Tab reaches it first (brief #15).
@@ -832,50 +829,38 @@ button.icon-button:hover {
   background: var(--surface);
   border-color: var(--border);
 }
-.panel-rail {
-  min-width: 0;
-}
-button.rail-expand {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-  width: 40px;
-  height: 100%;
-  min-height: 8rem;
-  padding: 0.6rem 0;
+/* The panel's one toggle, a small tab centred on its right edge (between it and the canvas); when
+   collapsed the panel takes no width and the tab sits on the canvas's left edge, the thin line
+   that is left. Absolute in the workspace, so it stays put while the panel scrolls. */
+button.panel-toggle {
+  position: absolute;
+  z-index: 5;
+  top: 50%;
+  left: 0;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 44px;
+  padding: 0;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
+  border-radius: 999px;
+  background: Canvas;
   color: CanvasText;
+  box-shadow: 0 1px 4px color-mix(in srgb, CanvasText 18%, transparent);
 }
-button.rail-expand:hover {
+.has-panel > button.panel-toggle {
+  left: calc(400px + 0.5rem);
+}
+button.panel-toggle:hover {
   border-color: var(--accent);
   color: var(--accent);
 }
-.rail-avatar {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: Canvas;
-  border: 1px solid var(--border);
-  color: CanvasText;
-  font-size: 0.7rem;
-  font-weight: 600;
-}
-/* The label is for screen readers on a desktop (the chevron says it), and visible on a phone. */
-.rail-text {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-.rail-text-phone {
+.panel-toggle-phone {
   display: none;
+}
+.is-collapsed .canvas-area {
+  border-left: 2px solid var(--border);
 }
 /* The person panel: a summary, then one row per section; each opens in a dialog. */
 .card .person-summary h2 {
@@ -1027,8 +1012,7 @@ a.section-row:hover {
     right: 0;
     bottom: 0;
     z-index: 20;
-    height: auto;
-    max-height: 65vh;
+    height: 65dvh;
     background: Canvas;
     border: 0;
     border-top: 1px solid var(--border);
@@ -1036,36 +1020,42 @@ a.section-row:hover {
     border-top-left-radius: 14px;
     border-top-right-radius: 14px;
     box-shadow: 0 -4px 16px rgb(0 0 0 / 20%);
-    padding: 0.5rem 1rem 1rem;
+    padding: 1.25rem 1rem 1rem;
   }
-  .tree-workspace.has-rail {
-    grid-template-columns: 1fr;
-  }
-  /* Collapsed on a phone: a small handle at the bottom brings the sheet back. */
-  .panel-rail {
+  /* On a phone the toggle is a handle: at the bottom when collapsed, on the sheet's top edge when
+     open (the sheet has a fixed height, so the edge is known). */
+  button.panel-toggle,
+  .has-panel > button.panel-toggle {
     position: fixed;
+    z-index: 21;
+    top: auto;
     left: 50%;
     bottom: 0.75rem;
-    z-index: 20;
     transform: translateX(-50%);
-  }
-  button.rail-expand {
-    flex-direction: row;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
     width: auto;
     height: auto;
-    min-height: 0;
-    padding: 0.5rem 1rem;
-    border-radius: 999px;
+    min-height: 2.25rem;
+    padding: 0.4rem 1rem;
     box-shadow: 0 2px 10px rgb(0 0 0 / 20%);
   }
-  button.rail-expand > svg {
-    transform: rotate(-90deg);
+  .has-panel > button.panel-toggle {
+    bottom: 65dvh;
+    transform: translate(-50%, 50%);
   }
-  .rail-text {
-    display: none;
+  button.panel-toggle > svg {
+    transform: rotate(-90deg) !important;
   }
-  .rail-text-phone {
+  button.panel-toggle[aria-expanded='true'] > svg {
+    transform: rotate(90deg) !important;
+  }
+  .panel-toggle-phone {
     display: inline;
+  }
+  .is-collapsed .canvas-area {
+    border-left-width: 1px;
   }
   /* Section dialogs fill the screen on a phone. */
   .section-dialog {

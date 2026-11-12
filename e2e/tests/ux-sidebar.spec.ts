@@ -130,7 +130,7 @@ test('on a phone search is above the canvas and the panel is a sheet behind a ha
   ).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: 'Show details' }).click();
+  await page.getByRole('button', { name: 'Expand side panel' }).click();
   await expect(panel.getByLabel('Generations')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });

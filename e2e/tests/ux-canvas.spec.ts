@@ -84,7 +84,7 @@ test('partners sit side by side and siblings keep their order', async ({ page })
     .toEqual({ neighbours: true, siblings: ['Ann Pine', 'Ben Pine', 'Cat Pine'] });
 });
 
-test('the panel is on the left, collapses to a rail, and stays collapsed after a reload', async ({
+test('the panel is on the left, collapses to a thin line with an edge toggle, and stays collapsed after a reload', async ({
   page,
 }) => {
   await newTree(page, 'Lee', 'Left');
@@ -94,37 +94,51 @@ test('the panel is on the left, collapses to a rail, and stays collapsed after a
   await expect(heading).toBeVisible();
   const canvas = page.getByRole('region', { name: 'Family tree view' });
   expect((await panel.boundingBox())!.x).toBeLessThan((await canvas.boundingBox())!.x);
-  // No separate Details toggle: the X and the rail do it.
+  // No Details toggle and no X: one toggle on the panel's right edge, vertically centred.
   await expect(page.getByRole('button', { name: 'Details', exact: true })).toHaveCount(0);
-  const expand = page.getByRole('button', { name: 'Expand panel' });
-  await expect(expand).toHaveCount(0);
+  await expect(panel.getByRole('button', { name: /^Collapse/ })).toHaveCount(0);
+  const toggle = page.getByRole('button', { name: /side panel$/ });
+  await expect(toggle).toHaveAccessibleName('Collapse side panel');
+  const p = (await panel.boundingBox())!;
+  const c = (await canvas.boundingBox())!;
+  let t = (await toggle.boundingBox())!;
+  expect(t.x + t.width / 2).toBeGreaterThan(p.x + p.width - 1);
+  expect(t.x + t.width / 2).toBeLessThan(c.x + 1);
+  expect(Math.abs(t.y + t.height / 2 - (p.y + p.height / 2))).toBeLessThan(4);
+  expect(Math.min(t.width, t.height)).toBeGreaterThanOrEqual(24);
 
-  // The X collapses it to a slim rail on the left, with a visible way back.
-  const collapse = panel.getByRole('button', { name: 'Collapse panel' });
-  await expect(collapse).toHaveAttribute('title', 'Collapse panel');
-  await collapse.click();
+  // It collapses the panel to nothing: the canvas takes the width, the toggle sits on its edge.
+  await toggle.click();
   await expect(panel).toBeHidden();
   await expect(page).toHaveURL(/\/people\//);
-  await expect(expand).toBeVisible();
-  await expect(expand).toHaveAttribute('aria-expanded', 'false');
-  await expect(expand).toContainText('LL');
-  const rail = (await expand.boundingBox())!;
-  expect(rail.width).toBeLessThanOrEqual(48);
-  expect(rail.x).toBeLessThan((await canvas.boundingBox())!.x);
+  await expect(toggle).toHaveAccessibleName('Expand side panel');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(toggle).toBeFocused();
+  const wide = (await canvas.boundingBox())!;
+  expect(wide.x).toBeLessThan(p.x + 4);
+  t = (await toggle.boundingBox())!;
+  expect(Math.abs(t.x + t.width / 2 - wide.x)).toBeLessThan(4);
+  // It never covers the canvas's zoom controls.
+  const zoom = (await page.locator('.react-flow__controls').boundingBox())!;
+  expect(t.y + t.height <= zoom.y || zoom.y + zoom.height <= t.y || t.x + t.width <= zoom.x).toBe(
+    true,
+  );
   await page.reload();
   await expect(card(page, 'Lee Left')).toBeVisible();
   await expect(panel).toBeHidden();
-  await expect(expand).toBeVisible();
+  await expect(toggle).toHaveAccessibleName('Expand side panel');
 
   // Expand brings the same person back.
-  await expand.click();
+  await toggle.click();
   await expect(heading).toBeVisible();
   await expect(page).toHaveURL(/\/people\//);
-  await expect(expand).toHaveCount(0);
+  await expect(toggle).toHaveAccessibleName('Collapse side panel');
   await heading.focus();
   await page.keyboard.press('Escape');
   await expect(panel).toBeHidden();
-  await expect(expand).toBeVisible();
+  // Escape gives focus back to the person's card.
+  await expect(toggle).toHaveAccessibleName('Expand side panel');
+  await expect(card(page, 'Lee Left')).toBeFocused();
   // The canvas hint sits above the drawing: it never covers a card or React Flow's controls.
   await page.goto(page.url().replace(/\/people\/.*$/, ''));
   const hint = page.locator('.canvas-hint');
@@ -242,10 +256,14 @@ test.describe('on a phone', () => {
     const noSideways = () =>
       page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
     expect(await noSideways()).toBe(true);
-    await page.getByRole('button', { name: 'Collapse panel' }).click();
+    // The handle sits on the sheet's top edge; collapsed, it moves to the bottom.
+    const handle = page.getByRole('button', { name: /side panel$/ });
+    const sheet = (await page.getByRole('complementary', { name: 'Details' }).boundingBox())!;
+    const open = (await handle.boundingBox())!;
+    expect(Math.abs(open.y + open.height / 2 - sheet.y)).toBeLessThan(4);
+    await handle.click();
     await expect(heading).toBeHidden();
-    // Collapsed, a small handle at the bottom brings it back.
-    const handle = page.getByRole('button', { name: 'Show details' });
+    await expect(handle).toHaveAccessibleName('Expand side panel');
     await expect(handle).toBeVisible();
     expect((await handle.boundingBox())!.y).toBeGreaterThan(844 / 2);
     expect(await noSideways()).toBe(true);

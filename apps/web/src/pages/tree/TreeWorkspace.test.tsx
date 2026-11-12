@@ -122,7 +122,7 @@ describe('TreeWorkspace', () => {
     await waitFor(() =>
       expect(graphCalls(s.trees)).toContainEqual({ mode: 'focus', focus: 'david', depth: 1 }),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse panel' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse side panel' }));
     await waitFor(() =>
       expect(screen.queryByRole('complementary', { name: 'Details' })).toBeNull(),
     );
@@ -360,8 +360,8 @@ describe('TreeWorkspace panel focus and keys', () => {
   it('focuses the canvas when the selected card is not rendered', async () => {
     const s = setup();
     renderAt(`/trees/${s.id}/people/lone`, s);
-    await screen.findByRole('complementary', { name: 'Details' });
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse panel' }));
+    const heading = await screen.findByRole('heading', { level: 2, name: /Lone Wolf/ });
+    fireEvent.keyDown(heading, { key: 'Escape' });
     await waitFor(() =>
       expect(document.activeElement).toBe(screen.getByRole('region', { name: 'Family tree view' })),
     );
@@ -456,7 +456,7 @@ describe('TreeWorkspace relationships', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(r.where()).not.toMatch(/tab=/);
     // Collapsing the panel keeps the path drawn.
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse panel' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse side panel' }));
     await waitFor(() =>
       expect(screen.queryByRole('complementary', { name: 'Details' })).toBeNull(),
     );
@@ -485,37 +485,44 @@ describe('TreeWorkspace relationships', () => {
 describe('TreeWorkspace collapsible panel (brief #15)', () => {
   const details = () => screen.queryByRole('complementary', { name: 'Details' });
 
-  it('collapses with the X to a rail whose Expand button brings the same person back', async () => {
+  it('collapses and expands with one edge toggle that keeps the person and its own focus', async () => {
     const s = setup();
     const r = renderAt(`/trees/${s.id}/people/david`, s);
     await screen.findByRole('heading', { level: 2, name: /David Hale/ });
-    const x = screen.getByRole('button', { name: 'Collapse panel' });
-    expect(x).toHaveAttribute('title', 'Collapse panel');
-    expect(x).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.queryByRole('button', { name: /Expand panel/ })).toBeNull();
-    fireEvent.click(x);
+    const toggle = screen.getByRole('button', { name: 'Collapse side panel' });
+    expect(toggle).toHaveAttribute('title', 'Collapse side panel');
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(toggle).toHaveAttribute('aria-controls', 'tree-panel');
+    expect(toggle).toHaveClass('panel-toggle');
+    // No X in the panel, and no avatar rail.
+    expect(screen.queryByRole('button', { name: /^Collapse panel/ })).toBeNull();
+    // Between the panel and the canvas in Tab order.
+    const aside = screen.getByRole('complementary', { name: 'Details' });
+    const canvas = screen.getByRole('region', { name: 'Family tree view' });
+    expect(aside.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(toggle.compareDocumentPosition(canvas) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    toggle.focus();
+    fireEvent.click(toggle);
     await waitFor(() => expect(details()).toBeNull());
     expect(r.where()).toMatch(/\/people\/david/);
-    const expand = screen.getByRole('button', { name: /Expand panel/ });
-    expect(expand).toHaveAttribute('aria-expanded', 'false');
-    expect(expand).toHaveAttribute('aria-controls', 'tree-panel');
-    // The rail shows who it brings back (initials when there's no photo to hand).
-    expect(expand).toHaveTextContent('DH');
-    fireEvent.click(expand);
+    // The same button, now expanding; focus stays on it.
+    expect(toggle).toHaveAccessibleName('Expand side panel');
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).toHaveFocus();
+    expect(toggle.closest('.tree-workspace')).toHaveClass('is-collapsed');
+    fireEvent.click(toggle);
     expect(await screen.findByRole('heading', { level: 2, name: /David Hale/ })).toBeVisible();
     expect(r.where()).toMatch(/\/people\/david/);
-    expect(screen.queryByRole('button', { name: /Expand panel/ })).toBeNull();
+    expect(toggle).toHaveAccessibleName('Collapse side panel');
   });
 
   it('collapses and expands with nothing selected; expanding focuses its first control', async () => {
     const s = setup();
     const r = renderAt(`/trees/${s.id}`, s);
     await card(ROBERT);
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse panel' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse side panel' }));
     await waitFor(() => expect(details()).toBeNull());
-    const expand = screen.getByRole('button', { name: /Expand panel/ });
-    expect(expand).not.toHaveTextContent(/[A-Z]{2}/);
-    fireEvent.click(expand);
+    fireEvent.click(screen.getByRole('button', { name: 'Expand side panel' }));
     await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText('Generations')));
     expect(r.where()).toBe(`/trees/${s.id}`);
   });
@@ -556,7 +563,7 @@ describe('TreeWorkspace collapsible panel (brief #15)', () => {
     const s = setup();
     renderAt(`/trees/${s.id}/people/david`, s);
     await screen.findByRole('heading', { level: 2, name: /David Hale/ });
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse panel' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse side panel' }));
     await waitFor(() => expect(details()).toBeNull());
     fireEvent.click(await card(ROBERT));
     expect(await screen.findByRole('heading', { level: 2, name: /Robert Hale/ })).toBeVisible();
@@ -567,12 +574,12 @@ describe('TreeWorkspace collapsible panel (brief #15)', () => {
     const s = setup();
     const first = renderAt(`/trees/${s.id}/people/david`, s);
     await screen.findByRole('heading', { level: 2, name: /David Hale/ });
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse panel' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse side panel' }));
     await waitFor(() => expect(details()).toBeNull());
     first.unmount();
     renderAt(`/trees/${s.id}/people/david`, s);
     await card(ROBERT);
-    expect(screen.getByRole('button', { name: /Expand panel/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Expand side panel' })).toBeInTheDocument();
     expect(details()).toBeNull();
   });
 

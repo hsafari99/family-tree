@@ -18,8 +18,8 @@ import {
 } from 'react';
 import { Link, useLocation, useMatch, useNavigate, useParams, useSearchParams } from 'react-router';
 import { FormError } from '../../components/forms';
-import { PersonPhoto, PhotoRefreshContext, useThrottled } from '../../components/PersonPhoto';
-import { ChevronIcon, SectionDialog, XIcon } from '../../components/SectionDialog';
+import { PhotoRefreshContext, useThrottled } from '../../components/PersonPhoto';
+import { ChevronIcon, SectionDialog } from '../../components/SectionDialog';
 import { RowContent } from '../../canvas/PanelRow';
 import { SearchBox } from '../../canvas/SearchBox';
 import { DepthControl, TreeLinks, ViewLinks } from '../../canvas/TreeControls';
@@ -112,9 +112,9 @@ export function TreeWorkspace({
   }, []);
   const canAdd = detail.capabilities.editAnywhere || detail.me.steward.active;
   const selected = (newPerson && canAdd) || personId !== undefined || unionId !== undefined;
-  // The side panel (search, depth, the selection, tree links) can be collapsed to a rail; the
-  // choice is remembered (brief #15). On a phone it starts as a handle when nothing is selected,
-  // so the sheet doesn't cover the tree on arrival.
+  // The side panel (depth, the selection, tree links) collapses to a thin line with an edge
+  // toggle; the choice is remembered (brief #15). On a phone it starts as a handle when nothing is
+  // selected, so the sheet doesn't cover the tree on arrival.
   const [collapsed, setCollapsedState] = useState(
     () => readCollapsed() || (!selected && isPhone()),
   );
@@ -174,7 +174,8 @@ export function TreeWorkspace({
     [api, treeId, changed],
   );
   const returnFocusTo = useRef<{ id: string | null } | null>(null);
-  // Close (and Escape) collapse the panel; the URL keeps the selection, so the card stays marked.
+  // Escape collapses the panel and gives focus back to the card (the URL keeps the selection, so
+  // the card stays marked). The edge toggle collapses it too, and keeps focus on itself.
   const close = useCallback(() => {
     returnFocusTo.current = { id: personId ?? null };
     setCollapsed(true);
@@ -187,8 +188,6 @@ export function TreeWorkspace({
     focusSearch.current = true;
     setCollapsed(false);
   }, [setCollapsed]);
-  // The rail shows whose panel it brings back.
-  const railPerson = personId ? (persons.find((p) => p.id === personId) ?? null) : null;
   // The member's own card says their role; the tree's root says so too (both after the name).
   const tagsOf = (id: string) => [
     ...(id === detail.me.personId
@@ -312,8 +311,8 @@ export function TreeWorkspace({
     return () => observer.disconnect();
   }, [shown, selected, panelKey]);
 
-  // Closing returns focus to the card that was open, or to the canvas if it isn't rendered. (The
-  // rail's Expand button sits just before the canvas, one Shift+Tab away.)
+  // Escape returns focus to the card that was open, or to the canvas if it isn't rendered. (The
+  // edge toggle sits just before the canvas, one Shift+Tab away.)
   useEffect(() => {
     const pending = returnFocusTo.current;
     if (shown || !pending) return;
@@ -349,7 +348,7 @@ export function TreeWorkspace({
         <SearchBox treeId={treeId} persons={persons} meId={detail.me.personId} />
       </div>
       <PhotoRefreshContext.Provider value={refreshPhotos}>
-        <div className={shown ? 'tree-workspace has-panel' : 'tree-workspace has-rail'}>
+        <div className={shown ? 'tree-workspace has-panel' : 'tree-workspace is-collapsed'}>
           {/* Kept mounted while collapsed, so a half-filled form survives hiding the panel. */}
           <aside
             id="tree-panel"
@@ -358,20 +357,7 @@ export function TreeWorkspace({
             ref={panel}
             hidden={!shown}
           >
-            <div className="panel-top">
-              <DepthControl persons={persons} params={view} onChange={(c) => go(pathname, c)} />
-              <button
-                type="button"
-                className="icon-button"
-                aria-label="Collapse panel"
-                title="Collapse panel"
-                aria-expanded="true"
-                aria-controls="tree-panel"
-                onClick={close}
-              >
-                <XIcon />
-              </button>
-            </div>
+            <DepthControl persons={persons} params={view} onChange={(c) => go(pathname, c)} />
             <div className="panel-selection" ref={selection}>
               {newPerson && canAdd ? (
                 <AddPersonForm
@@ -425,27 +411,23 @@ export function TreeWorkspace({
                 : {})}
             />
           </aside>
-          {/* Collapsed, the panel leaves a slim rail (a bottom handle on a phone) to bring it back. */}
-          {!shown && (
-            <div className="panel-rail">
-              <button
-                type="button"
-                className="rail-expand"
-                title="Expand panel"
-                aria-expanded="false"
-                aria-controls="tree-panel"
-                onClick={expand}
-              >
-                <ChevronIcon />
-                {railPerson && (
-                  <PersonPhoto url={null} person={railPerson} className="rail-avatar" />
-                )}
-                {/* One label per layout: hidden text drops out of the accessible name. */}
-                <span className="rail-text">Expand panel</span>
-                <span className="rail-text-phone">Show details</span>
-              </button>
-            </div>
-          )}
+          {/* One toggle on the panel's edge (on the canvas's left edge when collapsed; a handle on
+              the sheet's top edge on a phone). Between the panel and the canvas in Tab order. */}
+          <button
+            type="button"
+            className="panel-toggle"
+            aria-label={shown ? 'Collapse side panel' : 'Expand side panel'}
+            title={shown ? 'Collapse side panel' : 'Expand side panel'}
+            aria-expanded={shown}
+            aria-controls="tree-panel"
+            onClick={shown ? () => setCollapsed(true) : expand}
+          >
+            <ChevronIcon direction={shown ? 'left' : 'right'} />
+            {/* The phone handle's visible words are part of its name (WCAG 2.5.3). */}
+            <span className="panel-toggle-phone" aria-hidden="true">
+              Side panel
+            </span>
+          </button>
           <div className="canvas-column">
             {notice && (
               <p role="status" className="notice">
