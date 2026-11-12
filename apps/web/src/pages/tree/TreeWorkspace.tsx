@@ -10,7 +10,8 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useMatch, useNavigate, useParams, useSearchParams } from 'react-router';
 import { FormError } from '../../components/forms';
-import { PhotoRefreshContext, useThrottled } from '../../components/PersonPhoto';
+import { PersonPhoto, PhotoRefreshContext, useThrottled } from '../../components/PersonPhoto';
+import { ChevronIcon, XIcon } from '../../components/SectionDialog';
 import { CanvasToolbar } from '../../canvas/CanvasToolbar';
 import type { CoupleChange } from '../../canvas/couples';
 import { FamilyCanvas } from '../../canvas/FamilyCanvas';
@@ -167,6 +168,10 @@ export function TreeWorkspace({
     const id = lastPerson.current ?? detail.tree.rootPersonId;
     if (id) actions.openPerson(id);
   }, [shown, selected, close, setCollapsed, actions, detail.tree.rootPersonId]);
+  const rail = !shown && (selected || reopenId !== null);
+  // The rail shows who it would bring back: the selected person, else the last one shown.
+  const railId = personId ?? (selected ? null : reopenId);
+  const railPerson = railId ? (persons.find((p) => p.id === railId) ?? null) : null;
   const ready = graph.status === 'ready' ? graph : null;
   const [highlight, setHighlight] = useState<PathHighlight | null>(null);
   // The drawn path belongs to one From/To pair: another pair, or leaving the panel, clears it.
@@ -217,6 +222,8 @@ export function TreeWorkspace({
     const el = panel.current;
     if (!shown || !el) return;
     const focusHeading = () => {
+      // A section dialog opened by a deep link (?tab=) keeps the focus it took.
+      if (document.querySelector('dialog[open]')) return true;
       const h = el.querySelector('h2');
       if (!h) return false;
       h.tabIndex = -1;
@@ -231,7 +238,8 @@ export function TreeWorkspace({
     return () => observer.disconnect();
   }, [shown, panelKey]);
 
-  // Closing returns focus to the card that was open, or to the canvas if it isn't rendered.
+  // Closing returns focus to the card that was open, or to the canvas if it isn't rendered. (The
+  // rail's Expand button sits just before the canvas, one Shift+Tab away.)
   useEffect(() => {
     const pending = returnFocusTo.current;
     if (shown || !pending) return;
@@ -279,7 +287,11 @@ export function TreeWorkspace({
         </p>
       )}
       <PhotoRefreshContext.Provider value={refreshPhotos}>
-        <div className={shown ? 'tree-workspace has-panel' : 'tree-workspace'}>
+        <div
+          className={
+            shown ? 'tree-workspace has-panel' : rail ? 'tree-workspace has-rail' : 'tree-workspace'
+          }
+        >
           {/* Kept mounted while collapsed, so a half-filled form survives hiding the panel. */}
           {selected && (
             <aside
@@ -290,8 +302,16 @@ export function TreeWorkspace({
               hidden={!shown}
             >
               <p className="panel-close">
-                <button type="button" className="secondary" onClick={close}>
-                  Close
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label="Collapse panel"
+                  title="Collapse panel"
+                  aria-expanded="true"
+                  aria-controls="tree-panel"
+                  onClick={close}
+                >
+                  <XIcon />
                 </button>
               </p>
               {newPerson && canAdd ? (
@@ -327,6 +347,27 @@ export function TreeWorkspace({
                 />
               )}
             </aside>
+          )}
+          {/* Collapsed, the panel leaves a slim rail (a bottom handle on a phone) to bring it back. */}
+          {rail && (
+            <div className="panel-rail">
+              <button
+                type="button"
+                className="rail-expand"
+                title="Expand panel"
+                aria-expanded="false"
+                aria-controls="tree-panel"
+                onClick={togglePanel}
+              >
+                <ChevronIcon />
+                {railPerson && (
+                  <PersonPhoto url={null} person={railPerson} className="rail-avatar" />
+                )}
+                {/* One label per layout: hidden text drops out of the accessible name. */}
+                <span className="rail-text">Expand panel</span>
+                <span className="rail-text-phone">Show details</span>
+              </button>
+            </div>
           )}
           <section
             className="canvas-area"

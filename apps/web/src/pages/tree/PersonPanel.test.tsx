@@ -43,8 +43,8 @@ describe('PersonPanel', () => {
     const s = setup();
     s.view.person.birthDate = { qualifier: 'about', date1: '1815' };
     s.view.person.biography = '<b>x</b>\nsecond line';
-    renderAt(at(s), s);
-    expect(await screen.findByRole('heading', { name: /Ada King/ })).toBeInTheDocument();
+    renderAt(at(s, '?tab=info'), s);
+    expect(await screen.findByRole('heading', { name: /^Ada King/ })).toBeInTheDocument();
     expect(screen.getByText('about 1815')).toBeInTheDocument();
     const prose = screen.getByText(/second line/);
     expect(prose).toHaveClass('prose');
@@ -54,7 +54,7 @@ describe('PersonPanel', () => {
 
   it('edits the surname and refreshes the list', async () => {
     const s = setup();
-    renderAt(at(s), s);
+    renderAt(at(s, '?tab=info'), s);
     fireEvent.click(await screen.findByRole('button', { name: 'Edit details' }));
     fireEvent.change(screen.getByLabelText('Last name'), { target: { value: 'Lovelace' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
@@ -62,15 +62,15 @@ describe('PersonPanel', () => {
     expect(s.trees.callsTo('updatePerson')).toMatchObject([
       { input: { version: 1, surname: 'Lovelace' } },
     ]);
-    const list = screen.getByRole('link', { name: /Ada Lovelace/ });
+    const list = screen.getByRole('link', { name: /^Ada Lovelace/ });
     expect(list).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByRole('heading', { name: /Ada Lovelace/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /^Ada Lovelace/ })).toBeInTheDocument();
   });
 
   it('validates death before birth and living with a death date, without calling', async () => {
     const s = setup();
     s.view.person.birthDate = { qualifier: 'exact', date1: '1900' };
-    renderAt(at(s), s);
+    renderAt(at(s, '?tab=info'), s);
     fireEvent.click(await screen.findByRole('button', { name: 'Edit details' }));
     const died = within(screen.getByRole('group', { name: 'Died' }));
     fireEvent.change(died.getByLabelText('Precision'), { target: { value: 'year' } });
@@ -91,7 +91,7 @@ describe('PersonPanel', () => {
   describe('a birth or death date in the future', () => {
     const next = String(new Date().getUTCFullYear() + 1);
     const editDeathYear = async (s: ReturnType<typeof setup>, year: string) => {
-      renderAt(at(s), s);
+      renderAt(at(s, '?tab=info'), s);
       fireEvent.click(await screen.findByRole('button', { name: 'Edit details' }));
       const died = within(screen.getByRole('group', { name: 'Died' }));
       fireEvent.change(died.getByLabelText('Precision'), { target: { value: 'year' } });
@@ -130,7 +130,7 @@ describe('PersonPanel', () => {
         deathDate: null,
         isLiving: true,
       });
-      renderAt(at(s), s);
+      renderAt(at(s, '?tab=info'), s);
       fireEvent.click(await screen.findByRole('button', { name: 'Edit details' }));
       fireEvent.change(screen.getByLabelText('Last name'), { target: { value: 'Lovelace' } });
       fireEvent.click(screen.getByRole('button', { name: 'Save' }));
@@ -144,7 +144,7 @@ describe('PersonPanel', () => {
   it('saves with a stored mixed-precision range left unchanged', async () => {
     const s = setup();
     s.view.person.birthDate = { qualifier: 'between', date1: '1815-06', date2: '1815' };
-    renderAt(at(s), s);
+    renderAt(at(s, '?tab=info'), s);
     fireEvent.click(await screen.findByRole('button', { name: 'Edit details' }));
     fireEvent.change(screen.getByLabelText('Last name'), { target: { value: 'Lovelace' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
@@ -156,7 +156,7 @@ describe('PersonPanel', () => {
 
   it('explains an incomplete date in plain words, without calling', async () => {
     const s = setup();
-    renderAt(at(s), s);
+    renderAt(at(s, '?tab=info'), s);
     fireEvent.click(await screen.findByRole('button', { name: 'Edit details' }));
     const died = within(screen.getByRole('group', { name: 'Died' }));
     fireEvent.change(died.getByLabelText('Precision'), { target: { value: 'month' } });
@@ -171,7 +171,7 @@ describe('PersonPanel', () => {
 
   it('shows the stale-edit message, reloads, and keeps the draft', async () => {
     const s = setup();
-    renderAt(at(s), s);
+    renderAt(at(s, '?tab=info'), s);
     fireEvent.click(await screen.findByRole('button', { name: 'Edit details' }));
     fireEvent.change(screen.getByLabelText('Last name'), { target: { value: 'Lovelace' } });
     s.trees.failNext('updatePerson', { code: 'CONFLICT', message: MESSAGES.staleEdit });
@@ -187,7 +187,7 @@ describe('PersonPanel', () => {
 
   it('retries a stale save with only the user’s fields on the latest version', async () => {
     const s = setup();
-    renderAt(at(s), s);
+    renderAt(at(s, '?tab=info'), s);
     fireEvent.click(await screen.findByRole('button', { name: 'Edit details' }));
     fireEvent.change(screen.getByLabelText('Last name'), { target: { value: 'Lovelace' } });
     // Someone else saves meanwhile.
@@ -208,7 +208,7 @@ describe('PersonPanel', () => {
 
   it('makes no call when nothing was changed', async () => {
     const s = setup();
-    renderAt(at(s), s);
+    renderAt(at(s, '?tab=info'), s);
     fireEvent.click(await screen.findByRole('button', { name: 'Edit details' }));
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() =>
@@ -234,16 +234,61 @@ describe('PersonPanel', () => {
     expect(screen.getByText(/by a former member/)).toBeInTheDocument();
   });
 
-  it('keeps the tab in the URL', async () => {
-    const s = setup();
-    renderAt(at(s, '?tab=history'), s);
-    expect(await screen.findByText('No changes recorded yet.')).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'History' })).toHaveAttribute('aria-selected', 'true');
-    fireEvent.click(screen.getByRole('tab', { name: 'Places' }));
-    expect(await screen.findByText('No places added yet.')).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Places' })).toHaveAttribute('aria-selected', 'true');
-    fireEvent.click(screen.getByRole('tab', { name: 'Photos' }));
-    expect(screen.getByText('No photos yet.')).toBeInTheDocument();
+  describe('sections open in a dialog (brief #15)', () => {
+    it('lists the sections with one-line summaries, and opens none by default', async () => {
+      const s = setup();
+      s.view.person.birthPlace = 'London';
+      renderAt(at(s), s);
+      const list = await screen.findByRole('list', { name: 'Sections for Ada King' });
+      const rows = within(list).getAllByRole('button');
+      expect(rows.map((r) => r.textContent)).toEqual([
+        'Details' + 'Names, dates and biography',
+        'Places' + '1 place',
+        'Photos' + 'No photos yet',
+        'Relations' + 'No relatives yet',
+        'History' + 'Changes to this person',
+      ]);
+      expect(rows[0]).toHaveAttribute('aria-haspopup', 'dialog');
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Edit details' })).toBeNull();
+    });
+
+    it('opens a section in a dialog, deep-linked in the URL; X closes it and focus returns', async () => {
+      const s = setup();
+      const r = renderAt(at(s), s);
+      const row = await screen.findByRole('button', { name: /^Places/ });
+      fireEvent.click(row);
+      const dialog = await screen.findByRole('dialog', { name: 'Places — Ada King' });
+      expect(await within(dialog).findByText('No places added yet.')).toBeInTheDocument();
+      expect(r.where()).toMatch(/[?&]tab=places/);
+      const x = within(dialog).getByRole('button', { name: 'Close' });
+      expect(document.activeElement).toBe(x);
+      fireEvent.click(x);
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect(r.where()).not.toMatch(/tab=/);
+      await waitFor(() =>
+        expect(document.activeElement).toBe(screen.getByRole('button', { name: /^Places/ })),
+      );
+    });
+
+    it('opens from ?tab= and closes on Escape, dropping tab and add from the URL', async () => {
+      const s = setup();
+      const r = renderAt(at(s, '?tab=history'), s);
+      const dialog = await screen.findByRole('dialog', { name: 'History — Ada King' });
+      expect(await within(dialog).findByText('No changes recorded yet.')).toBeInTheDocument();
+      fireEvent(dialog, new Event('cancel', { cancelable: true }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect(r.where()).not.toMatch(/tab=/);
+      fireEvent.click(screen.getByRole('button', { name: /^Relations/ }));
+      expect(await screen.findByRole('dialog', { name: 'Relations — Ada King' })).toBeVisible();
+    });
+
+    it('ignores an unknown ?tab=', async () => {
+      const s = setup();
+      renderAt(at(s, '?tab=nope'), s);
+      await screen.findByRole('heading', { name: /^Ada King/ });
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
   });
 
   it('shows the not-found message for an unknown person', async () => {
@@ -388,12 +433,18 @@ describe('PersonPanel add parameter', () => {
 
   it('closes the form on Cancel', async () => {
     const s = setup();
-    renderAt(at(s, '?tab=relations&add=child'), s);
+    const r = renderAt(at(s, '?tab=relations&add=child'), s);
     await screen.findByRole('form', { name: 'Add child' });
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    await waitFor(() => expect(screen.queryByRole('form', { name: 'Add child' })).toBeNull());
+    // Opened by a card's "+", the dialog was just for the form: it closes too.
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(r.where()).not.toMatch(/tab=|add=/);
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: /^Relations/ })),
+    );
     // The parameter is gone too: opening another role starts clean.
-    fireEvent.click(screen.getByRole('button', { name: 'Add relative' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Relations/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Add relative' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Partner' }));
     expect(await screen.findByRole('form', { name: 'Add partner' })).toBeInTheDocument();
     expect(screen.queryByRole('form', { name: 'Add child' })).toBeNull();
@@ -484,7 +535,7 @@ describe('PersonPanel reorder children', () => {
     const s = family('viewer');
     s.view.capabilities = { edit: false, addRelative: false, delete: false };
     renderAt(at(s, '?tab=relations'), s);
-    await screen.findByRole('heading', { name: /Ada King/ });
+    await screen.findByRole('heading', { name: /^Ada King/ });
     expect(screen.queryByRole('button', { name: /^Move |^More actions/ })).toBeNull();
   });
 
@@ -504,8 +555,8 @@ describe('PersonPanel reorder children', () => {
         },
       ],
     });
-    const { container } = renderAt(at(s), s);
-    await screen.findByRole('heading', { name: /Ada King/ });
+    const { container } = renderAt(at(s, '?tab=info'), s);
+    await screen.findByRole('heading', { name: /^Ada King/ });
     expect(container.querySelector('img.panel-photo')).toHaveAttribute(
       'src',
       'https://photos.test/1/thumb',

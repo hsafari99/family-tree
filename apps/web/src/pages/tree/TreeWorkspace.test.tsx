@@ -59,7 +59,7 @@ describe('TreeWorkspace', () => {
     await waitFor(() =>
       expect(graphCalls(s.trees)).toContainEqual({ mode: 'focus', focus: 'david', depth: 1 }),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse panel' }));
     await waitFor(() =>
       expect(screen.queryByRole('complementary', { name: 'Details' })).toBeNull(),
     );
@@ -224,7 +224,7 @@ describe('TreeWorkspace', () => {
 
   it('refreshes the graph and disconnected list after a save in the panel', async () => {
     const s = setup();
-    renderAt(`/trees/${s.id}/people/david`, s);
+    renderAt(`/trees/${s.id}/people/david?tab=info`, s);
     const before = s.trees.callsTo('getGraph').length;
     fireEvent.click(await screen.findByRole('button', { name: 'Edit details' }));
     const first = screen.getByLabelText('First name');
@@ -292,7 +292,7 @@ describe('TreeWorkspace panel focus and keys', () => {
     const s = setup();
     renderAt(`/trees/${s.id}/people/lone`, s);
     await screen.findByRole('complementary', { name: 'Details' });
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse panel' }));
     await waitFor(() =>
       expect(document.activeElement).toBe(screen.getByRole('region', { name: 'Family tree view' })),
     );
@@ -375,7 +375,7 @@ describe('TreeWorkspace relationships', () => {
     const r = renderAt(`/trees/${s.id}/relationship?from=leo&to=robert`, s);
     fireEvent.click(await screen.findByRole('button', { name: 'Show on the tree' }));
     await waitFor(() => expect(isPath().length).toBeGreaterThan(0));
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse panel' }));
     await waitFor(() =>
       expect(screen.queryByRole('complementary', { name: 'Details' })).toBeNull(),
     );
@@ -410,7 +410,7 @@ describe('TreeWorkspace collapsible panel (brief #15)', () => {
     await screen.findByRole('heading', { level: 2, name: /David Hale/ });
     expect(toggle()).toHaveAttribute('aria-pressed', 'true');
     expect(toggle()).toHaveAttribute('aria-controls', 'tree-panel');
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse panel' }));
     await waitFor(() => expect(details()).toBeNull());
     expect(r.where()).toMatch(/\/people\/david/);
     expect(toggle()).toHaveAttribute('aria-pressed', 'false');
@@ -420,6 +420,48 @@ describe('TreeWorkspace collapsible panel (brief #15)', () => {
     // The toggle collapses it too.
     fireEvent.click(toggle());
     await waitFor(() => expect(details()).toBeNull());
+  });
+
+  it('collapses with the X to a rail whose Expand button brings the same person back', async () => {
+    const s = setup();
+    const r = renderAt(`/trees/${s.id}/people/david`, s);
+    await screen.findByRole('heading', { level: 2, name: /David Hale/ });
+    const x = screen.getByRole('button', { name: 'Collapse panel' });
+    expect(x).toHaveAttribute('title', 'Collapse panel');
+    expect(x).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.queryByRole('button', { name: /Expand panel/ })).toBeNull();
+    fireEvent.click(x);
+    await waitFor(() => expect(details()).toBeNull());
+    const expand = screen.getByRole('button', { name: /Expand panel/ });
+    expect(expand).toHaveAttribute('aria-expanded', 'false');
+    expect(expand).toHaveAttribute('aria-controls', 'tree-panel');
+    // The rail shows who it brings back (initials when there's no photo to hand).
+    expect(expand).toHaveTextContent('DH');
+    fireEvent.click(expand);
+    expect(await screen.findByRole('heading', { level: 2, name: /David Hale/ })).toBeVisible();
+    expect(r.where()).toMatch(/\/people\/david/);
+    expect(screen.queryByRole('button', { name: /Expand panel/ })).toBeNull();
+    expect(toggle()).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('shows the rail with nothing selected, and it opens the root person', async () => {
+    const s = setup();
+    const r = renderAt(`/trees/${s.id}`, s);
+    await card(ROBERT);
+    fireEvent.click(screen.getByRole('button', { name: /Expand panel/ }));
+    expect(await screen.findByRole('heading', { level: 2, name: /Robert Hale/ })).toBeVisible();
+    expect(r.where()).toMatch(/\/people\/robert/);
+  });
+
+  it('Escape in a section dialog closes the dialog, not the panel', async () => {
+    const s = setup();
+    const r = renderAt(`/trees/${s.id}/people/david?tab=places`, s);
+    const dialog = await screen.findByRole('dialog', { name: 'Places — David Hale' });
+    fireEvent.keyDown(within(dialog).getByRole('button', { name: 'Close' }), { key: 'Escape' });
+    fireEvent(dialog, new Event('cancel', { cancelable: true }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(details()).not.toBeNull();
+    expect(r.where()).not.toMatch(/tab=/);
   });
 
   it('Escape collapses, but not from a field', async () => {
@@ -439,7 +481,7 @@ describe('TreeWorkspace collapsible panel (brief #15)', () => {
     const s = setup();
     renderAt(`/trees/${s.id}/people/david`, s);
     await screen.findByRole('heading', { level: 2, name: /David Hale/ });
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse panel' }));
     await waitFor(() => expect(details()).toBeNull());
     fireEvent.click(await card(ROBERT));
     expect(await screen.findByRole('heading', { level: 2, name: /Robert Hale/ })).toBeVisible();
@@ -450,7 +492,7 @@ describe('TreeWorkspace collapsible panel (brief #15)', () => {
     const s = setup();
     const first = renderAt(`/trees/${s.id}/people/david`, s);
     await screen.findByRole('heading', { level: 2, name: /David Hale/ });
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse panel' }));
     await waitFor(() => expect(details()).toBeNull());
     first.unmount();
     renderAt(`/trees/${s.id}/people/david`, s);

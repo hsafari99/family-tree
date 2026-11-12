@@ -331,22 +331,7 @@ button.google:hover:not(:disabled) {
   gap: 0.5rem;
 }
 
-/* Tabs and fuzzy dates */
-.tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem;
-  border-bottom: 1px solid var(--border);
-}
-.tabs button {
-  border: 0;
-  border-bottom: 3px solid transparent;
-  border-radius: 0;
-}
-.tabs button[aria-selected='true'] {
-  border-bottom-color: var(--accent);
-  font-weight: 600;
-}
+/* Fuzzy dates */
 .fuzzy-date {
   display: grid;
   gap: 0.5rem;
@@ -370,15 +355,18 @@ button.google:hover:not(:disabled) {
   white-space: pre-line;
   margin: 0;
 }
-.person-panel dl {
+.person-panel dl,
+.section-dialog dl {
   display: grid;
   grid-template-columns: max-content 1fr;
   gap: 0.25rem 1rem;
 }
-.person-panel dt {
+.person-panel dt,
+.section-dialog dt {
   font-weight: 600;
 }
-.person-panel dd {
+.person-panel dd,
+.section-dialog dd {
   margin: 0;
 }
 .person-card {
@@ -613,6 +601,10 @@ img.card-photo {
   grid-template-columns: 1fr;
   gap: 1rem;
 }
+.tree-workspace.has-rail {
+  /* Collapsed: a slim rail on the left keeps the way back in sight (brief #15). */
+  grid-template-columns: 40px minmax(0, 1fr);
+}
 .tree-workspace.has-panel {
   /* The panel is on the left and first in the DOM, so Tab reaches it first (brief #15).
      minmax(0, ...): a grid track won't shrink below its content's min-width by default. */
@@ -657,6 +649,149 @@ img.card-photo {
 .panel-close {
   text-align: right;
   margin: 0;
+}
+/* An icon-only button (the panel's and dialogs' X): a 32px target with a visible focus ring. */
+button.icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: inherit;
+}
+button.icon-button:hover {
+  background: var(--surface);
+  border-color: var(--border);
+}
+.panel-rail {
+  min-width: 0;
+}
+button.rail-expand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  width: 40px;
+  height: 100%;
+  min-height: 8rem;
+  padding: 0.6rem 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: CanvasText;
+}
+button.rail-expand:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.rail-avatar {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: Canvas;
+  border: 1px solid var(--border);
+  color: CanvasText;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+/* The label is for screen readers on a desktop (the chevron says it), and visible on a phone. */
+.rail-text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.rail-text-phone {
+  display: none;
+}
+/* The person panel: a summary, then one row per section; each opens in a dialog. */
+.person-summary::after {
+  content: '';
+  display: block;
+  clear: both;
+}
+.section-list {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  border-top: 1px solid var(--border);
+}
+.section-list li {
+  border-bottom: 1px solid var(--border);
+}
+button.section-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.7rem 0.5rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+button.section-row:hover {
+  background: var(--surface);
+}
+.section-row-text {
+  display: grid;
+  min-width: 0;
+}
+.section-row-title {
+  font-weight: 600;
+}
+.section-row-summary {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.section-dialog {
+  width: min(720px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  background: Canvas;
+  color: CanvasText;
+  overflow-wrap: anywhere;
+}
+.section-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+.section-dialog::backdrop {
+  background: color-mix(in srgb, CanvasText 40%, transparent);
+}
+.section-dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+.section-dialog-head h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+.section-dialog-body {
+  padding: 0.5rem 1.25rem 1.25rem;
+  overflow: auto;
+  min-height: 0;
+}
+.section-dialog input,
+.section-dialog select,
+.section-dialog textarea {
+  max-width: 100%;
+  box-sizing: border-box;
 }
 .disconnected {
   position: relative;
@@ -717,6 +852,45 @@ img.card-photo {
     border-top-right-radius: 14px;
     box-shadow: 0 -4px 16px rgb(0 0 0 / 20%);
     padding: 0.5rem 1rem 1rem;
+  }
+  .tree-workspace.has-rail {
+    grid-template-columns: 1fr;
+  }
+  /* Collapsed on a phone: a small handle at the bottom brings the sheet back. */
+  .panel-rail {
+    position: fixed;
+    left: 50%;
+    bottom: 0.75rem;
+    z-index: 20;
+    transform: translateX(-50%);
+  }
+  button.rail-expand {
+    flex-direction: row;
+    width: auto;
+    height: auto;
+    min-height: 0;
+    padding: 0.5rem 1rem;
+    border-radius: 999px;
+    box-shadow: 0 2px 10px rgb(0 0 0 / 20%);
+  }
+  button.rail-expand > svg {
+    transform: rotate(-90deg);
+  }
+  .rail-text {
+    display: none;
+  }
+  .rail-text-phone {
+    display: inline;
+  }
+  /* Section dialogs fill the screen on a phone. */
+  .section-dialog {
+    width: 100vw;
+    max-width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
   }
 }
 

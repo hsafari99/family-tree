@@ -67,6 +67,8 @@ export function RelationsTab({
     setSeenRequest(requested);
     setAdding(requested);
   }
+  // An add started from a card's "+" opened this section's dialog just for the form: finishing or
+  // cancelling it closes the dialog too, back to the tree (brief #15).
   const stopAdding = () => {
     setAdding(null);
     if (params.has('add')) {
@@ -74,6 +76,7 @@ export function RelationsTab({
         (p) => {
           const next = new URLSearchParams(p);
           next.delete('add');
+          next.delete('tab');
           return next;
         },
         { replace: true },

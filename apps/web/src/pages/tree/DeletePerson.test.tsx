@@ -31,7 +31,7 @@ const preview = (over: object) => ({
   ...over,
 });
 const openDelete = async (s: ReturnType<typeof setup>) => {
-  renderAt(`/trees/${s.id}/people/${ada.id}`, s);
+  renderAt(`/trees/${s.id}/people/${ada.id}?tab=info`, s);
   fireEvent.click(await screen.findByRole('button', { name: 'Delete…' }));
 };
 
@@ -114,7 +114,7 @@ describe('DeletePerson', () => {
 
   it('has no Delete section without the capability', async () => {
     const s = setup(false);
-    renderAt(`/trees/${s.id}/people/${ada.id}`, s);
+    renderAt(`/trees/${s.id}/people/${ada.id}?tab=info`, s);
     await screen.findByRole('heading', { name: /Ada King/ });
     expect(screen.queryByText('Delete this person')).not.toBeInTheDocument();
   });

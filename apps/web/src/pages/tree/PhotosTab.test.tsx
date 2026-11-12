@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { StrictMode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MESSAGES } from '../../auth/api';
@@ -173,6 +173,36 @@ describe('PhotosTab', () => {
     expect(screen.getAllByRole('link', { name: /Photo \d of Ada King/ })).toHaveLength(1);
   });
 
+  it('cancelling the delete confirm with Esc leaves the Photos dialog open', async () => {
+    const s = setup();
+    await seedPhotos(s, 1);
+    renderAt(at(s), s);
+    const section = await screen.findByRole('dialog', { name: 'Photos — Ada King' });
+    fireEvent.click(await within(section).findByRole('button', { name: 'Delete' }));
+    const confirm = within(section).getByRole('button', { name: 'Delete photo' });
+    const key = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    confirm.dispatchEvent(key);
+    // Handled (prevented), so a browser doesn't also turn it into the dialog's close request.
+    expect(key.defaultPrevented).toBe(true);
+    await waitFor(() =>
+      expect(within(section).queryByRole('button', { name: 'Delete photo' })).toBeNull(),
+    );
+    expect(screen.getByRole('dialog', { name: 'Photos — Ada King' })).toBeInTheDocument();
+    expect(s.trees.callsTo('deletePhoto')).toHaveLength(0);
+  });
+
+  it('Esc from a form field does not close the dialog', async () => {
+    const s = setup();
+    renderAt(`/trees/${s.id}/people/${ada.id}?tab=info`, s);
+    const section = await screen.findByRole('dialog', { name: 'Details — Ada King' });
+    fireEvent.click(within(section).getByRole('button', { name: 'Edit details' }));
+    within(section).getByLabelText('Last name').focus();
+    fireEvent(section, new Event('cancel', { cancelable: true }));
+    expect(screen.getByRole('dialog', { name: 'Details — Ada King' })).toBeInTheDocument();
+    fireEvent.click(within(section).getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
   it('lets a viewer look but not change', async () => {
     const s = setup('viewer');
     s.trees.trees.get(s.id)!.people.get(ada.id)!.photos.push({
@@ -197,7 +227,7 @@ describe('PhotosTab', () => {
     const s = setup();
     renderAt(at(s), s);
     await screen.findByText('No photos yet.');
-    const region = document.querySelector('.tree-panel p[role="status"]')!;
+    const region = document.querySelector('.section-dialog p[role="status"]')!;
     expect(region).toBeInTheDocument();
     expect(region).toHaveTextContent('');
     s.trees.hold('uploadPhoto');
@@ -205,7 +235,7 @@ describe('PhotosTab', () => {
     loadCropper(400, 200);
     fireEvent.click(screen.getByRole('button', { name: 'Use the whole photo' }));
     await waitFor(() => expect(region).toHaveTextContent('Working…'));
-    expect(document.querySelector('.tree-panel p[role="status"]')).toBe(region);
+    expect(document.querySelector('.section-dialog p[role="status"]')).toBe(region);
     s.trees.release();
     await waitFor(() => expect(region).toHaveTextContent(''));
   });
