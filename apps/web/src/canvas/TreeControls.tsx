@@ -130,14 +130,15 @@ export function BranchStatus({
 
 /**
  * The tree-wide rows at the bottom of the side panel, in the same one-line row design as a
- * person's sections, with a trailing arrow for another page and a chevron for a popup or a list
- * that opens here. Gated by what the member may do.
+ * person's sections, with a trailing arrow for another page; a popup's row has none. Gated by what the member may do.
  */
 export function TreeLinks({
   treeId,
   detail,
   disconnected,
   hrefOf,
+  onPeople,
+  peopleRef,
   onSettings,
   settingsRef,
 }: {
@@ -145,6 +146,9 @@ export function TreeLinks({
   detail: TreeDetail;
   disconnected: PersonSummary[];
   hrefOf: (personId: string) => string;
+  /** Opens the list of all people in a dialog (`?tab=people`). */
+  onPeople: () => void;
+  peopleRef?: Ref<HTMLButtonElement>;
   /** Opens Tree settings in a dialog; left out for members who can't manage the tree. */
   onSettings?: () => void;
   settingsRef?: Ref<HTMLButtonElement>;
@@ -191,20 +195,15 @@ export function TreeLinks({
           </li>
         )}
         <li>
-          <a
-            href="#people-fallback"
+          <button
+            type="button"
             className="section-row"
-            onClick={() => {
-              const d = document.getElementById('people-fallback');
-              if (d instanceof HTMLDetailsElement) d.open = true;
-            }}
+            aria-haspopup="dialog"
+            ref={peopleRef}
+            onClick={onPeople}
           >
-            <RowContent
-              title="List of all people"
-              icon={<ArrowIcon direction="down" />}
-              lead={<ListIcon />}
-            />
-          </a>
+            <RowContent title="List of all people" lead={<ListIcon />} />
+          </button>
         </li>
         {onSettings && (
           <li>

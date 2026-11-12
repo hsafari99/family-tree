@@ -73,6 +73,8 @@ export function TreeWorkspace({
   // "How are we related?" opens in a dialog over the page (`?tab=related`).
   const relatedOpen = params.get('tab') === 'related';
   const settingsOpen = settings !== null && params.get('tab') === 'settings';
+  // The list of everyone, in a dialog over the page (`?tab=people`).
+  const peopleOpen = params.get('tab') === 'people';
   const { pathname, search } = useLocation();
   const navigate = useNavigate();
   const api = useTreesApi();
@@ -342,13 +344,15 @@ export function TreeWorkspace({
     [setParams, personId, detail.me.personId],
   );
   const settingsRow = useRef<HTMLButtonElement>(null);
-  const setSettings = useCallback(
-    (open: boolean) =>
+  const peopleRow = useRef<HTMLButtonElement>(null);
+  /** Opens the tree-wide dialog `tab` (`?tab=`), or closes whichever is open. */
+  const setTab = useCallback(
+    (tab: 'settings' | 'people' | null) =>
       setParams(
         (p) => {
           const next = new URLSearchParams(p);
           next.delete('add');
-          if (open) next.set('tab', 'settings');
+          if (tab) next.set('tab', tab);
           else next.delete('tab');
           return next;
         },
@@ -359,6 +363,7 @@ export function TreeWorkspace({
   // However a dialog closes, focus goes back to its row (unless something else has it).
   useReturnFocus(relatedOpen, relatedRow);
   useReturnFocus(settingsOpen, settingsRow);
+  useReturnFocus(peopleOpen, peopleRow);
   // A "How are we related?" path wins; otherwise the open person's direct line, only while the
   // panel shows them (Escape collapses it and so clears the dimming; the URL keeps the person).
   const linePerson = shown && personId !== undefined ? personId : null;
@@ -578,8 +583,10 @@ export function TreeWorkspace({
               detail={detail}
               disconnected={disconnected}
               hrefOf={hrefOf}
+              onPeople={() => setTab('people')}
+              peopleRef={peopleRow}
               {...(settings
-                ? { onSettings: () => setSettings(true), settingsRef: settingsRow }
+                ? { onSettings: () => setTab('settings'), settingsRef: settingsRow }
                 : {})}
             />
           </aside>
@@ -720,8 +727,19 @@ export function TreeWorkspace({
         </SectionDialog>
       )}
       {settingsOpen && (
-        <SectionDialog title="Tree settings" onClose={() => setSettings(false)}>
+        <SectionDialog title="Tree settings" onClose={() => setTab(null)}>
           {settings}
+        </SectionDialog>
+      )}
+      {peopleOpen && (
+        <SectionDialog title={`All people (${persons.length})`} onClose={() => setTab(null)}>
+          <PeopleList
+            treeId={treeId}
+            persons={persons}
+            detail={detail}
+            selectedId={personId}
+            inDialog
+          />
         </SectionDialog>
       )}
       {/* Opened when the layout timed out, so people stay reachable (decision 4). */}

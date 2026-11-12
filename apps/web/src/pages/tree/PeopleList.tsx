@@ -9,25 +9,29 @@ export function PeopleList({
   persons,
   detail,
   selectedId,
+  inDialog = false,
 }: {
   treeId: string;
   persons: PersonSummary[];
   detail: TreeDetail;
   selectedId: string | undefined;
+  /** In the `?tab=people` dialog, whose title already counts the people. */
+  inDialog?: boolean;
 }) {
   const { me } = detail;
   const hrefOf = usePersonHref(treeId);
   const [params] = useSearchParams();
   const { pathname } = useLocation();
   const navigate = useNavigate();
-  // Centres the canvas on someone in the focus view; the panel (path, tab) is left as it is.
+  // Centres the canvas on someone in the focus view; the panel (path) is left as it is, and the
+  // people dialog closes so the tree can be seen.
   const showOnTree = (id: string) => {
-    void navigate(`${pathname}${canvasSearch(params, { focus: id, view: null })}`);
+    void navigate(`${pathname}${canvasSearch(params, { focus: id, view: null, tab: null })}`);
     document.querySelector('.canvas-area')?.scrollIntoView?.({ block: 'start' });
   };
   return (
     <section className="people-list">
-      <h2>People ({persons.length})</h2>
+      {!inDialog && <h2>People ({persons.length})</h2>}
       {persons.length === 0 && (
         <EmptyState title="No people yet" body="Add the first person to start the tree." />
       )}

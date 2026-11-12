@@ -33,8 +33,9 @@ test('people list: compact Show on tree buttons that centre the canvas', async (
   await add('Max', 1980, root, 'child');
   await add('Noa', 1950, root, 'parent');
   await page.goto(`/trees/${treeId}`);
-  await page.getByRole('link', { name: 'List of all people' }).click();
-  const list = page.getByRole('list', { name: 'People' });
+  await page.getByRole('button', { name: 'List of all people' }).click();
+  const dialog = page.getByRole('dialog', { name: 'All people (3)' });
+  const list = dialog.getByRole('list', { name: 'People' });
   await expect(list.getByRole('listitem')).toHaveCount(3);
   const listWidth = (await list.boundingBox())!.width;
   const buttons = list.getByRole('button', { name: /on tree$/ });
@@ -44,6 +45,7 @@ test('people list: compact Show on tree buttons that centre the canvas', async (
   }
   await list.getByRole('button', { name: 'Show Max List on tree' }).click();
   await expect(page).toHaveURL(/[?&]focus=[0-9a-f-]{36}/);
+  await expect(dialog).toHaveCount(0);
   await expect(card(page, 'Max List')).toBeVisible();
 });
 

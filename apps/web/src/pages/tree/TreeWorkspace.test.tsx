@@ -322,13 +322,35 @@ describe('TreeWorkspace', () => {
       'href',
       `/trees/${s.id}/people/robert?view=full`,
     );
-    const skip = screen.getByRole('link', { name: 'List of all people' });
-    expect(skip).toHaveAttribute('href', '#people-fallback');
-    const details = summary.closest('details')!;
-    expect(details).toHaveAttribute('id', 'people-fallback');
-    expect(details).not.toHaveAttribute('open');
-    fireEvent.click(skip);
-    expect(details).toHaveAttribute('open');
+    expect(summary.closest('details')).not.toHaveAttribute('open');
+  });
+
+  it('opens the list of all people in a dialog, deep-linked by ?tab=people', async () => {
+    const s = setup();
+    const r = renderAt(`/trees/${s.id}/people/david?view=full`, s);
+    const row = await screen.findByRole('button', { name: 'List of all people' });
+    expect(row).toHaveAttribute('aria-haspopup', 'dialog');
+    fireEvent.click(row);
+    const dialog = await screen.findByRole('dialog', { name: 'All people (11)' });
+    expect(r.where()).toBe(`/trees/${s.id}/people/david?view=full&tab=people`);
+    // The panel still shows David; the list is only in the dialog.
+    const panel = screen.getByRole('complementary', { name: 'Details' });
+    expect(within(panel).getByRole('heading', { level: 2, name: /David Hale/ })).toBeVisible();
+    const robert = within(dialog).getByRole('link', { name: /Robert Hale/ });
+    expect(robert).toHaveAttribute('href', `/trees/${s.id}/people/robert?view=full`);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(r.where()).toBe(`/trees/${s.id}/people/david?view=full`);
+    expect(document.activeElement).toBe(row);
+  });
+
+  it('Show on tree in the people dialog closes it and centres the canvas', async () => {
+    const s = setup();
+    const r = renderAt(`/trees/${s.id}/people/david?tab=people`, s);
+    const dialog = await screen.findByRole('dialog', { name: 'All people (11)' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Show Robert Hale on tree' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(r.where()).toBe(`/trees/${s.id}/people/david?focus=robert`);
   });
 
   it('shows toolbar links by role', async () => {
