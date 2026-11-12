@@ -55,7 +55,7 @@ describe('VerifyTwoFactorPage', () => {
 
     const code = user.recoveryCodes[0]!;
     submit('Recovery code', code);
-    expect(await screen.findByText('Signed in as Ada')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Welcome, Ada' })).toBeInTheDocument();
     expect(api.callsTo('verifyRecoveryCode')).toEqual([{ code }]);
     expect(api.callsTo('verifyTotp')).toHaveLength(0);
   });

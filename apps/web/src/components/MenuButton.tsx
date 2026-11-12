@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useEffect, useId, useRef, useState } from 'react';
+import { type KeyboardEvent, type ReactNode, useEffect, useId, useRef, useState } from 'react';
 
 export interface MenuItem {
   label: string;
@@ -23,8 +23,8 @@ export function MenuButton({
   /** The accessible name of the trigger and the menu. */
   label: string;
   items: MenuItem[];
-  /** The visible trigger text. */
-  text?: string;
+  /** The visible trigger content (hidden from assistive tech when it isn't the label). */
+  text?: ReactNode;
   className?: string;
 }) {
   const id = useId();

@@ -54,7 +54,7 @@ describe('SignUpPage', () => {
   it('signs up and lands on the home page signed in', async () => {
     const { api } = renderAt('/sign-up');
     fill('Ada', ' Ada@Example.com ', 'Correct-horse-battery1');
-    expect(await screen.findByText('Signed in as Ada')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Welcome, Ada' })).toBeInTheDocument();
     expect(api.callsTo('signUp')).toEqual([
       { name: 'Ada', email: 'ada@example.com', password: 'Correct-horse-battery1' },
     ]);
@@ -77,7 +77,7 @@ describe('SignUpPage', () => {
     fill('Ada', 'ada@example.com', 'Correct-horse-battery1');
     expect(await screen.findByRole('button', { name: 'Creating account…' })).toBeDisabled();
     api.release();
-    expect(await screen.findByText('Signed in as Ada')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Welcome, Ada' })).toBeInTheDocument();
   });
 
   it('uses autocomplete hints', async () => {
@@ -90,7 +90,7 @@ describe('SignUpPage', () => {
     const api = new FakeAuthApi();
     api.addUser({ email: 'ada@example.com', name: 'Ada' }, { signedIn: true });
     renderAt('/sign-up', { auth: api });
-    expect(await screen.findByText('Signed in as Ada')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Welcome, Ada' })).toBeInTheDocument();
   });
 
   it('keeps next on the link to the other page', async () => {

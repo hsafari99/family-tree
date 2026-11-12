@@ -110,8 +110,16 @@ describe('MembersPage', () => {
     const s = setup();
     renderAt(`/trees/${s.id}/members`, s);
     expect(
-      await screen.findByRole('heading', { name: 'Members of Hale family' }),
+      await screen.findByRole('heading', { level: 1, name: 'Members and invites' }),
     ).toBeInTheDocument();
+    // One level up is the tree: an icon link before the title, and the header names the tree.
+    expect(await screen.findByRole('link', { name: 'Back to Hale family' })).toHaveAttribute(
+      'href',
+      `/trees/${s.id}`,
+    );
+    expect(
+      await within(screen.getByRole('banner')).findByRole('link', { name: 'Hale family' }),
+    ).toHaveAttribute('href', `/trees/${s.id}`);
     expect(await screen.findByText('a@example.com')).toBeInTheDocument();
     expect(within(rowOf('Me')).getByText('You')).toHaveClass('badge');
     expect(screen.queryByLabelText('Role for Me')).not.toBeInTheDocument();

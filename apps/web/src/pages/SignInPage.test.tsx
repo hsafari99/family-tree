@@ -53,19 +53,19 @@ describe('SignInPage', () => {
   it('goes home when there is no next path', async () => {
     renderAt('/sign-in', { auth: seeded() });
     signIn();
-    expect(await screen.findByText('Signed in as Ada')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Welcome, Ada' })).toBeInTheDocument();
   });
 
   it('ignores an off-site next value', async () => {
     renderAt('/sign-in?next=https%3A%2F%2Fevil.example', { auth: seeded() });
     signIn();
-    expect(await screen.findByText('Signed in as Ada')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Welcome, Ada' })).toBeInTheDocument();
   });
 
   it('ignores a protocol-relative next value', async () => {
     renderAt('/sign-in?next=%2F%2Fevil.example', { auth: seeded() });
     signIn();
-    expect(await screen.findByText('Signed in as Ada')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Welcome, Ada' })).toBeInTheDocument();
   });
 
   it('sends an already signed-in user on to next', async () => {

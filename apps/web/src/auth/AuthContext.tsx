@@ -23,6 +23,8 @@ interface AuthContextValue {
   user: UserState;
   /** Set when the last attempt to read the user failed (for example the API is unreachable). */
   loadError: AuthError | null;
+  /** True after the user signed out here (not when a session merely expired). */
+  signedOut: boolean;
   /** Re-reads the signed-in user from the server. */
   refresh(): Promise<void>;
   signOut(): Promise<Result<void>>;
@@ -78,6 +80,7 @@ function watchSession(api: AuthApi, onExpired: () => void): AuthApi {
 export function AuthProvider({ api: rawApi, children }: { api: AuthApi; children: ReactNode }) {
   const [user, setUser] = useState<UserState>('loading');
   const [loadError, setLoadError] = useState<AuthError | null>(null);
+  const [signedOut, setSignedOut] = useState(false);
   const active = useRef(true);
 
   const refresh = useCallback(async () => {
@@ -87,6 +90,7 @@ export function AuthProvider({ api: rawApi, children }: { api: AuthApi; children
       // A real answer: signed in as someone, or signed out (null).
       setUser(res.data);
       setLoadError(null);
+      if (res.data) setSignedOut(false);
     } else {
       // A transient failure (network, 5xx): keep whoever was signed in. Only the very first
       // load, with nobody known yet, falls back to signed out.
@@ -107,12 +111,15 @@ export function AuthProvider({ api: rawApi, children }: { api: AuthApi; children
 
   const signOut = useCallback(async () => {
     const res = await api.signOut();
-    if (res.ok) setUser(null);
+    if (res.ok) {
+      setSignedOut(true);
+      setUser(null);
+    }
     return res;
   }, [api]);
 
   return (
-    <AuthContext.Provider value={{ api, user, loadError, refresh, signOut }}>
+    <AuthContext.Provider value={{ api, user, loadError, signedOut, refresh, signOut }}>
       {children}
     </AuthContext.Provider>
   );

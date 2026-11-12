@@ -1,6 +1,7 @@
 import type { PersonSummary, TreeDetail } from '@family-tree/shared';
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
-import { Link, useLocation, useMatch, useNavigate, useParams } from 'react-router';
+import { useLocation, useMatch, useNavigate, useParams } from 'react-router';
+import { useHeaderTree } from '../components/AppHeader';
 import { ConfirmButton } from '../components/ConfirmButton';
 import { FormError } from '../components/forms';
 import { Page } from '../components/Page';
@@ -52,6 +53,9 @@ export function TreePage() {
     }
   }, [location, navigate]);
 
+  // The header names the tree (and follows a rename), so the page's own h1 is for screen readers.
+  useHeaderTree(detail?.tree.id ?? null, detail?.tree.name ?? null);
+
   const refreshPersons = useCallback(async () => {
     const res = await api.listPersons(treeId);
     if (res.ok) setPersons(res.data);
@@ -61,9 +65,6 @@ export function TreePage() {
     return (
       <Page title="Tree" wide>
         <FormError>{error.message}</FormError>
-        <p>
-          <Link to="/">Back to your trees</Link>
-        </p>
       </Page>
     );
   }
@@ -84,7 +85,7 @@ export function TreePage() {
   const anchors = me.steward.grants.map((g) => nameOf(g.anchorPersonId) ?? 'someone').join(', ');
 
   return (
-    <Page title={tree.name} full>
+    <Page title={tree.name} full hideTitle>
       {notice && (
         <p role="status" className="success">
           {notice}
@@ -211,7 +212,7 @@ function Settings({
       </form>
       <ExportSection treeId={treeId} />
       <h3>Delete this tree</h3>
-      <p>Deleting hides the tree from everyone. You can restore it from Your trees for 30 days.</p>
+      <p>Deleting hides the tree from everyone. You can restore it from My trees for 30 days.</p>
       <div className="field">
         <label htmlFor="tree-delete-confirm">Type the tree name to confirm</label>
         <input id="tree-delete-confirm" value={typed} onChange={(e) => setTyped(e.target.value)} />

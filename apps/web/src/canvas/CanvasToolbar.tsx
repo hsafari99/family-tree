@@ -106,7 +106,6 @@ export function CanvasToolbar({
       <DisconnectedPeople persons={disconnected} hrefOf={hrefOf} />
       <Link to={`/trees/${treeId}/members`}>Members and invites</Link>
       {capabilities.manageTree && <Link to={`/trees/${treeId}/trash`}>Trash</Link>}
-      <Link to="/">Your trees</Link>
       <a
         href="#people-fallback"
         onClick={() => {

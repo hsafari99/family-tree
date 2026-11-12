@@ -3,7 +3,6 @@ import { Link, Navigate, useParams } from 'react-router';
 import type { SessionUser } from '../auth/api';
 import { useAuth } from '../auth/AuthContext';
 import { useGoogleAvailability } from '../components/GoogleSignIn';
-import { ArrowLeftIcon } from '../components/icons';
 import { Page } from '../components/Page';
 import { AccountNav } from './account/AccountNav';
 import {
@@ -53,15 +52,7 @@ export function AccountPage() {
   const googleShown = googleEnabled === true || user.googleConnected;
 
   return (
-    <Page
-      title="Account"
-      wide
-      back={
-        <Link to="/" className="icon-link" aria-label="Back to home" title="Back to home">
-          <ArrowLeftIcon />
-        </Link>
-      }
-    >
+    <Page title="Account" wide>
       <div className={section ? 'account-layout has-section' : 'account-layout'}>
         <AccountNav user={user} current={current} googleShown={googleShown} />
         <div className="account-section" ref={sectionRef}>

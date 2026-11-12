@@ -117,7 +117,8 @@ describe('TreePage', () => {
     const s = setup();
     renderAt(`/trees/${crypto.randomUUID()}`, s);
     expect(await screen.findByText(MESSAGES.notFound)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Back to your trees' })).toHaveAttribute('href', '/');
+    // The way back is the header's My trees.
+    expect(screen.getByRole('link', { name: 'My trees' })).toHaveAttribute('href', '/');
   });
 
   it('tells an inactive steward to turn on 2FA, and an active one which branches', async () => {

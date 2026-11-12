@@ -36,3 +36,23 @@ describe('password toggle', () => {
     );
   });
 });
+
+describe('global header', () => {
+  it('hides the skip link off screen until it has focus', () => {
+    expect(css).toMatch(
+      /\.skip-link\s*\{[^}]*position: absolute[^}]*transform: translateY\(-200%\)/,
+    );
+    expect(css).toMatch(/\.skip-link:focus\s*\{[^}]*transform: none/);
+  });
+  it('truncates a long tree name instead of widening the page', () => {
+    const rule = css.match(/\.app-header-tree\s*\{([^}]*)\}/)![1]!;
+    expect(rule).toMatch(/min-width: 0/);
+    expect(rule).toMatch(/text-overflow: ellipsis/);
+    expect(css).toMatch(/\.app-header-place\s*\{[^}]*min-width: 0/);
+  });
+  it('shows only the picture for the account menu on a phone', () => {
+    expect(css).toMatch(
+      /@media \(max-width: 720px\)\s*\{[^@]*\.account-trigger-name\s*\{\s*display: none/,
+    );
+  });
+});

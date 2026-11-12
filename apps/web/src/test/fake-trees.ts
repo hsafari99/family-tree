@@ -1,4 +1,5 @@
 import {
+  type ActivityEntry,
   type AddRelativeInput,
   type ChildKind,
   type CreatedInvite,
@@ -20,6 +21,7 @@ import {
   type GraphPerson,
   type GraphQuery,
   type HistoryEntry,
+  type HomeSummary,
   type Invite,
   type InvitePreview,
   type InviteRole,
@@ -70,6 +72,8 @@ export interface FakeTree {
   /** Photo storage limit and use, in bytes (default 1 GiB, nothing used). */
   photoLimit: number;
   photoUsed: number;
+  /** The home card's "last updated" (ISO). */
+  updatedAt: string;
 }
 
 export interface FakeDeletedTree {
@@ -194,6 +198,8 @@ export class FakeTreesApi implements TreesApi {
   restoreConflicts = new Set<string>();
   /** The signed-in user's id, so permission checks can tell "members I invited" from others. */
   meUserId: string | null = null;
+  /** What homeSummary returns as recent activity, newest first. */
+  activity: ActivityEntry[] = [];
   calls: { method: Method; input: unknown }[] = [];
   private forced = new Map<Method, AuthError>();
   private pending = new Set<Method>();
@@ -212,6 +218,7 @@ export class FakeTreesApi implements TreesApi {
       members?: Member[];
       stewards?: StewardGrant[];
       invites?: Invite[];
+      updatedAt?: string;
     } = {},
   ): string {
     const id = partial.id ?? crypto.randomUUID();
@@ -241,6 +248,7 @@ export class FakeTreesApi implements TreesApi {
       disconnected: [],
       photoLimit: 1_073_741_824,
       photoUsed: 0,
+      updatedAt: partial.updatedAt ?? new Date().toISOString(),
     });
     return id;
   }
@@ -301,6 +309,31 @@ export class FakeTreesApi implements TreesApi {
       ),
     };
     return ok(list);
+  }
+
+  async homeSummary() {
+    const forced = await this.enter('homeSummary');
+    if (forced) return { ok: false as const, error: forced };
+    const summary: HomeSummary = {
+      trees: [...this.trees.entries()].map(([id, t]) => {
+        const { me } = t.detail;
+        const own = t.invites.filter((i) => i.createdByUserId === this.meUserId);
+        return {
+          id,
+          name: t.detail.tree.name,
+          role: me.role,
+          peopleCount: t.persons.length,
+          updatedAt: t.updatedAt,
+          openInvites:
+            me.role === 'owner' ? t.invites.length : me.steward.active ? own.length : null,
+        };
+      }),
+      deletedTrees: [...this.deletedTrees.values()].map(
+        ({ id, name, deletedAt, restoreUntil }) => ({ id, name, deletedAt, restoreUntil }),
+      ),
+      activity: this.activity.filter((a) => this.trees.has(a.treeId)),
+    };
+    return ok(summary);
   }
 
   async createTree(input: CreateTreeInput) {

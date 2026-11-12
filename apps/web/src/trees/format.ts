@@ -169,3 +169,23 @@ export function formatBytes(n: number): string {
   }
   return `${show(v, i)} ${units[i]}`;
 }
+
+/** "12 people", "1 person". */
+export function countPeople(n: number): string {
+  return `${n} ${n === 1 ? 'person' : 'people'}`;
+}
+
+const relative = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+
+/** "just now", "5 minutes ago", "yesterday", "6 days ago"; a plain date after a week. */
+export function timeAgo(iso: string, now: Date = new Date()): string {
+  const ms = now.getTime() - new Date(iso).getTime();
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return relative.format(-minutes, 'minute');
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return relative.format(-hours, 'hour');
+  const days = Math.floor(hours / 24);
+  if (days < 7) return relative.format(-days, 'day');
+  return new Date(iso).toLocaleDateString();
+}

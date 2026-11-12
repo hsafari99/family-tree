@@ -1,9 +1,10 @@
 import type { Invite, Member, PersonSummary, StewardGrant, TreeDetail } from '@family-tree/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router';
+import { useParams } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
 import { FormError } from '../components/forms';
-import { Page } from '../components/Page';
+import { useHeaderTree } from '../components/AppHeader';
+import { BackLink, Page } from '../components/Page';
 import { useTreesApi } from '../trees/TreesApiContext';
 import { InvitesSection } from './members/InvitesSection';
 import { MembersSection } from './members/MembersSection';
@@ -89,16 +90,13 @@ export function MembersPage() {
     };
   }, [api, treeId, reload]);
 
+  useHeaderTree(detail?.tree.id ?? null, detail?.tree.name ?? null);
+
   if (!detail || !user || user === 'loading') {
     return (
-      <Page title="Members" wide>
+      <Page title="Members and invites" wide>
         <FormError>{error}</FormError>
         {!error && <p>Loading…</p>}
-        {error && (
-          <p>
-            <Link to="/">Back to your trees</Link>
-          </p>
-        )}
       </Page>
     );
   }
@@ -115,14 +113,15 @@ export function MembersPage() {
     onActed,
   };
   return (
-    <Page title={`Members of ${detail.tree.name}`} wide>
+    <Page
+      title="Members and invites"
+      wide
+      back={<BackLink to={`/trees/${treeId}`} label={`Back to ${detail.tree.name}`} />}
+    >
       <FormError>{error}</FormError>
       <MembersSection {...props} />
       <StewardsSection {...props} />
       {detail.capabilities.invite && <InvitesSection {...props} invites={invites} />}
-      <p>
-        <Link to={`/trees/${treeId}`}>Back to the tree</Link>
-      </p>
     </Page>
   );
 }

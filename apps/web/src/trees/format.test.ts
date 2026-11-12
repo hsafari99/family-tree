@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { fakePerson } from '../test/fake-trees';
-import { formatBytes, formatFuzzyDate, initials, personName, personYears } from './format';
+import {
+  countPeople,
+  formatBytes,
+  formatFuzzyDate,
+  initials,
+  personName,
+  personYears,
+  timeAgo,
+} from './format';
 
 describe('personName', () => {
   it('joins given, middle and surname, skipping blanks', () => {
@@ -59,5 +67,30 @@ describe('formatBytes', () => {
     expect(formatBytes(999_999)).toBe('977 KB');
     expect(formatBytes(1023)).toBe('1023 B');
     expect(formatBytes(1024 * 1024 - 1)).toBe('1 MB');
+  });
+});
+
+describe('timeAgo', () => {
+  const now = new Date('2026-11-11T12:00:00.000Z');
+  const ago = (ms: number) => timeAgo(new Date(now.getTime() - ms).toISOString(), now);
+  it('says "just now" under a minute, then minutes, hours and days', () => {
+    expect(ago(10_000)).toBe('just now');
+    expect(ago(5 * 60_000)).toBe('5 minutes ago');
+    expect(ago(60 * 60_000)).toBe('1 hour ago');
+    expect(ago(3 * 3_600_000)).toBe('3 hours ago');
+    expect(ago(24 * 3_600_000)).toBe('yesterday');
+    expect(ago(6 * 86_400_000)).toBe('6 days ago');
+  });
+  it('gives a date after a week, and treats a future time as now', () => {
+    expect(ago(30 * 86_400_000)).toBe(new Date('2026-10-12T12:00:00.000Z').toLocaleDateString());
+    expect(ago(-60_000)).toBe('just now');
+  });
+});
+
+describe('countPeople', () => {
+  it('says person or people', () => {
+    expect(countPeople(0)).toBe('0 people');
+    expect(countPeople(1)).toBe('1 person');
+    expect(countPeople(12)).toBe('12 people');
   });
 });

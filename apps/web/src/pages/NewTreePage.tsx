@@ -57,9 +57,6 @@ export function NewTreePage() {
           />
         </>
       )}
-      <p>
-        <Link to="/">Back to home</Link>
-      </p>
     </Page>
   );
 }

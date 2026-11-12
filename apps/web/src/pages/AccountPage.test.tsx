@@ -53,17 +53,13 @@ describe('AccountPage', () => {
     expect(within(nav).getByRole('link', { name: 'Profile' })).toBeInTheDocument();
   });
 
-  it('has an icon link back to home before the title', async () => {
+  it('leaves the way home to the header: no back arrow of its own', async () => {
     renderAt('/account/password', { auth: signedIn().api });
-    const home = await screen.findByRole('link', { name: 'Back to home' });
-    expect(home).toHaveAttribute('href', '/');
-    expect(home).toHaveAttribute('title', 'Back to home');
-    expect(home).toHaveTextContent('');
-    expect(home.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
-    const title = screen.getByRole('heading', { level: 1, name: 'Account' });
-    expect(home.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await screen.findByRole('heading', { level: 1, name: 'Account' });
+    expect(screen.queryByRole('link', { name: 'Back to home' })).toBeNull();
+    const home = within(screen.getByRole('banner')).getByRole('link', { name: 'My trees' });
     fireEvent.click(home);
-    expect(await screen.findByRole('heading', { name: 'Your trees' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: /^Welcome/ })).toBeInTheDocument();
   });
 
   it('/account shows the profile', async () => {

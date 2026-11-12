@@ -1,9 +1,10 @@
 import type { TrashBatch, TrashBatchDetail, TreeDetail } from '@family-tree/shared';
 import { useEffect, useId, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router';
+import { useParams } from 'react-router';
 import { ConfirmButton } from '../components/ConfirmButton';
 import { FormError, Success } from '../components/forms';
-import { Page } from '../components/Page';
+import { useHeaderTree } from '../components/AppHeader';
+import { BackLink, Page } from '../components/Page';
 import { personName, personYears } from '../trees/format';
 import { useTreesApi } from '../trees/TreesApiContext';
 
@@ -64,23 +65,24 @@ export function TrashPage() {
     };
   }, [api, treeId]);
 
+  useHeaderTree(tree?.tree.id ?? null, tree?.tree.name ?? null);
   const back = (
-    <p>
-      <Link to={`/trees/${treeId}`}>{tree ? `Back to ${tree.tree.name}` : 'Back to the tree'}</Link>
-    </p>
+    <BackLink
+      to={`/trees/${treeId}`}
+      label={tree ? `Back to ${tree.tree.name}` : 'Back to the tree'}
+    />
   );
 
   if (error) {
     return (
-      <Page title="Trash" wide>
+      <Page title="Trash" wide back={back}>
         <FormError>{error.message}</FormError>
-        {back}
       </Page>
     );
   }
   if (!batches) {
     return (
-      <Page title="Trash" wide>
+      <Page title="Trash" wide back={back}>
         <p>Loading…</p>
       </Page>
     );
@@ -92,7 +94,7 @@ export function TrashPage() {
   };
 
   return (
-    <Page title="Trash" wide>
+    <Page title="Trash" wide back={back}>
       <p>
         Deleted people and relationships stay here until you restore or erase them. Only you, the
         owner, can see this page.
@@ -107,7 +109,6 @@ export function TrashPage() {
           ))}
         </ul>
       )}
-      {back}
     </Page>
   );
 }

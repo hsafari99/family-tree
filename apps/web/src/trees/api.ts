@@ -17,6 +17,8 @@ import {
   type GraphQuery,
   type HistoryEntry,
   historySchema,
+  type HomeSummary,
+  homeSummarySchema,
   type Invite,
   inviteListSchema,
   type InvitePreview,
@@ -61,6 +63,8 @@ import { type AuthError, type CallKind, MESSAGES, type Result, toAuthError } fro
 /** Everything the tree pages need. Tests use FakeTreesApi (test/fake-trees.ts). */
 export interface TreesApi {
   listTrees(): Promise<Result<TreeList>>;
+  /** The home dashboard: tree cards, deleted trees and recent activity. */
+  homeSummary(): Promise<Result<HomeSummary>>;
   createTree(input: CreateTreeInput): Promise<Result<{ id: string }>>;
   getTree(treeId: string): Promise<Result<TreeDetail>>;
   updateTree(treeId: string, input: UpdateTreeInput): Promise<Result<void>>;
@@ -142,6 +146,7 @@ export interface TreesApi {
 /** Every TreesApi method; the Record type makes the compiler flag a missing one. */
 export const TREES_API_METHODS = Object.keys({
   listTrees: true,
+  homeSummary: true,
   createTree: true,
   getTree: true,
   updateTree: true,
@@ -295,6 +300,7 @@ export function createTreesApi({ baseUrl }: { baseUrl: string }): TreesApi {
   // message (deleteNotAllowed) fits every delete call below.
   return {
     listTrees: () => request('GET', '/trees', undefined, treeListSchema),
+    homeSummary: () => request('GET', '/home', undefined, homeSummarySchema),
     createTree: (input) => map(request('POST', '/trees', input, createdTreeSchema), (d) => d.tree),
     getTree: (id) => request('GET', t(id), undefined, treeDetailSchema),
     updateTree: (id, input) => request('PATCH', t(id), input),

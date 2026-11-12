@@ -41,6 +41,37 @@ describe('createTreesApi', () => {
     expect(initOf(mock.mock.calls[0]!).credentials).toBe('include');
   });
 
+  it('reads the home summary', async () => {
+    const body = {
+      trees: [
+        {
+          id: ID,
+          name: 'Hale family',
+          role: 'viewer',
+          peopleCount: 4,
+          updatedAt: '2026-11-11T10:00:00.000Z',
+          openInvites: null,
+        },
+      ],
+      deletedTrees: [],
+      activity: [
+        {
+          id: ID,
+          treeId: ID,
+          treeName: 'Hale family',
+          action: 'person.create',
+          at: '2026-11-11T10:00:00.000Z',
+          by: 'Ada',
+          person: { id: ID, name: 'Leo Hale' },
+        },
+      ],
+    };
+    const mock = stubFetch({ status: 200, body });
+    expect(await api().homeSummary()).toEqual({ ok: true, data: body });
+    expect(urlOf(mock.mock.calls[0]!)).toBe(`${BASE}/api/v1/home`);
+    expect(initOf(mock.mock.calls[0]!).method).toBe('GET');
+  });
+
   it('creates a tree with a JSON body and returns its id', async () => {
     const mock = stubFetch({ status: 201, body: { tree: { id: ID } } });
     const res = await api().createTree({ name: 'Hale family', person: { givenName: 'Ada' } });

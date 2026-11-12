@@ -326,18 +326,6 @@ button.google:hover:not(:disabled) {
   color: var(--muted);
 }
 
-/* Trees */
-.tree-list {
-  padding-left: 1.25rem;
-}
-.tree-list li {
-  margin: 0.4rem 0;
-}
-.role {
-  margin-left: 0.5rem;
-  color: var(--muted, inherit);
-  font-size: 0.9rem;
-}
 .confirm {
   display: inline-flex;
   gap: 0.5rem;
@@ -572,6 +560,17 @@ img.card-photo {
   max-width: none;
   width: 100%;
 }
+/* The tree page sits close under the header, so the canvas gets the height. */
+.page-full {
+  padding: 0.75rem 1rem 1rem;
+}
+.card-full {
+  padding: 1rem 1.25rem;
+}
+/* A visually hidden title (the header shows it) leaves no gap above the content. */
+.card > h1.sr-only + * {
+  margin-top: 0;
+}
 .canvas-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -629,8 +628,10 @@ img.card-photo {
   position: relative;
   display: flex;
   flex-direction: column;
-  min-height: 480px;
-  height: calc(100vh - 260px);
+  /* Room for the header, the tree's notes and the toolbar above (batch 6): it fits a 720px
+     tall window. */
+  min-height: 420px;
+  height: calc(100vh - 270px);
   border: 1px solid #ccd;
   border-radius: 8px;
 }
@@ -640,7 +641,7 @@ img.card-photo {
   min-height: 0;
 }
 .tree-panel {
-  max-height: calc(100vh - 260px);
+  max-height: calc(100vh - 270px);
   overflow: auto;
   /* A vertical scrollbar narrows the content box; nothing inside may force a sideways one. */
   overflow-x: hidden;
@@ -1032,6 +1033,12 @@ img.card-photo {
   line-height: 1;
   user-select: none;
 }
+/* The accent blue is too dark to read on a dark circle. */
+@media (prefers-color-scheme: dark) {
+  .avatar-default {
+    color: color-mix(in srgb, var(--accent) 55%, CanvasText);
+  }
+}
 .profile-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 13rem);
@@ -1327,4 +1334,234 @@ table.data select {
   table.data td:empty {
     display: none;
   }
+}
+
+/* Global header (UX round 1, batch 6): app name, current tree, My trees, account menu. */
+.skip-link {
+  position: absolute;
+  left: 0.5rem;
+  top: 0.5rem;
+  z-index: 100;
+  padding: 0.5rem 0.75rem;
+  background: Canvas;
+  color: CanvasText;
+  border: 2px solid var(--accent);
+  border-radius: 0.4rem;
+  transform: translateY(-200%);
+}
+.skip-link:focus {
+  transform: none;
+}
+/* The skip link's target takes focus without a ring around the whole page. */
+main:focus {
+  outline: none;
+}
+.app-header {
+  position: relative;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.app-header-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  min-height: 3.25rem;
+  padding: 0.4rem 1rem;
+}
+.app-header-place {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+.app-name {
+  flex: none;
+  font-weight: 700;
+  color: inherit;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.app-header-sep {
+  flex: none;
+  color: var(--muted);
+}
+.app-header-tree {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: inherit;
+  font-weight: 600;
+  text-decoration: none;
+}
+.app-name:hover,
+.app-header-tree:hover,
+.app-nav a:hover {
+  text-decoration: underline;
+}
+.app-nav a {
+  display: inline-block;
+  padding: 0.35rem 0.5rem;
+  border-radius: 0.4rem;
+  color: inherit;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.app-nav a[aria-current='page'] {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.4em;
+}
+button.account-trigger {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.6rem 0.15rem 0.15rem;
+  background: transparent;
+  color: inherit;
+  border: 1px solid transparent;
+  border-radius: 999px;
+}
+button.account-trigger > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+button.account-trigger:hover,
+button.account-trigger[aria-expanded='true'] {
+  background: Canvas;
+  border-color: var(--border);
+}
+.account-trigger-name {
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-header-error {
+  margin: 0;
+  padding: 0 1rem 0.5rem;
+  text-align: right;
+}
+/* Narrow: just the picture for the account menu, tighter spacing, nothing scrolls sideways. */
+@media (max-width: 720px) {
+  .app-header-bar {
+    gap: 0.25rem 0.5rem;
+    padding: 0.35rem 0.75rem;
+  }
+  button.account-trigger {
+    padding: 0.15rem;
+  }
+  .account-trigger-name {
+    display: none;
+  }
+}
+
+/* Home dashboard (batch 6) */
+.card > .status {
+  margin-top: 2rem;
+}
+.home-lead {
+  margin-top: -0.25rem;
+  color: var(--muted);
+}
+.section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-top: 2rem;
+}
+.card .section-head h2 {
+  margin: 0;
+}
+/* A link that looks like the primary button. */
+a.button-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.5rem;
+  padding: 0.45rem 1rem;
+  border: 1px solid var(--accent);
+  border-radius: 0.4rem;
+  background: var(--accent);
+  color: #fff;
+  text-decoration: none;
+  white-space: nowrap;
+}
+a.button-link:hover {
+  background: color-mix(in srgb, var(--accent) 85%, CanvasText);
+}
+.tree-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
+  gap: 1rem;
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.tree-card {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 0.5rem;
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  background: var(--surface);
+}
+.tree-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.card .tree-card h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  overflow-wrap: anywhere;
+}
+.tree-card-head .badge {
+  flex: none;
+}
+.tree-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.tree-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+.tree-card-invites {
+  font-size: 0.9rem;
+}
+.activity-list .activity-main {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.activity-list time {
+  white-space: nowrap;
+  font-size: 0.85rem;
+}
+.getting-started {
+  margin-top: 1rem;
+  padding: 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  background: var(--surface);
+}
+.card .getting-started h2 {
+  margin-top: 0;
+}
+.steps {
+  display: grid;
+  gap: 0.75rem;
+  padding-left: 1.5rem;
 }
