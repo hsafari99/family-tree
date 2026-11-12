@@ -6,7 +6,9 @@ import {
   type TreeDetail,
 } from '@family-tree/shared';
 import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
+import { canvasSearch } from '../../canvas/params';
+import { useToast } from '../../components/Toast';
 import { ErrorSummary, FormError, validateDeep, type FieldErrors } from '../../components/forms';
 import { personName } from '../../trees/format';
 import { useTreesApi } from '../../trees/TreesApiContext';
@@ -46,6 +48,13 @@ export function AddPersonForm({
   const uid = useId();
   const api = useTreesApi();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const toast = useToast();
+  // Opening someone closes the dialog (no `tab`) and keeps the canvas's view.
+  const open = (id: string) =>
+    void navigate(
+      `/trees/${treeId}/people/${id}${canvasSearch(params, { tab: null, add: null, focus: null, from: null, to: null })}`,
+    );
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;
@@ -102,7 +111,9 @@ export function AddPersonForm({
     setPending(false);
     if (!res.ok) return setError(res.error.message);
     onCreated();
-    void navigate(`/trees/${treeId}/people/${res.data.id}`);
+    const { givenName, middleName = null, surname = null } = input.person;
+    toast.show(`${personName({ givenName, middleName, surname })} added`);
+    open(res.data.id);
   }
 
   async function linkExisting(p: PersonSummary) {
@@ -117,8 +128,9 @@ export function AddPersonForm({
       setPending(false);
       if (!res.ok) return setError(res.error.message);
       onCreated();
+      toast.show(`${personName(p)} connected`);
     }
-    void navigate(`/trees/${treeId}/people/${p.id}`);
+    open(p.id);
   }
 
   async function submit(e: FormEvent) {
@@ -135,7 +147,6 @@ export function AddPersonForm({
 
   return (
     <form onSubmit={(e) => void submit(e)}>
-      <h2>Add a person</h2>
       <p className="hint">You can add more details after saving.</p>
       <FormError>{error}</FormError>
       <ErrorSummary errors={errors} labels={ADD_PERSON_LABELS} />

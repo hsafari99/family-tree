@@ -9,6 +9,7 @@ import { TreesApiProvider } from '../trees/TreesApiContext';
 import { FakeAuthApi } from './fake-auth';
 import { FakeLayoutEngine } from './fake-layout';
 import { FakeTreesApi } from './fake-trees';
+import { ToastProvider } from '../components/Toast';
 
 /** Renders the whole route table at `path` with fake auth and trees APIs. */
 export function renderAt(
@@ -18,11 +19,14 @@ export function renderAt(
     trees = new FakeTreesApi(),
     layout = new FakeLayoutEngine(),
     entries,
+    toasts = false,
   }: {
     auth?: FakeAuthApi;
     trees?: FakeTreesApi;
     layout?: FakeLayoutEngine;
     entries?: string[];
+    /** Shows toasts, as the app does (off by default, so their text doesn't double a page's). */
+    toasts?: boolean;
   } = {},
 ) {
   const nav: { current: NavigateFunction | null; where: string } = { current: null, where: '' };
@@ -47,7 +51,13 @@ export function renderAt(
         <MemoryRouter initialEntries={entries ?? [path]}>
           <NavProbe />
           <LayoutEngineProvider engine={layout}>
-            <AppRoutes />
+            {toasts ? (
+              <ToastProvider>
+                <AppRoutes />
+              </ToastProvider>
+            ) : (
+              <AppRoutes />
+            )}
           </LayoutEngineProvider>
         </MemoryRouter>
       </TreesApiProvider>

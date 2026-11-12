@@ -356,9 +356,9 @@ describe('TreeWorkspace', () => {
   it('shows toolbar links by role', async () => {
     const owner = setup();
     renderAt(`/trees/${owner.id}`, owner);
-    expect(await screen.findByRole('link', { name: 'Add a person' })).toHaveAttribute(
-      'href',
-      `/trees/${owner.id}/people/new`,
+    expect(await screen.findByRole('button', { name: 'Add a person' })).toHaveAttribute(
+      'aria-haspopup',
+      'dialog',
     );
     expect(screen.getByRole('button', { name: 'Trash' })).toHaveAttribute(
       'aria-haspopup',
@@ -396,7 +396,7 @@ describe('TreeWorkspace', () => {
     const s = setup({ role: 'viewer' });
     const r = renderAt(`/trees/${s.id}?tab=trash`, s);
     await screen.findByRole('button', { name: 'Members and invites' });
-    expect(screen.queryByRole('link', { name: 'Add a person' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Add a person' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Trash' })).toBeNull();
     // A Trash link is no use to them either.
     expect(screen.queryByRole('dialog', { name: 'Trash' })).toBeNull();

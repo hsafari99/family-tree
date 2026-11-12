@@ -6,7 +6,6 @@ import {
 } from '@family-tree/shared';
 import type { ReactNode, Ref } from 'react';
 import {
-  ArrowIcon,
   FanIcon,
   FocusIcon,
   FullIcon,
@@ -133,23 +132,23 @@ export function BranchStatus({
  * person's sections, with a trailing arrow for another page; a popup's row has none. Gated by what the member may do.
  */
 export function TreeLinks({
-  treeId,
   detail,
   disconnected,
   hrefOf,
   onDialog,
   rowRefs,
 }: {
-  treeId: string;
   detail: TreeDetail;
   disconnected: PersonSummary[];
   hrefOf: (personId: string) => string;
-  /** Opens one of the tree's dialogs (`?tab=`); Trash and Tree settings only for the owner. */
+  /**
+   * Opens one of the tree's dialogs (`?tab=`): Add a person for whoever may add, Trash and Tree
+   * settings only for the owner.
+   */
   onDialog: (tab: TreeDialog) => void;
   /** Where focus goes back to when that dialog closes. */
   rowRefs?: Partial<Record<TreeDialog, Ref<HTMLButtonElement>>>;
 }) {
-  const [search] = useSearchParams();
   const { me, capabilities } = detail;
   return (
     <section className="tree-links" aria-labelledby="tree-links-title">
@@ -159,11 +158,11 @@ export function TreeLinks({
       <ul className="section-list">
         {(capabilities.editAnywhere || me.steward.active) && (
           <li>
-            <RowLink
-              to={`/trees/${treeId}/people/new${search.size ? `?${search}` : ''}`}
+            <DialogRow
               title="Add a person"
-              icon={<ArrowIcon />}
               lead={<PlusIcon />}
+              onOpen={() => onDialog('new-person')}
+              rowRef={rowRefs?.['new-person']}
             />
           </li>
         )}
@@ -214,7 +213,7 @@ export function TreeLinks({
 }
 
 /** The tree-wide dialogs the side panel's rows open, by their `?tab=` value. */
-export type TreeDialog = 'members' | 'trash' | 'people' | 'settings';
+export type TreeDialog = 'new-person' | 'members' | 'trash' | 'people' | 'settings';
 
 function DialogRow({
   title,
@@ -237,23 +236,5 @@ function DialogRow({
     >
       <RowContent title={title} lead={lead} />
     </button>
-  );
-}
-
-function RowLink({
-  to,
-  title,
-  icon,
-  lead,
-}: {
-  to: string;
-  title: string;
-  icon: ReactNode;
-  lead?: ReactNode;
-}) {
-  return (
-    <Link to={to} className="section-row">
-      <RowContent title={title} icon={icon} lead={lead} />
-    </Link>
   );
 }

@@ -18,6 +18,36 @@ const fill = (name: string) =>
   fireEvent.change(screen.getByLabelText('First name'), { target: { value: name } });
 
 describe('AddPersonForm', () => {
+  it('opens in a dialog over the tree from the panel, which stays usable behind it', async () => {
+    const s = setup();
+    const r = renderAt(`/trees/${s.id}/people/${robert.id}?view=full`, { ...s, toasts: true });
+    const row = await screen.findByRole('button', { name: 'Add a person' });
+    expect(row).toHaveAttribute('aria-haspopup', 'dialog');
+    fireEvent.click(row);
+    const dialog = await screen.findByRole('dialog', { name: 'Add a person' });
+    expect(r.where()).toBe(`/trees/${s.id}/people/${robert.id}?view=full&tab=new-person`);
+    // The panel still shows Robert, not the form.
+    const panel = screen.getByRole('complementary', { name: 'Details' });
+    expect(within(panel).getByRole('heading', { level: 2, name: /Robert Hale/ })).toBeVisible();
+    expect(within(panel).queryByLabelText('First name')).toBeNull();
+    fireEvent.change(within(dialog).getByLabelText('First name'), { target: { value: 'Ada' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add person' }));
+    // Created: the dialog closes, a toast says so, and the new person is selected.
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(await screen.findByText('Ada added')).toBeInTheDocument();
+    expect(await within(panel).findByRole('heading', { level: 2, name: 'Ada' })).toBeVisible();
+    expect(r.where()).toMatch(new RegExp(`^/trees/${s.id}/people/[^/?]+\\?view=full$`));
+  });
+
+  it('the old add-person link opens the dialog', async () => {
+    const s = setup();
+    const r = renderAt(`/trees/${s.id}/people/new?view=full`, s);
+    expect(await screen.findByRole('dialog', { name: 'Add a person' })).toBeInTheDocument();
+    expect(r.where()).toMatch(/[?&]tab=new-person/);
+    expect(r.where()).toMatch(/[?&]view=full/);
+    expect(r.where()).not.toMatch(/people\/new/);
+  });
+
   it('adds an unattached person and opens their panel', async () => {
     const s = setup();
     renderAt(`/trees/${s.id}/people/new`, s);

@@ -214,9 +214,9 @@ describe('TreePage', () => {
   it('shows Add a person to editors and Trash to the owner only', async () => {
     const owner = setup();
     const { unmount } = renderAt(`/trees/${owner.id}`, owner);
-    expect(await screen.findByRole('link', { name: 'Add a person' })).toHaveAttribute(
-      'href',
-      `/trees/${owner.id}/people/new`,
+    expect(await screen.findByRole('button', { name: 'Add a person' })).toHaveAttribute(
+      'aria-haspopup',
+      'dialog',
     );
     expect(screen.getByRole('button', { name: 'Trash' })).toHaveAttribute(
       'aria-haspopup',
@@ -226,7 +226,7 @@ describe('TreePage', () => {
     const viewer = setup({ role: 'viewer', detail: { capabilities: viewerCaps } });
     renderAt(`/trees/${viewer.id}`, viewer);
     await screen.findByRole('button', { name: 'Members and invites' });
-    expect(screen.queryByRole('link', { name: 'Add a person' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add a person' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Trash' })).not.toBeInTheDocument();
   });
 

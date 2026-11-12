@@ -83,11 +83,13 @@ export function TreeWorkspace({
   // The tree-wide dialogs of the panel's "This tree" rows (`?tab=`): Tree settings and the Trash
   // only for whoever may manage the tree.
   const tabParam = params.get('tab');
+  const canAdd = detail.capabilities.editAnywhere || detail.me.steward.active;
   const treeDialog: TreeDialog | null =
     tabParam === 'members' || tabParam === 'people'
       ? tabParam
       : (tabParam === 'settings' && settings !== null) ||
-          (tabParam === 'trash' && detail.capabilities.manageTree)
+          (tabParam === 'trash' && detail.capabilities.manageTree) ||
+          (tabParam === 'new-person' && canAdd)
         ? tabParam
         : null;
   const { pathname, search } = useLocation();
@@ -166,8 +168,7 @@ export function TreeWorkspace({
     const { navigate: nav, params: current } = latest.current;
     void nav(`${path}${canvasSearch(current, change)}`);
   }, []);
-  const canAdd = detail.capabilities.editAnywhere || detail.me.steward.active;
-  const selected = (newPerson && canAdd) || personId !== undefined || unionId !== undefined;
+  const selected = personId !== undefined || unionId !== undefined;
   // The side panel (depth, the selection, tree links) collapses to a thin line with an edge
   // toggle; the choice is remembered (brief #15). On a phone it starts as a handle when nothing is
   // selected, so the sheet doesn't cover the tree on arrival.
@@ -359,6 +360,7 @@ export function TreeWorkspace({
     [setParams, personId, detail.me.personId],
   );
   const dialogRows = {
+    'new-person': useRef<HTMLButtonElement>(null),
     members: useRef<HTMLButtonElement>(null),
     trash: useRef<HTMLButtonElement>(null),
     people: useRef<HTMLButtonElement>(null),
@@ -437,6 +439,18 @@ export function TreeWorkspace({
   const defaultId = detail.me.personId ?? detail.tree.rootPersonId;
   const autoFor = useRef<string | null>(null);
   const autoSelected = useRef(false);
+  // The old add-person page (`/people/new`) is now the Add a person dialog over the tree, which
+  // selects someone as a tree opened plainly does.
+  useEffect(() => {
+    if (!newPerson || !canAdd) return;
+    autoFor.current = treeId;
+    autoSelected.current = defaultId !== null;
+    autoKey.current = `false/${defaultId ?? undefined}/undefined`;
+    void navigate(
+      `${defaultId ? `${base}/people/${defaultId}` : base}${canvasSearch(new URLSearchParams(search), { tab: 'new-person', add: null })}`,
+      { replace: true },
+    );
+  }, [newPerson, canAdd, treeId, defaultId, navigate, base, search]);
   useEffect(() => {
     if (autoFor.current === treeId) return;
     autoFor.current = treeId;
@@ -554,14 +568,7 @@ export function TreeWorkspace({
               </button>
             )}
             <div className="panel-selection" ref={selection}>
-              {newPerson && canAdd ? (
-                <AddPersonForm
-                  treeId={treeId}
-                  persons={persons}
-                  detail={detail}
-                  onCreated={changed}
-                />
-              ) : personId ? (
+              {personId ? (
                 <PersonPanel
                   key={personId}
                   treeId={treeId}
@@ -597,7 +604,6 @@ export function TreeWorkspace({
               </li>
             </ul>
             <TreeLinks
-              treeId={treeId}
               detail={detail}
               disconnected={disconnected}
               hrefOf={hrefOf}
@@ -748,6 +754,9 @@ export function TreeWorkspace({
           wide={treeDialog === 'members' || treeDialog === 'trash'}
         >
           {treeDialog === 'settings' && settings}
+          {treeDialog === 'new-person' && (
+            <AddPersonForm treeId={treeId} persons={persons} detail={detail} onCreated={changed} />
+          )}
           {treeDialog === 'members' && <MembersPanel treeId={treeId} />}
           {treeDialog === 'trash' && <TrashPanel treeId={treeId} onChanged={changed} />}
           {treeDialog === 'people' && (
@@ -781,6 +790,7 @@ const NO_PAIR = { from: null, to: null } as const;
 
 function dialogTitle(tab: TreeDialog, people: number): string {
   return {
+    'new-person': 'Add a person',
     members: 'Members and invites',
     trash: 'Trash',
     people: `All people (${people})`,
