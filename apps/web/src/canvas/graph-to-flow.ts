@@ -32,6 +32,8 @@ export interface Family {
   id: string;
   partnerIds: string[];
   childIds: string[];
+  /** Each shown child's link, for the `child:<link>` edge ids (lineage, Task 7). */
+  childLinks: { childId: string; linkId: string }[];
 }
 export interface Flow {
   nodes: CanvasNode[];
@@ -138,7 +140,12 @@ export function graphToFlow(
         ariaLabel: `${personName(byId.get(l.childId)!)}, child of ${names.join(' and ')}`,
       });
     }
-    families.push({ id: u.id, partnerIds, childIds: children.map((l) => l.childId) });
+    families.push({
+      id: u.id,
+      partnerIds,
+      childIds: children.map((l) => l.childId),
+      childLinks: children.map((l) => ({ childId: l.childId, linkId: l.id })),
+    });
     if (partnerIds.length === 2) {
       if (u.canEdit) for (const p of partnerIds) coupleIds.add(p);
       couples.push({

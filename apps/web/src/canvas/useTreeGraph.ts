@@ -1,6 +1,6 @@
 import type { GraphQuery, TreeGraph } from '@family-tree/shared';
 import type { Edge } from '@xyflow/react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { MESSAGES } from '../auth/api';
 import { useTreesApi } from '../trees/TreesApiContext';
 import { applyElkLayout, partnerHandles, toElkGraph } from './elk-graph';
@@ -21,6 +21,8 @@ export type TreeGraphState =
       edges: Edge[];
       families: Family[];
       couples: Couple[];
+      /** A new number for each layout, so the canvas refits only on a new layout. */
+      layoutKey: number;
     };
 
 /** Fetches the graph, maps it, lays it out. Stale responses are dropped. */
@@ -33,6 +35,7 @@ export function useTreeGraph(
   const api = useTreesApi();
   const engine = useLayoutEngine();
   const [state, setState] = useState<TreeGraphState>({ status: 'loading' });
+  const layouts = useRef(0);
   const { mode, focus, depth, branch } = query;
   const { focusId, meId } = ctx;
 
@@ -60,6 +63,7 @@ export function useTreeGraph(
           edges: partnerHandles(nodes, flow.edges),
           families: flow.families,
           couples: flow.couples,
+          layoutKey: ++layouts.current,
         });
       } catch (err) {
         if (!active) return;

@@ -41,6 +41,11 @@ export interface FamilyCanvasProps {
   families: Family[];
   /** Shown couples, for swapping sides and ordering partners by drag (brief #16). */
   couples?: Couple[];
+  /**
+   * Changes with each new layout (useTreeGraph's ready state): the canvas refits only then, never
+   * for a class-only change (highlight, lineage). Without it, every new `nodes` array refits.
+   */
+  layoutKey?: number;
   /** Centred after each layout in focus view; null in full view. */
   focusId: string | null;
   actions: Omit<CanvasActions, 'reveal'>; // keep it referentially stable
@@ -75,6 +80,7 @@ function CanvasInner({
   onReparent,
   couples,
   onCoupleChange,
+  layoutKey,
 }: FamilyCanvasProps) {
   const flow = useReactFlow<CanvasNode>();
   const pane = useRef<HTMLDivElement>(null);
@@ -87,8 +93,12 @@ function CanvasInner({
 
   // Whether the person moved or zoomed the view since the last fit (then a resize keeps their place).
   const userMoved = useRef(false);
+  // Read through a ref, so a class-only change of `nodes` doesn't make a new `fit` (and a refit).
+  const latest = useRef({ nodes, focusId });
+  latest.current = { nodes, focusId };
   /** Fit the drawing, then (focus view) centre on the focus person. */
   const fit = useCallback(async () => {
+    const { nodes, focusId } = latest.current;
     // With the minimap shown, keep the drawing clear of it (bottom right) and of the zoom
     // controls (bottom left), so no card sits under them.
     const padding = canvasSettings(nodes.length).showMiniMap
@@ -103,13 +113,14 @@ function CanvasInner({
       });
     }
     userMoved.current = false;
-  }, [flow, nodes, focusId]);
+  }, [flow]);
 
+  const layoutId = layoutKey ?? nodes;
   // After every new layout, and when the canvas changes width (the panel opening or closing beside
   // it): fit again, unless the person has moved the view since, in which case keep what was in the
   // middle in the middle.
   useEffect(() => {
-    if (nodes.length === 0) return;
+    if (latest.current.nodes.length === 0) return;
     let cancelled = false;
     // Let React Flow take the new nodes and its new size, and measure them, first (two frames):
     // fitting earlier used the previous bounds and could crop the drawing.
@@ -136,7 +147,7 @@ function CanvasInner({
       cancelled = true;
       observer.disconnect();
     };
-  }, [flow, nodes, fit]);
+  }, [flow, layoutId, fit]);
 
   const onNodeDragStop = useCallback(
     (_: unknown, node: CanvasNode) => {

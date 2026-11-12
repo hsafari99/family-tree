@@ -34,6 +34,7 @@ import {
   usePersonHref,
 } from '../../canvas/params';
 import { applyHighlight, type PathHighlight, pathHighlight } from '../../canvas/highlight';
+import { applyLineage, lineage } from '../../canvas/lineage';
 import { useTreeGraph } from '../../canvas/useTreeGraph';
 import { personName, ROLE_LABEL } from '../../trees/format';
 import { useTreesApi } from '../../trees/TreesApiContext';
@@ -277,13 +278,18 @@ export function TreeWorkspace({
   // However a dialog closes, focus goes back to its row (unless something else has it).
   useReturnFocus(relatedOpen, relatedRow);
   useReturnFocus(settingsOpen, settingsRow);
-  const drawn = useMemo(
-    () =>
-      ready && highlight
-        ? { ...ready, ...applyHighlight(ready.nodes, ready.edges, highlight) }
-        : ready,
-    [ready, highlight],
-  );
+  // A "How are we related?" path wins; otherwise the open person's direct line, only while the
+  // panel shows them (Escape collapses it and so clears the dimming; the URL keeps the person).
+  const linePerson = shown && personId !== undefined ? personId : null;
+  const drawn = useMemo(() => {
+    if (!ready) return ready;
+    if (highlight) return { ...ready, ...applyHighlight(ready.nodes, ready.edges, highlight) };
+    if (linePerson && ready.graph.persons.some((p) => p.id === linePerson)) {
+      const line = lineage(ready.families, linePerson);
+      return { ...ready, ...applyLineage(ready.nodes, ready.edges, line) };
+    }
+    return ready;
+  }, [ready, highlight, linePerson]);
   const offView =
     highlight !== null &&
     ready !== null &&
@@ -539,6 +545,7 @@ export function TreeWorkspace({
                   nodes={drawn.nodes}
                   edges={drawn.edges}
                   families={drawn.families}
+                  layoutKey={drawn.layoutKey}
                   focusId={view.mode === 'focus' ? focusId : null}
                   actions={actions}
                   selectedId={personId ?? null}

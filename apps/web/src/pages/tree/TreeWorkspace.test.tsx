@@ -439,6 +439,36 @@ describe('TreeWorkspace panel focus and keys', () => {
   });
 });
 
+describe('TreeWorkspace lineage', () => {
+  const node = (id: string) =>
+    document.querySelector(`.react-flow__node[data-id="p:${id}"]`) as HTMLElement | null;
+
+  it("dims everyone off the selected person's direct line", async () => {
+    const s = setup();
+    renderAt(`/trees/${s.id}/people/leo`, s);
+    await waitFor(() => expect(node('mia')).toHaveClass('is-dim'));
+    expect(node('leo')).toHaveClass('is-line');
+    expect(node('david')).toHaveClass('is-line');
+    expect(node('robert')).toHaveClass('is-line');
+  });
+
+  it('dims nothing while the panel is collapsed, or with nobody selected', async () => {
+    const s = unselected(setup());
+    renderAt(`/trees/${s.id}`, s);
+    await card(ROBERT);
+    expect(document.querySelector('.react-flow__node.is-dim')).toBeNull();
+  });
+
+  it('removes the dimming when Escape collapses the panel', async () => {
+    const s = setup();
+    renderAt(`/trees/${s.id}/people/leo`, s);
+    await waitFor(() => expect(node('mia')).toHaveClass('is-dim'));
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    await waitFor(() => expect(node('mia')).not.toHaveClass('is-dim'));
+    expect(document.querySelector('.react-flow__node.is-line')).toBeNull();
+  });
+});
+
 describe('TreeWorkspace relationships', () => {
   const SEX = {
     robert: 'male',

@@ -68,6 +68,10 @@ describe('graphToFlow', () => {
       id: 'u-dl',
       partnerIds: ['david', 'laura'],
       childIds: ['leo', 'mia'],
+      childLinks: [
+        { childId: 'leo', linkId: 'l-leo' },
+        { childId: 'mia', linkId: 'l-mia' },
+      ],
     });
     expect(
       graphToFlow(haleGraph({ leoOrder: 2, miaOrder: 1 }), ctx).families.find(
@@ -167,6 +171,10 @@ describe('graphToFlow with unknown parents (brief #11)', () => {
       id: 'u0',
       partnerIds: [],
       childIds: ['ann', 'ben'],
+      childLinks: [
+        { childId: 'ann', linkId: 'l-ann' },
+        { childId: 'ben', linkId: 'l-ben' },
+      ],
     });
   });
 

@@ -25,10 +25,10 @@ describe('assignGenerations', () => {
     const gens = assignGenerations({
       personIds: ['a', 'b', 'c', 'e', 'w'],
       families: [
-        { id: 'f1', partnerIds: ['a'], childIds: ['b'] },
-        { id: 'f2', partnerIds: ['b'], childIds: ['c'] },
-        { id: 'f3', partnerIds: ['c', 'e'], childIds: [] },
-        { id: 'f4', partnerIds: ['w'], childIds: ['e'] },
+        { id: 'f1', partnerIds: ['a'], childIds: ['b'], childLinks: [] },
+        { id: 'f2', partnerIds: ['b'], childIds: ['c'], childLinks: [] },
+        { id: 'f3', partnerIds: ['c', 'e'], childIds: [], childLinks: [] },
+        { id: 'f4', partnerIds: ['w'], childIds: ['e'], childLinks: [] },
       ],
     })!;
     expect(Object.fromEntries(gens)).toEqual({ a: 0, b: 1, c: 2, e: 2, w: 1 });
@@ -40,8 +40,8 @@ describe('assignGenerations', () => {
       assignGenerations({
         personIds: ['x', 'y', 'z'],
         families: [
-          { id: 'f1', partnerIds: ['x', 'y'], childIds: ['z'] },
-          { id: 'f2', partnerIds: ['x', 'z'], childIds: [] },
+          { id: 'f1', partnerIds: ['x', 'y'], childIds: ['z'], childLinks: [] },
+          { id: 'f2', partnerIds: ['x', 'z'], childIds: [], childLinks: [] },
         ],
       }),
     ).toBeNull();

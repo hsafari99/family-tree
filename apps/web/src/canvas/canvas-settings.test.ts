@@ -44,7 +44,9 @@ describe('canvas settings', () => {
   });
 
   it('computes the order after a drop, or null when unchanged', () => {
-    const families = [{ id: 'u-dl', partnerIds: ['david', 'laura'], childIds: ['leo', 'mia'] }];
+    const families = [
+      { id: 'u-dl', partnerIds: ['david', 'laura'], childIds: ['leo', 'mia'], childLinks: [] },
+    ];
     const x = (leo: number, mia: number) =>
       new Map([
         ['leo', leo],
