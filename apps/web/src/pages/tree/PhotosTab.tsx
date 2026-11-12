@@ -1,72 +1,18 @@
-import {
-  PHOTO_MEDIA_TYPES,
-  PHOTO_UPLOAD_MAX_BYTES,
-  type PhotoMediaType,
-} from '@family-tree/shared';
-import { useRef, useState } from 'react';
-import { MESSAGES, type Result } from '../../auth/api';
+import { PHOTO_MEDIA_TYPES } from '@family-tree/shared';
 import { ConfirmButton } from '../../components/ConfirmButton';
 import { FormError, Success } from '../../components/forms';
 import { PersonPhoto } from '../../components/PersonPhoto';
-import { type CropBox, cropToBlob } from '../../photos/crop';
 import { PhotoCropper } from '../../photos/PhotoCropper';
+import { usePhotoActions } from '../../photos/usePhotoActions';
 import { formatBytes, personName } from '../../trees/format';
-import { useTreesApi } from '../../trees/TreesApiContext';
 import type { TabProps } from './usePersonSave';
 
-export function PhotosTab({ treeId, view, reload, onChanged }: TabProps) {
-  const api = useTreesApi();
+export function PhotosTab(props: TabProps) {
+  const { view } = props;
   const canEdit = view.capabilities.edit;
-  const [file, setFile] = useState<File | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<string | null>(null);
-  const input = useRef<HTMLInputElement>(null);
+  const photos = usePhotoActions(props);
+  const { file, busy, error, done, input } = photos;
   const name = personName(view.person);
-
-  const finish = async (message: string) => {
-    setDone(message);
-    await reload();
-    onChanged();
-  };
-
-  function choose(f: File | undefined) {
-    setError(null);
-    setDone(null);
-    if (!f) return;
-    if (!PHOTO_MEDIA_TYPES.includes(f.type as PhotoMediaType)) return setError(MESSAGES.photoType);
-    if (f.size > PHOTO_UPLOAD_MAX_BYTES) return setError(MESSAGES.photoTooLarge);
-    setFile(f);
-  }
-
-  async function upload(box: CropBox | null) {
-    if (!file) return;
-    setBusy(true);
-    setError(null);
-    let body: Blob;
-    try {
-      body = await cropToBlob(file, box);
-    } catch {
-      setBusy(false);
-      return setError(MESSAGES.photoUnreadable);
-    }
-    const res = await api.uploadPhoto(treeId, view.person.id, body);
-    setBusy(false);
-    if (!res.ok) return setError(res.error.message);
-    setFile(null);
-    if (input.current) input.current.value = '';
-    await finish('Photo added');
-  }
-
-  async function act(call: Promise<Result<void>>, message: string) {
-    setBusy(true);
-    setError(null);
-    setDone(null);
-    const res = await call;
-    setBusy(false);
-    if (!res.ok) return setError(res.error.message);
-    await finish(message);
-  }
 
   return (
     <div className="photos-tab">
@@ -93,9 +39,7 @@ export function PhotosTab({ treeId, view, reload, onChanged }: TabProps) {
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() =>
-                        void act(api.setPrimaryPhoto(treeId, ph.id), 'Main photo changed')
-                      }
+                      onClick={() => void photos.makeMain(ph.id)}
                     >
                       Make main photo
                     </button>
@@ -105,7 +49,7 @@ export function PhotosTab({ treeId, view, reload, onChanged }: TabProps) {
                     confirmLabel="Delete photo"
                     danger
                     pending={busy}
-                    onConfirm={() => void act(api.deletePhoto(treeId, ph.id), 'Photo removed')}
+                    onConfirm={() => void photos.remove(ph.id)}
                   />
                 </p>
               )}
@@ -122,8 +66,8 @@ export function PhotosTab({ treeId, view, reload, onChanged }: TabProps) {
           <PhotoCropper
             file={file}
             busy={busy}
-            onDone={(b) => void upload(b)}
-            onCancel={() => setFile(null)}
+            onDone={(b) => void photos.upload(b)}
+            onCancel={photos.cancel}
           />
         ) : (
           <p>
@@ -133,7 +77,7 @@ export function PhotosTab({ treeId, view, reload, onChanged }: TabProps) {
                 ref={input}
                 type="file"
                 accept={PHOTO_MEDIA_TYPES.join(',')}
-                onChange={(e) => choose(e.target.files?.[0])}
+                onChange={(e) => photos.choose(e.target.files?.[0])}
               />
             </label>{' '}
             <span className="hint">

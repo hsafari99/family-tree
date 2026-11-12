@@ -240,3 +240,87 @@ describe('PhotosTab', () => {
     await waitFor(() => expect(region).toHaveTextContent(''));
   });
 });
+
+describe('the main photo in Details', () => {
+  const details = (s: { id: string }) => `/trees/${s.id}/people/${ada.id}?tab=info`;
+  const dialog = () => screen.findByRole('dialog', { name: 'Details — Ada King' });
+
+  it('shows the initials when there is no photo, and uploads one as the main photo', async () => {
+    const s = setup();
+    renderAt(details(s), s);
+    const d = within(await dialog());
+    const top = d.getByRole('group', { name: 'Main photo' });
+    expect(top.querySelector('.details-photo-img')).toHaveTextContent('AK');
+    expect(d.queryByRole('button', { name: 'Remove photo' })).toBeNull();
+    fireEvent.click(d.getByRole('button', { name: 'Change photo' }));
+    const f = file();
+    fireEvent.change(d.getByLabelText(/Upload a new photo/), { target: { files: [f] } });
+    loadCropper(400, 200);
+    fireEvent.click(d.getByRole('button', { name: 'Use the whole photo' }));
+    expect(await d.findByText('Main photo changed')).toBeInTheDocument();
+    expect(s.trees.callsTo('uploadPhoto')).toHaveLength(1);
+    expect(top.querySelector('img.details-photo-img')).toHaveAttribute(
+      'alt',
+      'Main photo of Ada King',
+    );
+  });
+
+  it('makes a newly uploaded photo main when there already was one', async () => {
+    const s = setup();
+    await seedPhotos(s, 1);
+    const seeded = s.trees.trees.get(s.id)!.people.get(ada.id)!.photos[0]!.id;
+    renderAt(details(s), s);
+    const d = within(await dialog());
+    fireEvent.click(d.getByRole('button', { name: 'Change photo' }));
+    fireEvent.change(d.getByLabelText(/Upload a new photo/), { target: { files: [file()] } });
+    loadCropper(400, 200);
+    fireEvent.click(d.getByRole('button', { name: 'Use the whole photo' }));
+    await d.findByText('Main photo changed');
+    const uploaded = s.trees.trees.get(s.id)!.people.get(ada.id)!.photos;
+    expect(uploaded).toHaveLength(2);
+    expect(s.trees.callsTo('setPrimaryPhoto')).toHaveLength(1);
+    const newest = s.trees.callsTo('setPrimaryPhoto')[0] as { photoId: string };
+    expect(newest.photoId).not.toBe(seeded);
+    expect(uploaded.find((p) => p.isPrimary)!.id).toBe(newest.photoId);
+  });
+
+  it('picks one of their other photos, or removes the main one', async () => {
+    const s = setup();
+    await seedPhotos(s, 2);
+    renderAt(details(s), s);
+    const d = within(await dialog());
+    fireEvent.click(d.getByRole('button', { name: 'Change photo' }));
+    const choices = d.getByRole('list', { name: 'Their other photos' });
+    expect(within(choices).getAllByRole('button')).toHaveLength(1);
+    fireEvent.click(within(choices).getByRole('button', { name: 'Use photo 2 as the main photo' }));
+    await d.findByText('Main photo changed');
+    expect(s.trees.callsTo('setPrimaryPhoto')).toHaveLength(1);
+    fireEvent.click(d.getByRole('button', { name: 'Remove photo' }));
+    fireEvent.click(d.getByRole('button', { name: 'Delete this photo' }));
+    await d.findByText('Photo removed');
+    expect(s.trees.callsTo('deletePhoto')).toHaveLength(1);
+  });
+
+  it('shows a viewer the photo without the controls', async () => {
+    const s = setup('viewer');
+    s.trees.trees.get(s.id)!.people.get(ada.id)!.photos.push({
+      id: 'ph-1',
+      width: 1,
+      height: 1,
+      bytes: 1,
+      isPrimary: true,
+      createdAt: new Date().toISOString(),
+      uploadedByName: null,
+      thumbUrl: 'https://photos.test/1/thumb',
+      fullUrl: 'https://photos.test/1/full',
+    });
+    renderAt(details(s), s);
+    const d = within(await dialog());
+    expect(d.getByRole('img', { name: 'Main photo of Ada King' })).toHaveAttribute(
+      'src',
+      'https://photos.test/1/thumb',
+    );
+    expect(d.queryByRole('button', { name: 'Change photo' })).toBeNull();
+    expect(d.queryByRole('button', { name: 'Remove photo' })).toBeNull();
+  });
+});

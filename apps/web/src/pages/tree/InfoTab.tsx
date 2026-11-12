@@ -24,6 +24,7 @@ import {
 import { EditIcon, TrashIcon } from '../../components/icons';
 import { formatFuzzyDate, lifeStatus, personName, SEX_LABEL } from '../../trees/format';
 import { DeletePerson } from './DeletePerson';
+import { MainPhoto } from './MainPhoto';
 import { type TabProps, usePersonSave } from './usePersonSave';
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
@@ -70,6 +71,7 @@ export function InfoTab(props: TabProps) {
 
   return (
     <div>
+      <MainPhoto {...props} />
       {s.saved && !editing && <Success>Saved</Success>}
       <Details person={view.person} />
       {/* One row: Edit on the left, Delete… on the right; each only when allowed. */}

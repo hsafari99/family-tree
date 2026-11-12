@@ -129,7 +129,8 @@ export function BranchStatus({
 
 /**
  * The tree-wide rows at the bottom of the side panel, in the same one-line row design as a
- * person's sections, with a trailing arrow for another page; a popup's row has none. Gated by what the member may do.
+ * person's sections, each with a chevron: it opens a dialog over the tree. Gated by what the
+ * member may do.
  */
 export function TreeLinks({
   detail,
