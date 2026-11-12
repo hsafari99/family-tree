@@ -31,6 +31,7 @@ import { FamilyEdge } from './FamilyEdge';
 import { PersonNode } from './PersonCard';
 import { reparentFromReconnect } from './reparent';
 import { UnionNode } from './UnionNode';
+import { useAnimatedNodes } from './useAnimatedNodes';
 
 const NODE_TYPES = { person: PersonNode, union: UnionNode } satisfies NodeTypes;
 const EDGE_TYPES = { family: FamilyEdge } satisfies EdgeTypes;
@@ -84,8 +85,8 @@ function CanvasInner({
 }: FamilyCanvasProps) {
   const flow = useReactFlow<CanvasNode>();
   const pane = useRef<HTMLDivElement>(null);
-  const [shown, setShown] = useState(nodes);
-  useEffect(() => setShown(nodes), [nodes]);
+  // Cards glide to their new places on a new layout (Task 9); a fit waits until they have.
+  const { shown, setShown, settled } = useAnimatedNodes(nodes);
   const onNodesChange = useCallback(
     (changes: NodeChange<CanvasNode>[]) => setShown((ns) => applyNodeChanges(changes, ns)),
     [],
@@ -126,6 +127,8 @@ function CanvasInner({
     // fitting earlier used the previous bounds and could crop the drawing.
     const refit = async () => {
       await nextFrame();
+      await settled();
+      await nextFrame();
       await nextFrame();
       if (!cancelled) await fit();
     };
@@ -147,7 +150,7 @@ function CanvasInner({
       cancelled = true;
       observer.disconnect();
     };
-  }, [flow, layoutId, fit]);
+  }, [flow, layoutId, fit, settled]);
 
   const onNodeDragStop = useCallback(
     (_: unknown, node: CanvasNode) => {
@@ -169,7 +172,7 @@ function CanvasInner({
         if (change) onCoupleChange(change);
       }
     },
-    [flow, families, nodes, onReorder, couples, onCoupleChange],
+    [flow, families, nodes, onReorder, couples, onCoupleChange, setShown],
   );
 
   // No local edge update: the reload after the API call redraws them.

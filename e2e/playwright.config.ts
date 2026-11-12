@@ -15,6 +15,8 @@ export default defineConfig({
     baseURL: WEB,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
+    // Cards glide to new places and the view flies to a person; tests read positions straight away.
+    reducedMotion: 'reduce',
     ...(PROD_LOCAL
       ? {
           // Caddy's local CA, and *.family.test → 127.0.0.1 without a hosts entry (decision 16).

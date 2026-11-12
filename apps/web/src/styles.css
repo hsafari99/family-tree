@@ -772,6 +772,17 @@ img.card-avatar {
   right: -12px;
   top: 4px;
 }
+/* A card or dot new to the layout fades in while the others glide (Task 9). */
+@media (prefers-reduced-motion: no-preference) {
+  .react-flow__node.is-entering {
+    animation: node-enter 320ms var(--ease) both;
+  }
+  @keyframes node-enter {
+    from {
+      opacity: 0;
+    }
+  }
+}
 /* A card's tooltip and "+" buttons draw over its neighbours while it is hovered or focused. */
 .react-flow__node-person:is(:hover, :focus-within) {
   z-index: 10 !important;
