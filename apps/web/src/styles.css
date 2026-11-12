@@ -590,12 +590,15 @@ img.card-photo {
   color: var(--accent);
   font-weight: 600;
 }
-/* Above the canvas: Focus | Full, then the search box, on one row (wrapping on a phone). */
+/* Across the workspace: Focus | Full, then the search box, on one row (wrapping on a phone). */
 .canvas-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem 1rem;
+  margin-bottom: 0.6rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--border);
 }
 .canvas-bar .search-box {
   flex: 0 1 26rem;
@@ -771,7 +774,8 @@ button.section-row > svg {
    settings); the panel scrolls on its own when it is taller. */
 .tree-workspace {
   --workspace-height: max(420px, calc(100dvh - var(--tree-top)));
-  --tree-top: 6.5rem;
+  /* The header, the page's padding and the bar above. */
+  --tree-top: 9.9rem;
 }
 .canvas-column {
   display: flex;
@@ -796,6 +800,10 @@ button.section-row > svg {
 }
 .tree-panel {
   height: var(--workspace-height);
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
   overflow: auto;
   /* A vertical scrollbar narrows the content box; nothing inside may force a sideways one. */
   overflow-x: hidden;
@@ -911,6 +919,11 @@ button.section-row:hover,
 a.section-row:hover {
   background: var(--surface);
 }
+/* The panel itself is on the surface colour: its rows light up with the page colour instead. */
+.tree-panel button.section-row:hover,
+.tree-panel a.section-row:hover {
+  background: Canvas;
+}
 .section-row-title {
   flex: 1;
   min-width: 0;
@@ -1017,6 +1030,9 @@ a.section-row:hover {
     height: auto;
     max-height: 65vh;
     background: Canvas;
+    border: 0;
+    border-top: 1px solid var(--border);
+    border-radius: 0;
     border-top-left-radius: 14px;
     border-top-right-radius: 14px;
     box-shadow: 0 -4px 16px rgb(0 0 0 / 20%);

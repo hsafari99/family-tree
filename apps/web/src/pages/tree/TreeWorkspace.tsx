@@ -342,6 +342,12 @@ export function TreeWorkspace({
 
   return (
     <>
+      {/* Across the whole workspace, above the panel and the canvas (so search works on a phone
+          without opening the sheet). */}
+      <div className="canvas-bar">
+        <ViewLinks params={view} />
+        <SearchBox treeId={treeId} persons={persons} meId={detail.me.personId} />
+      </div>
       <PhotoRefreshContext.Provider value={refreshPhotos}>
         <div className={shown ? 'tree-workspace has-panel' : 'tree-workspace has-rail'}>
           {/* Kept mounted while collapsed, so a half-filled form survives hiding the panel. */}
@@ -441,11 +447,6 @@ export function TreeWorkspace({
             </div>
           )}
           <div className="canvas-column">
-            {/* Above the canvas, so search works on a phone without opening the sheet. */}
-            <div className="canvas-bar">
-              <ViewLinks params={view} />
-              <SearchBox treeId={treeId} persons={persons} meId={detail.me.personId} />
-            </div>
             {notice && (
               <p role="status" className="notice">
                 {notice}
