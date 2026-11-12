@@ -58,6 +58,15 @@ export function formatFuzzyDate(d: FuzzyDate | null): string {
   }
 }
 
+/** The Details "Status" row: "Living", "Deceased on 3 May 1998", "Deceased about 1998"… */
+export function lifeStatus(isLiving: boolean, deathDate: FuzzyDate | null): string {
+  if (isLiving) return 'Living';
+  if (!deathDate) return 'Deceased (date unknown)';
+  if (deathDate.qualifier !== 'exact') return `Deceased ${formatFuzzyDate(deathDate)}`;
+  const exactDay = deathDate.date1.split('-').length === 3;
+  return `Deceased ${exactDay ? 'on' : 'in'} ${formatFuzzyDate(deathDate)}`;
+}
+
 export const SEX_LABEL = {
   female: 'Female',
   male: 'Male',
@@ -98,7 +107,7 @@ export const FIELD_LABEL: Record<string, string> = {
   deathDate: 'Death date',
   deathPlace: 'Death place',
   causeOfDeath: 'Cause of death',
-  isLiving: 'Living',
+  isLiving: 'Status',
   occupation: 'Occupation',
   education: 'Education',
   biography: 'Biography',
@@ -141,9 +150,11 @@ export const ACTION_LABEL: Record<AuditAction, string> = {
   'invite.create': 'Invite created',
   'invite.revoke': 'Invite revoked',
 };
-/** A History value as text: dates formatted, booleans as Yes/No, empty as "(empty)". */
-export function formatValue(v: unknown): string {
+/** A History value as text: dates formatted, booleans as Yes/No (Status as Living/Deceased),
+ *  empty as "(empty)". */
+export function formatValue(v: unknown, field?: string): string {
   if (v === null || v === undefined || v === '') return '(empty)';
+  if (field === 'isLiving' && typeof v === 'boolean') return v ? 'Living' : 'Deceased';
   if (typeof v === 'boolean') return v ? 'Yes' : 'No';
   if (typeof v === 'object' && 'qualifier' in v) return formatFuzzyDate(v as FuzzyDate);
   return String(v);

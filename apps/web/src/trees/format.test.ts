@@ -4,7 +4,9 @@ import {
   countPeople,
   formatBytes,
   formatFuzzyDate,
+  formatValue,
   initials,
+  lifeStatus,
   personName,
   personYears,
   timeAgo,
@@ -43,6 +45,34 @@ describe('formatFuzzyDate', () => {
     expect(formatFuzzyDate({ qualifier: 'between', date1: '1950', date2: '1955' })).toBe(
       'between 1950 and 1955',
     );
+  });
+});
+
+describe('lifeStatus', () => {
+  it('says living or deceased, with the death date in words', () => {
+    expect(lifeStatus(true, null)).toBe('Living');
+    expect(lifeStatus(false, null)).toBe('Deceased (date unknown)');
+    expect(lifeStatus(false, { qualifier: 'exact', date1: '1998-05-03' })).toBe(
+      'Deceased on 3 May 1998',
+    );
+    expect(lifeStatus(false, { qualifier: 'exact', date1: '1998-05' })).toBe(
+      'Deceased in May 1998',
+    );
+    expect(lifeStatus(false, { qualifier: 'exact', date1: '1998' })).toBe('Deceased in 1998');
+    expect(lifeStatus(false, { qualifier: 'about', date1: '1998' })).toBe('Deceased about 1998');
+    expect(lifeStatus(false, { qualifier: 'before', date1: '1998' })).toBe('Deceased before 1998');
+    expect(lifeStatus(false, { qualifier: 'after', date1: '1998-05-03' })).toBe(
+      'Deceased after 3 May 1998',
+    );
+    expect(lifeStatus(false, { qualifier: 'between', date1: '1990', date2: '1998' })).toBe(
+      'Deceased between 1990 and 1998',
+    );
+  });
+
+  it('History names the field Status, with Living or Deceased as its values', () => {
+    expect(formatValue(true, 'isLiving')).toBe('Living');
+    expect(formatValue(false, 'isLiving')).toBe('Deceased');
+    expect(formatValue(true)).toBe('Yes');
   });
 });
 

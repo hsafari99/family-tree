@@ -38,8 +38,8 @@ export function HistoryTab({ treeId, personId }: { treeId: string; personId: str
             <ul>
               {e.changes.map((c) => (
                 <li key={c.field}>
-                  {FIELD_LABEL[c.field] ?? c.field}: {formatValue(c.before)} →{' '}
-                  {formatValue(c.after)}
+                  {FIELD_LABEL[c.field] ?? c.field}: {formatValue(c.before, c.field)} →{' '}
+                  {formatValue(c.after, c.field)}
                 </li>
               ))}
             </ul>

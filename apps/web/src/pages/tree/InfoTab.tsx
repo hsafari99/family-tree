@@ -21,7 +21,7 @@ import {
   validate,
   type FieldErrors,
 } from '../../components/forms';
-import { formatFuzzyDate, personName, SEX_LABEL } from '../../trees/format';
+import { formatFuzzyDate, lifeStatus, personName, SEX_LABEL } from '../../trees/format';
 import { DeletePerson } from './DeletePerson';
 import { type TabProps, usePersonSave } from './usePersonSave';
 
@@ -40,9 +40,7 @@ function Details({ person }: { person: PersonView['person'] }) {
       <Row label="Name">{personName(person)}</Row>
       <Row label="Sex">{SEX_LABEL[person.sex]}</Row>
       {person.birthDate && <Row label="Born">{formatFuzzyDate(person.birthDate)}</Row>}
-      <Row label="Died">
-        {person.isLiving ? 'Living' : formatFuzzyDate(person.deathDate) || 'Not given'}
-      </Row>
+      <Row label="Status">{lifeStatus(person.isLiving, person.deathDate)}</Row>
       {person.causeOfDeath && <Row label="Cause of death">{person.causeOfDeath}</Row>}
       {person.occupation && <Row label="Occupation">{person.occupation}</Row>}
       {person.education && <Row label="Education">{person.education}</Row>}
@@ -123,8 +121,8 @@ const INFO_LABELS: Record<string, string> = {
   nickname: 'Nickname',
   sex: 'Sex',
   birthDate: 'Born',
-  deathDate: 'Died',
-  isLiving: 'Living',
+  deathDate: 'Date of death',
+  isLiving: 'Status',
   causeOfDeath: 'Cause of death',
   occupation: 'Occupation',
   education: 'Education',
@@ -173,8 +171,13 @@ function norm(f: Form, k: FormKey): string {
   return typeof v === 'string' ? v.trim() : String(v);
 }
 
-/** The fields the user changed compared with `p`. */
-function changedKeys(f: Form, p: Person): FormKey[] {
+const NO_DATE = toDraft(null);
+/** What is saved: a living person's (hidden) death fields are cleared. */
+const effective = (f: Form): Form => (f.isLiving ? { ...f, death: NO_DATE, causeOfDeath: '' } : f);
+
+/** The fields the user changed compared with `p` (as saved: see `effective`). */
+function changedKeys(form: Form, p: Person): FormKey[] {
+  const f = effective(form);
   const base = toForm(p);
   return (Object.keys(f) as FormKey[]).filter((k) => norm(f, k) !== norm(base, k));
 }
@@ -221,16 +224,17 @@ function InfoForm({
     e.preventDefault();
     const changed = changedKeys(form, p);
     if (changed.length === 0) return onClose();
-    const incomplete = draftErrors({ birthDate: form.birth, deathDate: form.death });
+    const out = effective(form);
+    const incomplete = draftErrors({ birthDate: out.birth, deathDate: out.death });
     if (Object.keys(incomplete).length > 0) return setErrors(incomplete);
     const v = validate(updatePersonSchema, {
       version: p.version,
-      ...Object.fromEntries(TEXT_KEYS.map((k) => [k, form[k]])),
-      sex: form.sex,
+      ...Object.fromEntries(TEXT_KEYS.map((k) => [k, out[k]])),
+      sex: out.sex,
       // Only a changed date is checked: a stored one (even a wrong one) never blocks a save.
-      ...(changed.includes('birth') ? { birthDate: fromDraft(form.birth) } : {}),
-      ...(changed.includes('death') ? { deathDate: fromDraft(form.death) } : {}),
-      isLiving: form.isLiving,
+      ...(changed.includes('birth') ? { birthDate: fromDraft(out.birth) } : {}),
+      ...(changed.includes('death') ? { deathDate: fromDraft(out.death) } : {}),
+      isLiving: out.isLiving,
     });
     if (!v.ok) return setErrors(v.errors);
     const data = v.data as Record<string, unknown>;
@@ -301,6 +305,36 @@ function InfoForm({
           ))}
         </select>
       </div>
+      {/* Living | Deceased, before the dates; Deceased shows the death fields (hidden ones are
+          cleared on save). */}
+      <fieldset
+        className="field status-field"
+        role="radiogroup"
+        aria-describedby={errors.isLiving ? `${uid}-isLiving-error` : undefined}
+      >
+        <legend>Status</legend>
+        <div className="segmented">
+          {([true, false] as const).map((living) => (
+            <label key={String(living)} className="segment">
+              <input
+                type="radio"
+                name={`${uid}-status`}
+                // The error summary jumps to the chosen option.
+                data-field={living === isLiving ? 'isLiving' : undefined}
+                aria-invalid={errors.isLiving ? true : undefined}
+                checked={living === isLiving}
+                onChange={() => set('isLiving')(living)}
+              />
+              {living ? 'Living' : 'Deceased'}
+            </label>
+          ))}
+        </div>
+        {errors.isLiving && (
+          <p id={`${uid}-isLiving-error`} className="field-error">
+            {errors.isLiving}
+          </p>
+        )}
+      </fieldset>
       <FuzzyDateField
         label="Born"
         name="birthDate"
@@ -308,31 +342,18 @@ function InfoForm({
         onChange={set('birth')}
         error={errors.birthDate}
       />
-      <FuzzyDateField
-        label="Died"
-        name="deathDate"
-        value={death}
-        onChange={set('death')}
-        error={errors.deathDate}
-      />
-      <div className="field">
-        <label>
-          <input
-            type="checkbox"
-            data-field="isLiving"
-            aria-describedby={errors.isLiving ? `${uid}-isLiving-error` : undefined}
-            checked={isLiving}
-            onChange={(e) => set('isLiving')(e.target.checked)}
-          />{' '}
-          Living
-        </label>
-        {errors.isLiving && (
-          <p id={`${uid}-isLiving-error`} className="field-error">
-            {errors.isLiving}
-          </p>
-        )}
-      </div>
-      {field('causeOfDeath', 'Cause of death')}
+      {!isLiving && (
+        <>
+          <FuzzyDateField
+            label="Date of death (optional)"
+            name="deathDate"
+            value={death}
+            onChange={set('death')}
+            error={errors.deathDate}
+          />
+          {field('causeOfDeath', 'Cause of death (optional)')}
+        </>
+      )}
       {field('occupation', 'Occupation')}
       {field('education', 'Education')}
       {area('biography', 'Biography')}

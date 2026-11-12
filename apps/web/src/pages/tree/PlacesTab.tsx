@@ -50,7 +50,7 @@ const placeFields = (box: boolean): Record<string, { field: string; message: str
 });
 
 type Kind = 'birth' | 'lived' | 'death';
-const BADGE: Record<Kind, string> = { birth: 'Born', lived: 'Lived', death: 'Died' };
+const BADGE: Record<Kind, string> = { birth: 'Born', lived: 'Lived', death: 'Deceased' };
 
 interface Row {
   key: string;

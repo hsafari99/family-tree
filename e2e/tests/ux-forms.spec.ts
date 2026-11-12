@@ -148,14 +148,14 @@ test('dates with a calendar and a precision, and a death place on a living perso
   await openSection(page, 'Details');
   await expect(details).not.toContainText('Living');
 
-  // #4: "Died" at month precision.
+  // #4: the date of death at month precision.
   await page.getByRole('button', { name: 'Edit details' }).click();
-  const died = page.getByRole('group', { name: 'Died' });
+  const died = page.getByRole('group', { name: 'Date of death (optional)' });
   await died.getByLabel('Precision').selectOption('month');
   await died.getByLabel('Year').fill('2001');
   await died.getByLabel('Month').selectOption({ label: 'March' });
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(details).toContainText('March 2001');
+  await expect(details).toContainText('Deceased in March 2001');
 });
 
 test('home sends a signed-out visitor to sign in, and shows a signed-in user their trees', async ({

@@ -65,7 +65,7 @@ describe('PlacesTab (brief #7)', () => {
     const s = full();
     renderAt(at(s), s);
     await screen.findByRole('list', { name: 'Places' });
-    expect(rowsText()).toEqual(['BornLeeds1950', 'LivedYork1970–1980', 'DiedHull']);
+    expect(rowsText()).toEqual(['BornLeeds1950', 'LivedYork1970–1980', 'DeceasedHull']);
     for (const p of ['Leeds', 'York', 'Hull']) {
       expect(screen.getAllByRole('button', { name: `More actions for ${p}` })).toHaveLength(1);
     }
@@ -264,7 +264,7 @@ describe('PlacesTab (brief #7)', () => {
       expect(s.trees.callsTo('updatePerson')).toMatchObject([
         { input: { version: 1, deathPlace: 'Leeds', isLiving: false } },
       ]);
-      expect(rowsText()).toEqual(['DiedLeeds']);
+      expect(rowsText()).toEqual(['DeceasedLeeds']);
     });
 
     it('a deceased person gets no box', async () => {
