@@ -25,3 +25,26 @@ test('the fan chart shows the parents, opens a grandparent, and adds a parent', 
   await fan.getByRole('button', { name: 'Add a parent of Margaret Hale' }).first().click();
   await expect(page.getByRole('form', { name: 'Add parent' })).toBeVisible();
 });
+
+test('the illustrated tree grows from the oldest ancestor and opens a child', async ({ page }) => {
+  await page.goto(`${treeUrl()}?view=tree`);
+  const tree = page.getByRole('group', { name: /^Illustrated tree of .+’s descendants$/ });
+  await expect(tree).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Tree', exact: true })).toHaveAttribute(
+    'aria-current',
+    'true',
+  );
+  await expect(tree.getByRole('button', { name: /^Robert Hale, / })).toBeVisible();
+  await expect(tree.getByRole('button', { name: /^David Hale, / })).toBeVisible();
+  await tree.getByRole('button', { name: /^David Hale, / }).click();
+  const panel = page.getByRole('complementary', { name: 'Details' });
+  await expect(panel.getByRole('heading', { level: 2, name: /David Hale/ })).toBeVisible();
+  await expect(tree.getByRole('button', { name: /^David Hale, / })).toHaveClass(/is-selected/);
+  // Opening someone doesn't move the tree; "Grow the tree from here" does.
+  await expect(tree.getByRole('button', { name: /^Robert Hale, / })).toBeVisible();
+  await panel.getByRole('button', { name: 'Grow the tree from here' }).click();
+  await expect(page).toHaveURL(/focus=/);
+  await expect(
+    page.getByRole('group', { name: 'Illustrated tree of David Hale’s descendants' }),
+  ).toBeVisible();
+});

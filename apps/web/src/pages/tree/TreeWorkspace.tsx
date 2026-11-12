@@ -29,6 +29,8 @@ import { BranchStatus, DepthControl, TreeLinks, ViewLinks } from '../../canvas/T
 import type { CoupleChange } from '../../canvas/couples';
 import { FamilyCanvas } from '../../canvas/FamilyCanvas';
 import { FanChart } from '../../canvas/fan/FanChart';
+import { IllustratedTree } from '../../canvas/tree/IllustratedTree';
+import { useTreeAnchor } from '../../canvas/tree/useTreeAnchor';
 import {
   type CanvasChange,
   canvasSearch,
@@ -85,9 +87,19 @@ export function TreeWorkspace({
   // Focus view centres on: an explicit focus, else the selected person, else the root (decision 10).
   // The fan and the tree grow from an explicit focus, else you, else the root, so opening someone
   // from them doesn't move the picture.
+  // The tree without a named person grows from your (or the root's) oldest ancestor on the first
+  // parent's line, so it has branches to show.
+  const lineStart = detail.me.personId ?? detail.tree.rootPersonId;
+  const treeAnchor = useTreeAnchor(
+    treeId,
+    lineStart,
+    view.gens,
+    view.view === 'tree' && !view.focus,
+  );
+  const anchorPending = view.view === 'tree' && !view.focus && lineStart !== null && !treeAnchor;
   const focusId = onCanvas
     ? (view.focus ?? personId ?? detail.tree.rootPersonId)
-    : (view.focus ?? detail.me.personId ?? detail.tree.rootPersonId);
+    : (view.focus ?? (view.view === 'tree' ? treeAnchor : null) ?? lineStart);
   const mode = graphModeOf(view.view);
   const query: GraphQuery =
     mode === 'full'
@@ -374,7 +386,7 @@ export function TreeWorkspace({
   const panel = useRef<HTMLElement>(null);
   // A fan or a tree wider than the screen (a phone) starts scrolled to its middle.
   const lineView = useRef<HTMLDivElement>(null);
-  const lineKey = ready && !onCanvas ? `${view.view}/${focusId}/${view.gens}` : null;
+  const lineKey = ready && !onCanvas ? `${view.view}/${focusId}/${ready.layoutKey}` : null;
   useEffect(() => {
     const el = lineView.current;
     if (el && lineKey) el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2;
@@ -650,7 +662,8 @@ export function TreeWorkspace({
               {onCanvas && ready && !ready.graph.needsBranch && ready.nodes.length === 0 && (
                 <p>No one to show yet.</p>
               )}
-              {!onCanvas && ready && focusId && (
+              {!onCanvas && anchorPending && <CanvasSkeleton />}
+              {!onCanvas && !anchorPending && ready && focusId && (
                 <div className="line-view" data-view={view.view} ref={lineView}>
                   {view.view === 'fan' ? (
                     <FanChart
@@ -662,7 +675,15 @@ export function TreeWorkspace({
                       onAdd={actions.addRelative}
                       onRecentre={recentre}
                     />
-                  ) : null}
+                  ) : (
+                    <IllustratedTree
+                      graph={ready.graph}
+                      rootId={focusId}
+                      gens={view.gens}
+                      selectedId={personId ?? null}
+                      onOpen={actions.openPerson}
+                    />
+                  )}
                 </div>
               )}
               {offView && (

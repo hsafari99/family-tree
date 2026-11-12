@@ -466,6 +466,23 @@ describe('TreeWorkspace fan and tree views (Task 17)', () => {
     expect(screen.getByLabelText('Generations')).toHaveAttribute('max', '6');
   });
 
+  it('the tree without a focus grows from your oldest ancestor, and draws everyone', async () => {
+    const s = setup({ graph: { mode: 'descendants' } });
+    s.t.detail.me.personId = 'leo';
+    renderAt(`/trees/${s.id}/people/leo?view=tree`, s);
+    await waitFor(() =>
+      expect(graphCalls(s.trees)).toContainEqual({
+        mode: 'descendants',
+        focus: 'robert',
+        generations: 4,
+      }),
+    );
+    expect(
+      await screen.findByRole('group', { name: 'Illustrated tree of Robert Hale’s descendants' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Grow the tree from here' })).toBeInTheDocument();
+  });
+
   it('the tree fetches descendants of the URL focus, with 4 generations by default', async () => {
     const s = setup({ graph: { mode: 'descendants' } });
     renderAt(`/trees/${s.id}/people/leo?view=tree&focus=robert`, s);

@@ -3026,3 +3026,69 @@ button.section-row {
   font-size: 14px;
   font-weight: 650;
 }
+.illustrated-tree {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: calc(var(--tree-width) * 0.7);
+  min-height: 320px;
+}
+@media (max-width: 720px) {
+  .illustrated-tree {
+    min-width: calc(var(--tree-width) * 0.9);
+  }
+}
+.tree-notice {
+  margin: 0 0 var(--space-2);
+}
+.tree-ground {
+  fill: var(--bark);
+  opacity: 0.18;
+}
+.tree-canopy circle {
+  fill: var(--canopy);
+  opacity: 0.45;
+}
+.tree-bark {
+  fill: none;
+  stroke: var(--bark);
+  stroke-linecap: round;
+}
+.tree-person {
+  cursor: pointer;
+}
+.tree-person text {
+  pointer-events: none;
+}
+.tree-person:focus {
+  outline: none;
+}
+.tree-person:focus-visible .svg-av {
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+.tree-sel {
+  fill: none;
+  stroke: var(--ring);
+  stroke-width: 3;
+}
+.tree-name {
+  fill: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+.tree-years,
+.tree-partner {
+  fill: var(--ink-2);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+/* A halo in the page colour, so names stay readable over the bark and the canopy. */
+.tree-name,
+.tree-years,
+.tree-partner {
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
