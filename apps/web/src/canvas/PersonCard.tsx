@@ -2,7 +2,10 @@ import type { GraphPerson, RelativeRole } from '@family-tree/shared';
 import { Handle, type NodeProps, Position, type ReactFlowState, useStore } from '@xyflow/react';
 import { PersonPhoto } from '../components/PersonPhoto';
 import { initials, personName, personYears } from '../trees/format';
+import { useRef } from 'react';
+import type { MenuItem } from '../components/MenuList';
 import { avatarTone } from './avatar-tone';
+import { CardMenu, cardMenuItems, useCardMenu } from './CardMenu';
 import { type CardDetail, cardDetail } from './canvas-settings';
 import { useCanvasActions, useSelectionStore } from './CanvasActions';
 import { useIsSelected } from './selection';
@@ -26,6 +29,7 @@ export function PersonCardView({
   onOpen,
   onAdd,
   onFocus,
+  menu,
 }: {
   person: GraphPerson;
   detail: CardDetail;
@@ -37,7 +41,11 @@ export function PersonCardView({
   onOpen: () => void;
   onAdd: (as: RelativeRole) => void;
   onFocus?: () => void;
+  /** The card's menu (right-click, long-press, Shift+F10); none without it. */
+  menu?: MenuItem[];
 }) {
+  const openButton = useRef<HTMLButtonElement>(null);
+  const cardMenu = useCardMenu(() => openButton.current);
   const name = personName(person);
   const years = personYears(person);
   const deceased = !person.isLiving;
@@ -71,7 +79,7 @@ export function PersonCardView({
     </span>
   );
   return (
-    <div className={cls} onFocus={onFocus}>
+    <div className={cls} onFocus={onFocus} {...(menu ? cardMenu.handlers : {})}>
       {detail === 'full' ? (
         <PersonPhoto
           url={person.photoThumbUrl}
@@ -87,10 +95,14 @@ export function PersonCardView({
       )}
       <button
         type="button"
+        ref={openButton}
         className="card-open nodrag"
         data-person-id={person.id}
         aria-label={label}
-        onClick={onOpen}
+        onClick={() => {
+          if (!cardMenu.swallowClick()) onOpen();
+        }}
+        onKeyDown={menu ? cardMenu.onKeyDown : undefined}
       >
         {detail === 'full' && (
           <>
@@ -128,6 +140,17 @@ export function PersonCardView({
             +
           </button>
         ))}
+      {menu && cardMenu.at && (
+        <CardMenu
+          label={`Actions for ${name}`}
+          items={menu}
+          at={cardMenu.at}
+          onClose={(refocus) => {
+            cardMenu.close();
+            if (refocus) openButton.current?.focus();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -162,6 +185,7 @@ export function PersonNode({ data }: NodeProps<PersonFlowNode>) {
         onOpen={() => actions.openPerson(id)}
         onAdd={(as) => actions.addRelative(id, as)}
         onFocus={() => actions.reveal(id)}
+        menu={cardMenuItems(data.person, actions)}
       />
       {/* Bottom: children's and elbow partner lines; the sides: straight partner lines (Task 6). */}
       {(['bottom', 'left', 'right'] as const).map((id) => (

@@ -30,6 +30,8 @@ const actions = () => ({
   openPerson: vi.fn(),
   addRelative: vi.fn(),
   openUnion: vi.fn(),
+  focusPerson: vi.fn(),
+  howRelated: vi.fn(),
 });
 const DAVID = { name: 'David Hale, b. 1956', hidden: true };
 const DOT = 'Relationship of David Hale and Laura Chen (Married)';

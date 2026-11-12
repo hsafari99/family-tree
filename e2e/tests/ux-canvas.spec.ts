@@ -277,6 +277,24 @@ test('choosing a search result flies the canvas to their card', async ({ page })
     .toBeLessThan(80);
 });
 
+test('right-click a card for its menu: Add child opens the add form', async ({ page }) => {
+  await newTree(page, 'Men', 'U');
+  await card(page, 'Men U').click({ button: 'right' });
+  const menu = page.getByRole('menu', { name: 'Actions for Men U' });
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole('menuitem').first()).toBeFocused();
+  // Escape closes the menu only: the panel stays open.
+  await page.keyboard.press('Escape');
+  await expect(menu).toBeHidden();
+  await expect(card(page, 'Men U')).toBeFocused();
+  await expect(page.getByRole('complementary', { name: 'Details' })).toBeVisible();
+  // Shift+F10 on the focused card opens it too.
+  await page.keyboard.press('Shift+F10');
+  await expect(menu).toBeVisible();
+  await menu.getByRole('menuitem', { name: 'Add child' }).click();
+  await expect(page.getByRole('form', { name: 'Add child' })).toBeVisible();
+});
+
 test.describe('on a phone', () => {
   test.use({ viewport: { width: 390, height: 844 } });
 

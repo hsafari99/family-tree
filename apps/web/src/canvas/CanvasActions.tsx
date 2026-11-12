@@ -1,9 +1,10 @@
 import type { RelativeRole } from '@family-tree/shared';
 import { createContext, useContext } from 'react';
+import type { CardMenuActions } from './CardMenu';
 import type { SelectionStore } from './selection';
 
 /** What a card or dot can do; the canvas supplies `reveal` and `flyTo`, the page the rest. */
-export interface CanvasActions {
+export interface CanvasActions extends CardMenuActions {
   openPerson(personId: string): void;
   addRelative(personId: string, as: RelativeRole): void;
   openUnion(unionId: string): void;

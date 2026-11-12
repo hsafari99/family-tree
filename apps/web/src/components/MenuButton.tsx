@@ -1,6 +1,6 @@
 import {
-  type KeyboardEvent,
   type ReactNode,
+  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
@@ -8,15 +8,10 @@ import {
   useState,
 } from 'react';
 import { MoreIcon } from './icons';
+import { focusMenuItem, type MenuItem, MenuList, useCloseOnOutside } from './MenuList';
 
-export interface MenuItem {
-  label: string;
-  onSelect: () => void;
-  danger?: boolean;
-  disabled?: boolean;
-}
+export type { MenuItem } from './MenuList';
 
-const ITEMS = '[role="menuitem"]:not(:disabled)';
 const GAP = 4;
 const EDGE = 8;
 
@@ -82,62 +77,15 @@ export function MenuButton({
     list.style.left = `${left}px`;
   }, [open]);
 
-  const focusItem = (i: number) => {
-    const els = menu.current?.querySelectorAll<HTMLButtonElement>(ITEMS);
-    if (!els || els.length === 0) return;
-    els[(i + els.length) % els.length]!.focus();
-  };
-  const close = (refocus: boolean) => {
+  const close = useCallback((refocus: boolean) => {
     setOpen(false);
     if (refocus) trigger.current?.focus();
-  };
-
+  }, []);
+  const dismiss = useCallback(() => setOpen(false), []);
+  useCloseOnOutside(open, menu, dismiss, trigger);
   useEffect(() => {
-    if (!open) return;
-    focusItem(0);
-    const onDown = (e: MouseEvent) => {
-      const t = e.target as Node;
-      if (!menu.current?.contains(t) && !trigger.current?.contains(t)) setOpen(false);
-    };
-    // A fixed menu would drift away from its trigger on scroll or resize, so close it instead.
-    const onMove = (e: Event) => {
-      if (e.target instanceof Node && menu.current?.contains(e.target)) return;
-      setOpen(false);
-    };
-    document.addEventListener('mousedown', onDown);
-    window.addEventListener('scroll', onMove, true);
-    window.addEventListener('resize', onMove);
-    return () => {
-      document.removeEventListener('mousedown', onDown);
-      window.removeEventListener('scroll', onMove, true);
-      window.removeEventListener('resize', onMove);
-    };
+    if (open) focusMenuItem(menu.current, 0);
   }, [open]);
-
-  const onMenuKey = (e: KeyboardEvent) => {
-    const els = [...(menu.current?.querySelectorAll<HTMLButtonElement>(ITEMS) ?? [])];
-    const at = els.indexOf(document.activeElement as HTMLButtonElement);
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      focusItem(at + 1);
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      focusItem(at < 0 ? -1 : at - 1);
-    } else if (e.key === 'Home') {
-      e.preventDefault();
-      focusItem(0);
-    } else if (e.key === 'End') {
-      e.preventDefault();
-      focusItem(els.length - 1);
-    } else if (e.key === 'Escape') {
-      // Keep the panel's own Escape-to-close from firing as well.
-      e.preventDefault();
-      e.stopPropagation();
-      close(true);
-    } else if (e.key === 'Tab') {
-      setOpen(false);
-    }
-  };
 
   const visible = text !== label;
   return (
@@ -160,34 +108,7 @@ export function MenuButton({
       >
         {visible ? <span aria-hidden="true">{text}</span> : text}
       </button>
-      {open && (
-        <ul
-          id={id}
-          role="menu"
-          aria-label={label}
-          ref={menu}
-          className="menu-list"
-          onKeyDown={onMenuKey}
-        >
-          {items.map((it) => (
-            <li key={it.label} role="none">
-              <button
-                type="button"
-                role="menuitem"
-                tabIndex={-1}
-                disabled={it.disabled}
-                className={it.danger ? 'menu-item danger-text' : 'menu-item'}
-                onClick={() => {
-                  close(true);
-                  it.onSelect();
-                }}
-              >
-                {it.label}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      {open && <MenuList id={id} label={label} items={items} listRef={menu} onClose={close} />}
     </span>
   );
 }

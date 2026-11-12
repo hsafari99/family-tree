@@ -33,7 +33,13 @@ async function laidOut() {
   const laid = await new FakeLayoutEngine().layout(toElkGraph(flow, null));
   return { ...flow, nodes: applyElkLayout(flow.nodes, laid, flow.couples, flow.blood) };
 }
-const actions = { openPerson: vi.fn(), addRelative: vi.fn(), openUnion: vi.fn() };
+const actions = {
+  openPerson: vi.fn(),
+  addRelative: vi.fn(),
+  openUnion: vi.fn(),
+  focusPerson: vi.fn(),
+  howRelated: vi.fn(),
+};
 const frames = (n: number) =>
   new Promise<void>((resolve) => {
     const step = (k: number) => (k === 0 ? resolve() : requestAnimationFrame(() => step(k - 1)));

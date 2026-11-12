@@ -580,6 +580,41 @@ describe('TreeWorkspace relationships', () => {
   });
 });
 
+describe('TreeWorkspace card menu (Task 11)', () => {
+  const menuOf = async (name: string) => {
+    fireEvent.contextMenu(await card(name));
+    return screen.findByRole('menu', { name: /^Actions for / });
+  };
+
+  it('How are we related? opens the dialog with that person as To', async () => {
+    const s = setup();
+    s.t.detail.me.personId = 'leo';
+    const r = renderAt(`/trees/${s.id}/people/leo`, s);
+    const menu = await menuOf(ROBERT);
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'How are we related?' }));
+    expect(await screen.findByRole('dialog', { name: 'How are we related?' })).toBeInTheDocument();
+    expect(r.where()).toBe(`/trees/${s.id}/people/robert?tab=related&to=robert`);
+  });
+
+  it('Focus on this person sets the focus view on them', async () => {
+    const s = setup();
+    const r = renderAt(`/trees/${s.id}?view=full`, s);
+    const menu = await menuOf(ROBERT);
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Focus on this person' }));
+    await waitFor(() => expect(r.where()).toBe(`/trees/${s.id}/people/robert?focus=robert`));
+  });
+
+  it('Escape closes the menu but not the panel', async () => {
+    const s = setup();
+    renderAt(`/trees/${s.id}/people/david`, s);
+    await screen.findByRole('heading', { level: 2, name: /David Hale/ });
+    const menu = await menuOf(ROBERT);
+    fireEvent.keyDown(within(menu).getAllByRole('menuitem')[0]!, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+    expect(screen.getByRole('complementary', { name: 'Details' })).toBeInTheDocument();
+  });
+});
+
 describe('TreeWorkspace collapsible panel (brief #15)', () => {
   const details = () => screen.queryByRole('complementary', { name: 'Details' });
 

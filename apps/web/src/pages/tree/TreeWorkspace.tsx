@@ -103,10 +103,11 @@ export function TreeWorkspace({
   }, [onPersonsChanged]);
   // `go` reads the current URL through a ref, so `actions` never changes with the URL and a
   // navigation doesn't re-render every card.
-  const latest = useRef({ navigate, params, keepFocus: null as string | null });
+  const meId = detail.me.personId;
+  const latest = useRef({ navigate, params, keepFocus: null as string | null, meId });
   const keepFocus = view.mode === 'focus' ? focusId : null;
   useEffect(() => {
-    latest.current = { navigate, params, keepFocus };
+    latest.current = { navigate, params, keepFocus, meId };
   });
   const base = `/trees/${treeId}`;
   const go = useCallback((path: string, change: CanvasChange) => {
@@ -135,6 +136,21 @@ export function TreeWorkspace({
       addRelative: (id: string, as: RelativeRole) => {
         setCollapsed(false);
         go(`${base}/people/${id}`, { focus: null, tab: 'relations', add: as, ...NO_PAIR });
+      },
+      // The card menu (Task 11): focus view on them, and "How are we related?" with them as To.
+      focusPerson: (id: string) => {
+        go(`${base}/people/${id}`, { view: null, branch: null, focus: id, tab: null, add: null });
+      },
+      howRelated: (id: string) => {
+        setCollapsed(false);
+        go(`${base}/people/${id}`, {
+          focus: null,
+          tab: 'related',
+          add: null,
+          from: null,
+          // Asking how you are related to yourself means nothing: then To starts empty.
+          to: id === latest.current.meId ? null : id,
+        });
       },
       openUnion: (id: string) => {
         setCollapsed(false);
