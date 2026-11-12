@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { PROD_LOCAL, statePath } from '../support/env';
 import { treeUrl } from '../support/fixture';
 import { GPS_JPEG, SECRET_MARKER } from '../support/fixtures';
-import { card, clearPhotos } from '../support/ui';
+import { card, clearPhotos, openSection } from '../support/ui';
 
 test.skip(PROD_LOCAL, 'dev stack only');
 test.use({ storageState: statePath('owner.json') });
@@ -16,7 +16,7 @@ test('an uploaded photo is stored without EXIF and shows on the card', async ({ 
   await page.goto(treeUrl());
   await page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Full' }).click();
   await card(page, 'Robert Hale').click();
-  await page.getByRole('tab', { name: 'Photos' }).click();
+  await openSection(page, 'Photos');
   await page.locator('input[type="file"]').setInputFiles(GPS_JPEG);
   await page.getByRole('button', { name: 'Use the whole photo' }).click();
   await expect(page.getByText('Photo added')).toBeVisible();
@@ -61,8 +61,8 @@ test('"How are we related?" words the path and highlights it', async ({ page }) 
   await expect(page.getByText('Emma Hale is your half-sister.')).toBeVisible();
   await page.getByRole('button', { name: 'Show on the tree' }).click();
   await expect.poll(() => page.locator('.is-path').count()).toBeGreaterThanOrEqual(3);
-  // Close only collapses the panel (brief #15): the path stays drawn.
-  await page.getByRole('button', { name: 'Close' }).click();
+  // Collapsing the panel (brief #15) keeps the path drawn.
+  await page.getByRole('button', { name: 'Collapse panel' }).click();
   await expect(page.getByRole('complementary', { name: 'Details' })).toBeHidden();
   await expect.poll(() => page.locator('.is-path').count()).toBeGreaterThanOrEqual(3);
 });

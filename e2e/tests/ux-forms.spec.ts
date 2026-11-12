@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { apiContext, enableTwoFactor, newAccount, ok, signUp } from '../support/api';
 import { PROD_LOCAL } from '../support/env';
-import { card, enrolTotpViaUi, signUpViaUi } from '../support/ui';
+import { card, closeSection, enrolTotpViaUi, openSection, signUpViaUi } from '../support/ui';
 
 test.skip(PROD_LOCAL, 'dev stack only');
 
@@ -122,12 +122,14 @@ test('dates with a calendar and a precision, and a death place on a living perso
   await expect(page).toHaveURL(/\/trees\/[0-9a-f-]{36}/);
   await card(page, 'Dora Dates').click();
   await expect(page.getByRole('heading', { name: 'Dora Dates' })).toBeVisible();
-  const details = page.locator('.person-panel dl').first();
+  // The panel lists its sections; each opens in a dialog (brief #15).
+  const details = (await openSection(page, 'Details')).locator('dl').first();
   await expect(details).toContainText('1 May 1990');
   await expect(details).toContainText('Living');
+  await closeSection(page);
 
   // #8: a death place on a living person says what to do, at the field.
-  await page.getByRole('tab', { name: 'Places' }).click();
+  await openSection(page, 'Places');
   await page.getByRole('button', { name: 'Add place' }).click();
   const placeForm = page.getByRole('form', { name: 'Add place' });
   await placeForm.getByLabel('Kind').selectOption('death');
@@ -142,7 +144,8 @@ test('dates with a calendar and a precision, and a death place on a living perso
   await page.getByRole('checkbox', { name: 'Mark Dora as deceased' }).check();
   await placeForm.getByRole('button', { name: 'Add place' }).click();
   await expect(page.getByText('Saved')).toBeVisible();
-  await page.getByRole('tab', { name: 'Info' }).click();
+  await closeSection(page);
+  await openSection(page, 'Details');
   await expect(details).not.toContainText('Living');
 
   // #4: "Died" at month precision.

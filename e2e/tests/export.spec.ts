@@ -4,7 +4,7 @@ import { readZip } from '../../apps/api/test/zip-reader';
 import { PROD_LOCAL, statePath } from '../support/env';
 import { treeUrl } from '../support/fixture';
 import { GPS_JPEG } from '../support/fixtures';
-import { card, clearPhotos } from '../support/ui';
+import { card, clearPhotos, closeSection, openSection } from '../support/ui';
 
 test.skip(PROD_LOCAL, 'dev stack only');
 test.use({ storageState: statePath('owner.json') });
@@ -18,10 +18,11 @@ test('the owner downloads one ZIP with GEDCOM 5.5.1, JSON and photos', async ({ 
   // A photo of its own, so the archive has one whatever ran before; removed again at the end.
   await page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Full' }).click();
   await card(page, 'Margaret Hale').click();
-  await page.getByRole('tab', { name: 'Photos' }).click();
+  await openSection(page, 'Photos');
   await page.locator('input[type="file"]').setInputFiles(GPS_JPEG);
   await page.getByRole('button', { name: 'Use the whole photo' }).click();
   await expect(page.getByText('Photo added')).toBeVisible();
+  await closeSection(page);
 
   const section = page.getByRole('region', { name: 'Export' });
   // The download is a navigation (preflight, then a one-time ticket), so use the download event.

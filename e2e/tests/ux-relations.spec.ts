@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { PROD_LOCAL } from '../support/env';
-import { addRelative, card, signUpViaUi, startTreeViaUi } from '../support/ui';
+import { addRelative, card, openSection, signUpViaUi, startTreeViaUi } from '../support/ui';
 
 test.skip(PROD_LOCAL, 'dev stack only');
 
@@ -19,10 +19,10 @@ async function newTree(page: Page) {
 const dot = (page: Page, label: string | RegExp) =>
   page.getByRole('button', { name: label, includeHidden: true });
 
-async function openPanel(page: Page, name: string, tab: 'Relations' | 'Places') {
+async function openPanel(page: Page, name: string, section: 'Relations' | 'Places') {
   await card(page, name).click();
   await expect(page.getByRole('heading', { name: new RegExp(`^${name}`) })).toBeVisible();
-  await page.getByRole('tab', { name: tab }).click();
+  return openSection(page, section);
 }
 
 /** Root + partner Pat, and Kid with "Unknown other parent" (a single-parent union of Rae). */
@@ -36,8 +36,7 @@ test('a sibling of someone with no parents shares a parents-unknown dot', async 
   await newTree(page);
   await addRelative(page, ROOT, 'sibling', { given: 'Sis', surname: 'Root' });
   await expect(dot(page, 'Siblings with unknown parents')).toHaveCount(1);
-  await openPanel(page, ROOT, 'Relations');
-  const siblings = page.locator('.tree-panel');
+  const siblings = await openPanel(page, ROOT, 'Relations');
   await expect(siblings.getByRole('link', { name: 'Sis Root' })).toBeVisible();
   await expect(siblings.getByText('Parents unknown')).toBeVisible();
 });

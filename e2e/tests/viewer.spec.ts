@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { PROD_LOCAL, statePath, WEB } from '../support/env';
 import { fixture, treeUrl } from '../support/fixture';
-import { card } from '../support/ui';
+import { card, closeSection, openSection } from '../support/ui';
 
 test.skip(PROD_LOCAL, 'dev stack only');
 test.use({ storageState: statePath('viewer.json') });
@@ -20,9 +20,10 @@ test('a viewer can look and search, but not change or export (UI and API)', asyn
   await card(page, 'Robert Hale').click();
   await expect(page.getByRole('heading', { name: /^Robert Hale/ })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Edit details' })).toHaveCount(0);
-  await page.getByRole('tab', { name: 'Photos' }).click();
-  await expect(page.getByText(/Photos use .* of this tree/)).toBeVisible(); // the tab is open
+  await openSection(page, 'Photos');
+  await expect(page.getByText(/Photos use .* of this tree/)).toBeVisible(); // the section is open
   await expect(page.getByText('Add a photo')).toHaveCount(0);
+  await closeSection(page);
   await page.getByRole('searchbox', { name: 'Search' }).fill('Margret');
   await expect(
     page

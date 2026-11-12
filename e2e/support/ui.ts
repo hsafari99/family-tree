@@ -75,6 +75,25 @@ export async function addRelative(
   await expect(card(page, `${person.given} ${person.surname}`)).toBeVisible();
 }
 
+export type Section = 'Details' | 'Places' | 'Photos' | 'Relations' | 'History';
+
+/** Opens one of the person panel's sections; it shows in a modal dialog (brief #15). */
+export async function openSection(page: Page, section: Section) {
+  await page
+    .getByRole('complementary', { name: 'Details' })
+    .getByRole('button', { name: new RegExp(`^${section}`) })
+    .click();
+  const dialog = page.getByRole('dialog', { name: new RegExp(`^${section} — `) });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
+/** Closes the open section dialog with its X. */
+export async function closeSection(page: Page) {
+  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+}
+
 /**
  * Deletes every photo of `fullName` (the shared sample tree must end as it began). Idempotent, so
  * it is safe before a test, in `afterEach` and on a retry.
@@ -83,7 +102,7 @@ export async function clearPhotos(page: Page, fullName: string, treeUrl: string)
   await page.goto(treeUrl);
   await page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Full' }).click();
   await card(page, fullName).click();
-  await page.getByRole('tab', { name: 'Photos' }).click();
+  await openSection(page, 'Photos');
   await expect(page.getByText(/Photos use .* of this tree/)).toBeVisible();
   // Scoped to the photo list: Tree settings has its own "Delete" button.
   const del = page
@@ -95,4 +114,5 @@ export async function clearPhotos(page: Page, fullName: string, treeUrl: string)
     // The toast can show before the list refreshes; wait for the list itself.
     await expect(del).toHaveCount(left - 1);
   }
+  await closeSection(page);
 }

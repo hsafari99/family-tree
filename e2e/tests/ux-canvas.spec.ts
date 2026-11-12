@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { PROD_LOCAL, WEB } from '../support/env';
-import { card, signUpViaUi, startTreeViaUi } from '../support/ui';
+import { card, openSection, signUpViaUi, startTreeViaUi } from '../support/ui';
 
 test.skip(PROD_LOCAL, 'dev stack only');
 
@@ -84,31 +84,53 @@ test('partners sit side by side and siblings keep their order', async ({ page })
     .toEqual({ neighbours: true, siblings: ['Ann Pine', 'Ben Pine', 'Cat Pine'] });
 });
 
-test('the panel is on the left, collapses, and stays collapsed after a reload', async ({
+test('the panel is on the left, collapses to a rail, and stays collapsed after a reload', async ({
   page,
 }) => {
   await newTree(page, 'Lee', 'Left');
   await card(page, 'Lee Left').click();
   const panel = page.getByRole('complementary', { name: 'Details' });
-  await expect(panel.getByRole('heading', { name: /^Lee Left/ })).toBeVisible();
+  const heading = panel.getByRole('heading', { name: /^Lee Left/ });
+  await expect(heading).toBeVisible();
   const canvas = page.getByRole('region', { name: 'Family tree view' });
   expect((await panel.boundingBox())!.x).toBeLessThan((await canvas.boundingBox())!.x);
   const toggle = page.getByRole('button', { name: 'Details', exact: true });
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  const expand = page.getByRole('button', { name: 'Expand panel' });
+  await expect(expand).toHaveCount(0);
 
-  await panel.getByRole('button', { name: 'Close' }).click();
+  // The X collapses it to a slim rail on the left, with a visible way back.
+  const collapse = panel.getByRole('button', { name: 'Collapse panel' });
+  await expect(collapse).toHaveAttribute('title', 'Collapse panel');
+  await collapse.click();
   await expect(panel).toBeHidden();
   await expect(page).toHaveURL(/\/people\//);
   await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await expect(expand).toBeVisible();
+  await expect(expand).toHaveAttribute('aria-expanded', 'false');
+  await expect(expand).toContainText('LL');
+  const rail = (await expand.boundingBox())!;
+  expect(rail.width).toBeLessThanOrEqual(48);
+  expect(rail.x).toBeLessThan((await canvas.boundingBox())!.x);
   await page.reload();
   await expect(card(page, 'Lee Left')).toBeVisible();
   await expect(panel).toBeHidden();
+  await expect(expand).toBeVisible();
 
+  // Expand brings the same person back; the toolbar toggle agrees.
+  await expand.click();
+  await expect(heading).toBeVisible();
+  await expect(page).toHaveURL(/\/people\//);
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(expand).toHaveCount(0);
   await toggle.click();
-  await expect(panel.getByRole('heading', { name: /^Lee Left/ })).toBeVisible();
-  await panel.getByRole('heading', { name: /^Lee Left/ }).focus();
+  await expect(panel).toBeHidden();
+  await toggle.click();
+  await expect(heading).toBeVisible();
+  await heading.focus();
   await page.keyboard.press('Escape');
   await expect(panel).toBeHidden();
+  await expect(expand).toBeVisible();
   // The canvas hint sits above the drawing: it never covers a card or React Flow's controls.
   await page.goto(page.url().replace(/\/people\/.*$/, ''));
   const hint = page.locator('.canvas-hint');
@@ -121,6 +143,44 @@ test('the panel is on the left, collapses, and stays collapsed after a reload', 
   }
 });
 
+test('a section opens in a dialog: Escape closes it, focus returns, and nested Escapes stay inside', async ({
+  page,
+}) => {
+  const { treeId } = await newTree(page, 'Dia', 'Log');
+  await page.goto(`/trees/${treeId}`);
+  await card(page, 'Dia Log').click();
+  const panel = page.getByRole('complementary', { name: 'Details' });
+  await expect(panel.getByRole('button', { name: /^Places/ })).toContainText('No places yet');
+  const row = panel.getByRole('button', { name: /^Relations/ });
+  await row.click();
+  const dialog = page.getByRole('dialog', { name: 'Relations — Dia Log' });
+  await expect(dialog).toBeVisible();
+  await expect(page).toHaveURL(/[?&]tab=relations/);
+  await expect(dialog.getByRole('button', { name: 'Close' })).toBeFocused();
+  // A menu inside handles its own Escape: the dialog stays open.
+  await dialog.getByRole('button', { name: 'Add relative' }).click();
+  await expect(page.getByRole('menuitem', { name: 'Partner' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('menuitem', { name: 'Partner' })).toBeHidden();
+  await expect(dialog).toBeVisible();
+  // So does a form field (a half-filled form isn't thrown away); the X still closes.
+  await dialog.getByRole('button', { name: 'Add relative' }).click();
+  await page.getByRole('menuitem', { name: 'Partner' }).click();
+  await dialog.getByLabel('First name').fill('Half');
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Close' }).focus();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await expect(page).not.toHaveURL(/tab=/);
+  await expect(row).toBeFocused();
+  // The panel itself stayed open.
+  await expect(panel.getByRole('heading', { name: /^Dia Log/ })).toBeVisible();
+  // A deep link opens the dialog straight away.
+  await page.goto(`${page.url()}?tab=places`);
+  await expect(page.getByRole('dialog', { name: 'Places — Dia Log' })).toBeVisible();
+});
+
 test('Swap sides on the tree moves Xan to the other side of Ben', async ({ page }) => {
   await inLawTree(page);
   const side = async () =>
@@ -128,7 +188,7 @@ test('Swap sides on the tree moves Xan to the other side of Ben', async ({ page 
   await expect.poll(side).not.toBe(0);
   const before = await side();
   await card(page, 'Ben Pine').click();
-  await page.getByRole('tab', { name: 'Relations' }).click();
+  await openSection(page, 'Relations');
   await page
     .getByRole('button', { name: 'More actions for the relationship with Xan Other' })
     .click();
@@ -168,7 +228,7 @@ test("Move later flips someone's partners on the canvas", async ({ page }) => {
   await expect(card(page, 'Laura Chen')).toBeVisible();
   const before = await annaLeft();
   await card(page, 'David Hub').click();
-  await page.getByRole('tab', { name: 'Relations' }).click();
+  await openSection(page, 'Relations');
   const menus = page.getByRole('button', { name: /^More actions for the relationship with / });
   await menus.first().click();
   await page.getByRole('menuitem', { name: 'Move later' }).click();
@@ -188,10 +248,22 @@ test.describe('on a phone', () => {
     const noSideways = () =>
       page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
     expect(await noSideways()).toBe(true);
-    await page.getByRole('button', { name: 'Close' }).click();
+    await page.getByRole('button', { name: 'Collapse panel' }).click();
     await expect(heading).toBeHidden();
-    await page.getByRole('button', { name: 'Details', exact: true }).click();
+    // Collapsed, a small handle at the bottom brings it back.
+    const handle = page.getByRole('button', { name: 'Show details' });
+    await expect(handle).toBeVisible();
+    expect((await handle.boundingBox())!.y).toBeGreaterThan(844 / 2);
+    expect(await noSideways()).toBe(true);
+    await handle.click();
     await expect(heading).toBeVisible();
+    // A section opens full-screen.
+    const dialog = await openSection(page, 'Places');
+    const box = (await dialog.boundingBox())!;
+    expect(box.width).toBeGreaterThanOrEqual(389);
+    expect(box.height).toBeGreaterThanOrEqual(800);
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
     expect(await noSideways()).toBe(true);
   });
 });

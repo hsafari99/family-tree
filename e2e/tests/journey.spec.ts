@@ -1,6 +1,14 @@
 import { expect, test } from '@playwright/test';
 import { PROD_LOCAL } from '../support/env';
-import { addRelative, card, enrolTotpViaUi, signUpViaUi, startTreeViaUi } from '../support/ui';
+import {
+  addRelative,
+  card,
+  closeSection,
+  enrolTotpViaUi,
+  openSection,
+  signUpViaUi,
+  startTreeViaUi,
+} from '../support/ui';
 
 test.skip(PROD_LOCAL, 'dev stack only');
 
@@ -54,15 +62,19 @@ test('spec §9: family, steward invite, steward edits and deletes, owner restore
 
   // 5. The steward edits inside the branch, and can't edit outside it.
   await card(steward, 'Cleo Owner').click();
+  await openSection(steward, 'Details');
   await steward.getByRole('button', { name: 'Edit details' }).click();
   await steward.getByLabel('Occupation').fill('Architect');
   await steward.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(steward.getByText('Architect')).toBeVisible();
+  await closeSection(steward);
   await steward.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Full' }).click();
   await card(steward, 'Paul Owner').click();
   // The panel is open on Paul (so "no Edit details" means something).
-  await expect(steward.getByRole('heading', { name: 'Paul Owner' })).toBeVisible();
+  await expect(steward.getByRole('heading', { name: /^Paul Owner/ })).toBeVisible();
+  await openSection(steward, 'Details');
   await expect(steward.getByRole('button', { name: 'Edit details' })).toHaveCount(0);
+  await closeSection(steward);
 
   // 6. The steward adds Eve as Pete's child on his own (so every link is inside the branch), then
   //    deletes her to Trash after the preview. (Dan also has Olive, who is outside the branch.)
@@ -74,8 +86,10 @@ test('spec §9: family, steward invite, steward edits and deletes, owner restore
     /Unknown other parent/,
   );
   // Her card sits under the minimap, so open her from Pete's relations in the side panel.
+  await openSection(steward, 'Relations');
   await steward.getByRole('link', { name: 'Eve Partner' }).click();
-  await expect(steward.getByRole('heading', { name: 'Eve Partner' })).toBeVisible();
+  await expect(steward.getByRole('heading', { name: /^Eve Partner/ })).toBeVisible();
+  await openSection(steward, 'Details');
   await steward.getByRole('button', { name: 'Delete…' }).click();
   await steward.getByRole('radio', { name: /just this person/i }).check();
   await steward.getByRole('button', { name: 'Move to Trash' }).click();
@@ -91,6 +105,7 @@ test('spec §9: family, steward invite, steward edits and deletes, owner restore
   await owner.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Full' }).click();
   await expect(card(owner, 'Eve Partner')).toBeVisible();
   await card(owner, 'Cleo Owner').click();
+  await openSection(owner, 'Details');
   await expect(owner.getByText('Architect')).toBeVisible();
 
   await ownerCtx.close();

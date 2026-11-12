@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { apiContext, newAccount, ok, signUp } from '../support/api';
 import { PROD_LOCAL, WEB } from '../support/env';
-import { card, signUpViaUi, startTreeViaUi } from '../support/ui';
+import { card, openSection, signUpViaUi, startTreeViaUi } from '../support/ui';
 
 test.skip(PROD_LOCAL, 'dev stack only');
 
@@ -52,7 +52,8 @@ test('trash: compact row buttons, and Restore works', async ({ page }) => {
   await add('Una', 1990, root, 'child');
   await page.goto(`/trees/${treeId}`);
   await card(page, 'Una Trash').click();
-  await expect(page.getByRole('heading', { name: 'Una Trash' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /^Una Trash/ })).toBeVisible();
+  await openSection(page, 'Details');
   await page.getByRole('button', { name: 'Delete…' }).click();
   await page.getByRole('radio', { name: /just this person/i }).check();
   await page.getByRole('button', { name: 'Move to Trash' }).click();
