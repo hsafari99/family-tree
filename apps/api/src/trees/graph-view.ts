@@ -2,6 +2,7 @@ import {
   branchOf,
   FOCUS_VIEW_MAX,
   FULL_VIEW_MAX,
+  hourglassIds,
   kinIndex,
   neighbourhood,
   type ParsedGraphQuery,
@@ -32,7 +33,8 @@ export function buildTreeGraph(rows: GraphRows, access: Access, q: ParsedGraphQu
     focusId = q.focus ?? access.rootPersonId;
     if (focusId !== null) {
       if (!live.has(focusId)) throw notFound();
-      ({ ids, truncated } = neighbourhood(kin, focusId, q.depth, FOCUS_VIEW_MAX));
+      // An hourglass: `depth` generations up and down (Batch 5).
+      ({ ids, truncated } = hourglassIds(rows, focusId, q.depth, FOCUS_VIEW_MAX));
     }
   } else if (q.branch !== undefined) {
     if (!live.has(q.branch)) throw notFound();

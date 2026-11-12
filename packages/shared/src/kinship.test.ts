@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   closeRelativeSteps,
+  hourglassGenerations,
   type KinGraph,
   kinPathsFrom,
   kinshipChain,
@@ -228,6 +229,29 @@ describe('the path itself', () => {
     expect(closeRelativeSteps(fromMe('halfBro')!)).toBe(2);
     expect(closeRelativeSteps(fromMe('auntHus')!)).toBe(3);
     expect(closeRelativeSteps(fromMe('scKid')!)).toBe(6);
+  });
+});
+
+describe('hourglassGenerations', () => {
+  const gens = (to: string) => hourglassGenerations(fromMe(to)!);
+  it('counts generations up or down the line, with the person’s own row at 1', () => {
+    expect(hourglassGenerations([])).toBe(1);
+    expect(['sis', 'halfBro', 'hus', 'dad', 'son', 'dil'].map(gens)).toEqual([1, 1, 1, 1, 1, 1]);
+    expect(['gp', 'ggp', 'grandson'].map(gens)).toEqual([2, 3, 2]);
+  });
+  it('is null for anyone off the line', () => {
+    for (const to of [
+      'aunt',
+      'auntHus',
+      'cousin',
+      'niece',
+      'hbKid',
+      'hf',
+      'hsis',
+      'stepdad',
+      'stepsis',
+    ])
+      expect(gens(to), to).toBeNull();
   });
 });
 

@@ -63,12 +63,13 @@ const namesOf = (body: unknown) =>
     .sort();
 
 describe('GET graph', () => {
-  it('defaults to a depth-1 focus on the root', async () => {
+  it('defaults to a one-generation hourglass on the root', async () => {
     const { owner, treeId, p, uPa, uOlive } = await setup();
     const res = await call(app, 'GET', g(treeId), { jar: owner.jar });
     expect(res.statusCode).toBe(200);
     const body = parse(res.json());
-    expect(namesOf(body)).toEqual(['Kid', 'Ma', 'Olive', 'Pa', 'Sam', 'Sis']);
+    // Her row (partner, sister, half-brother), her parents, her child and the child's partner.
+    expect(namesOf(body)).toEqual(['Half', 'Kid', 'Kp', 'Ma', 'Olive', 'Pa', 'Sam', 'Sis']);
     expect(body).toMatchObject({
       mode: 'focus',
       focusId: p.olive!.id,
@@ -76,20 +77,38 @@ describe('GET graph', () => {
       needsBranch: false,
       total: 13,
     });
-    expect(body.unions.map((u) => u.id).sort()).toEqual([uPa.id, uOlive.id].sort());
-    expect(body.links).toHaveLength(3);
+    expect(body.unions.map((u) => u.id)).toEqual(expect.arrayContaining([uPa.id, uOlive.id]));
+    expect(body.unions).toHaveLength(4); // and Ma's with Step, and Kid's with Kp
+    expect(body.links).toHaveLength(4);
     const hidden = body.persons.filter((x) => x.hiddenRelatives).map((x) => x.givenName);
-    expect(hidden.sort()).toEqual(['Kid', 'Ma', 'Pa']);
+    expect(hidden.sort()).toEqual(['Half', 'Kid', 'Kp', 'Ma', 'Pa']);
   });
 
-  it('depth 2 adds the next ring and never the lone person', async () => {
+  it('depth 2 is two generations up and down: no step-parent, never the lone person', async () => {
     const { owner, treeId, p } = await setup();
     const res = await call(app, 'GET', g(treeId, `focus=${p.olive!.id}&depth=2`), {
       jar: owner.jar,
     });
     expect(namesOf(res.json())).toEqual(
-      ['Gk', 'Gm', 'Gp', 'Half', 'Kid', 'Kp', 'Ma', 'Olive', 'Pa', 'Sam', 'Sis', 'Step'].sort(),
+      ['Gk', 'Gm', 'Gp', 'Half', 'Kid', 'Kp', 'Ma', 'Olive', 'Pa', 'Sam', 'Sis'].sort(),
     );
+  });
+
+  it('leaves out aunts, cousins and in-laws’ families at any depth', async () => {
+    const { owner, treeId, p } = await setup();
+    const [aunt, cousin, samMum] = await Promise.all(
+      ['Aunt', 'Cousin', 'SamMum'].map((n) => addPerson(db, treeId, n)),
+    );
+    await family(db, treeId, p.gp!, p.gm!, [aunt!]);
+    await family(db, treeId, aunt!, null, [cousin!]);
+    await family(db, treeId, samMum!, null, [p.sam!]);
+    const res = await call(app, 'GET', g(treeId, `focus=${p.olive!.id}&depth=3`), {
+      jar: owner.jar,
+    });
+    expect(res.statusCode).toBe(200);
+    const names = namesOf(res.json());
+    for (const n of ['Aunt', 'Cousin', 'SamMum', 'Step']) expect(names).not.toContain(n);
+    expect(names).toContain('Gp');
   });
 
   it('full view returns everyone; a branch view returns the branch', async () => {
@@ -134,7 +153,7 @@ describe('GET graph', () => {
     await softDeleteBatch(db, treeId, owner.userId, [p.sis!.id]);
     const body = parse((await call(app, 'GET', g(treeId), { jar: owner.jar })).json());
     expect(body.persons.map((x) => x.givenName)).not.toContain('Sis');
-    expect(body.links).toHaveLength(2);
+    expect(body.links).toHaveLength(3);
   });
 
   it('computes the can() flags per role', async () => {
@@ -178,7 +197,7 @@ describe('GET graph', () => {
     expect(branch.statusCode).toBe(200);
     expect(parse(branch.json()).persons).toHaveLength(4);
     const focus = parse((await call(app, 'GET', g(treeId), { jar: owner.jar })).json());
-    expect(focus.persons).toHaveLength(6);
+    expect(focus.persons).toHaveLength(8);
   });
 
   it('404s for outsiders and 401s without a session', async () => {

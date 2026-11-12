@@ -55,7 +55,7 @@ export function ViewLinks({ params }: { params: CanvasParams }) {
   );
 }
 
-/** The focus view's Generations slider (the full view has none). */
+/** The focus view's Generations slider: an hourglass, N up and N down (the full view has none). */
 export function DepthControl({
   params,
   onChange,
@@ -74,10 +74,14 @@ export function DepthControl({
         max={GRAPH_DEPTH_MAX}
         step="1"
         value={params.depth}
-        aria-valuetext={`${params.depth} ${params.depth === 1 ? 'step' : 'steps'}`}
+        aria-valuetext={`${params.depth} ${params.depth === 1 ? 'generation' : 'generations'} up and down`}
+        aria-describedby="tree-depth-hint"
         onChange={(e) => onChange({ depth: Number(e.target.value) })}
       />
       <output htmlFor="tree-depth">{params.depth}</output>
+      <p id="tree-depth-hint" className="depth-hint">
+        Generations up and down from the focus person
+      </p>
     </div>
   );
 }

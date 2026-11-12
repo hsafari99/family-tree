@@ -1325,6 +1325,12 @@ button.union-dot:hover {
   min-width: 1ch;
   font-weight: 600;
 }
+.depth-hint {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--text-xs);
+}
 .depth-control + .panel-selection {
   margin-top: 0.75rem;
 }

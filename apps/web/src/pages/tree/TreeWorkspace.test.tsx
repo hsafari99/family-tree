@@ -436,6 +436,14 @@ describe('TreeWorkspace panel focus and keys', () => {
     const s2 = setup();
     renderAt(`/trees/${s2.id}`, s2);
     expect(await screen.findByLabelText('Generations')).toHaveAttribute('max', '3');
+    // The focus view is an hourglass: the slider counts generations up and down.
+    expect(screen.getByLabelText('Generations')).toHaveAttribute(
+      'aria-valuetext',
+      '1 generation up and down',
+    );
+    expect(screen.getByLabelText('Generations')).toHaveAccessibleDescription(
+      'Generations up and down from the focus person',
+    );
   });
 });
 
@@ -565,6 +573,13 @@ describe('TreeWorkspace relationships', () => {
   it('switches to the full view for a long path', async () => {
     const s = relSetup(true);
     renderAt(`/trees/${s.id}?tab=related&from=leo&to=kid`, s);
+    fireEvent.click(await screen.findByRole('button', { name: 'Show on the tree' }));
+    await waitFor(() => expect(graphCalls(s.trees)).toContainEqual({ mode: 'full' }));
+  });
+
+  it('switches to the full view for a cousin, who is off the focus view’s hourglass', async () => {
+    const s = relSetup();
+    renderAt(`/trees/${s.id}?tab=related&from=leo&to=noah`, s);
     fireEvent.click(await screen.findByRole('button', { name: 'Show on the tree' }));
     await waitFor(() => expect(graphCalls(s.trees)).toContainEqual({ mode: 'full' }));
   });

@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { LiveGraph } from './family-graph.js';
 import {
+  ancestorIds,
   connectedTo,
+  descendantIds,
+  hourglassIds,
   kinIndex,
   neighbourhood,
   visibleRelations,
@@ -125,3 +128,116 @@ describe('visibleRelations with parents-unknown unions (brief #11)', () => {
     expect(kinIndex(sibs).get('ann')).toEqual(new Set(['ben']));
   });
 });
+
+describe('ancestorIds', () => {
+  it('climbs parents only, generation by generation', () => {
+    expect(sorted(ancestorIds(graph, 'olive', 1, 500).ids)).toEqual(sorted(['olive', 'pa', 'ma']));
+    expect(sorted(ancestorIds(graph, 'olive', 2, 500).ids)).toEqual(
+      sorted(['olive', 'pa', 'ma', 'gp', 'gm']),
+    );
+    expect(ancestorIds(graph, 'olive', 6, 500).ids.size).toBe(5);
+  });
+  it('adds no one for a parents-unknown union', () => {
+    expect(sorted(ancestorIds(unknownParents, 'ann', 3, 500).ids)).toEqual(['ann']);
+  });
+  it('stops at the limit, nearest first, and says so', () => {
+    const a = ancestorIds(graph, 'olive', 2, 3);
+    expect(sorted(a.ids)).toEqual(sorted(['olive', 'pa', 'ma']));
+    expect(a.truncated).toBe(true);
+    expect(ancestorIds(graph, 'olive', 2, 5).truncated).toBe(false);
+  });
+  it('survives a cycle', () => {
+    expect(sorted(ancestorIds(cycle, 'a', 6, 500).ids)).toEqual(['a', 'b']);
+  });
+});
+
+describe('descendantIds', () => {
+  it('walks down through every union, with each descendant’s partners', () => {
+    expect(sorted(descendantIds(graph, 'olive', 1, 500).ids)).toEqual(
+      sorted(['olive', 'sam', 'kid', 'kp']),
+    );
+    expect(sorted(descendantIds(graph, 'olive', 2, 500).ids)).toEqual(
+      sorted(['olive', 'sam', 'kid', 'kp', 'gk']),
+    );
+  });
+  it('takes nobody else from a partner’s side', () => {
+    // Ma's child with Step is not Pa's descendant.
+    expect(sorted(descendantIds(graph, 'pa', 2, 500).ids)).toEqual(
+      sorted(['pa', 'ma', 'olive', 'sis', 'sam', 'kid', 'kp']),
+    );
+    expect(sorted(descendantIds(graph, 'ma', 1, 500).ids)).toEqual(
+      sorted(['ma', 'pa', 'step', 'olive', 'sis', 'half', 'sam']),
+    );
+  });
+  it('stops at the limit and survives a cycle', () => {
+    const d = descendantIds(graph, 'olive', 2, 2);
+    expect(sorted(d.ids)).toEqual(sorted(['olive', 'sam']));
+    expect(d.truncated).toBe(true);
+    expect(sorted(descendantIds(cycle, 'a', 6, 500).ids)).toEqual(['a', 'b']);
+  });
+});
+
+describe('hourglassIds (the focus view)', () => {
+  it('is the person’s row, N generations up and N down', () => {
+    expect(sorted(hourglassIds(graph, 'olive', 1, 500).ids)).toEqual(
+      sorted(['olive', 'sam', 'sis', 'half', 'pa', 'ma', 'kid', 'kp']),
+    );
+    expect(sorted(hourglassIds(graph, 'olive', 2, 500).ids)).toEqual(
+      sorted(['olive', 'sam', 'sis', 'half', 'pa', 'ma', 'kid', 'kp', 'gp', 'gm', 'gk']),
+    );
+  });
+  it('has no aunts, cousins, step-parents or in-laws’ families', () => {
+    const g: LiveGraph = {
+      persons: [...graph.persons, { id: 'aunt' }, { id: 'cousin' }, { id: 'samMum' }],
+      unions: [
+        ...graph.unions,
+        { id: 'u-aunt', partnerAId: 'aunt', partnerBId: null },
+        { id: 'u-samMum', partnerAId: 'samMum', partnerBId: null },
+      ],
+      parentChild: [
+        ...graph.parentChild,
+        { id: 'l-aunt', unionId: 'u-gp', childId: 'aunt' },
+        { id: 'l-cousin', unionId: 'u-aunt', childId: 'cousin' },
+        { id: 'l-sam', unionId: 'u-samMum', childId: 'sam' },
+      ],
+    };
+    const ids = hourglassIds(g, 'olive', 3, 500).ids;
+    for (const id of ['aunt', 'cousin', 'step', 'samMum', 'lone'])
+      expect(ids.has(id), id).toBe(false);
+    expect(ids.has('gp')).toBe(true);
+  });
+  it('includes siblings through a parents-unknown union', () => {
+    expect(sorted(hourglassIds(unknownParents, 'ann', 1, 500).ids)).toEqual(['ann', 'ben']);
+  });
+  it('stops at the limit, nearest first, and says so', () => {
+    const h = hourglassIds(graph, 'olive', 2, 4);
+    expect(h.ids.size).toBe(4);
+    expect(h.truncated).toBe(true);
+    expect([...h.ids].every((id) => ['olive', 'sam', 'sis', 'half'].includes(id))).toBe(true);
+    expect(hourglassIds(graph, 'olive', 2, 500).truncated).toBe(false);
+  });
+  it('survives a cycle', () => {
+    expect(sorted(hourglassIds(cycle, 'a', 3, 500).ids)).toEqual(['a', 'b']);
+  });
+});
+
+const unknownParents: LiveGraph = {
+  persons: [{ id: 'ann' }, { id: 'ben' }],
+  unions: [{ id: 'u0', partnerAId: null, partnerBId: null, parentsUnknown: true }],
+  parentChild: [
+    { id: 'l1', unionId: 'u0', childId: 'ann' },
+    { id: 'l2', unionId: 'u0', childId: 'ben' },
+  ],
+};
+/** Bad data: each is the other's parent. */
+const cycle: LiveGraph = {
+  persons: [{ id: 'a' }, { id: 'b' }],
+  unions: [
+    { id: 'ua', partnerAId: 'a', partnerBId: null },
+    { id: 'ub', partnerAId: 'b', partnerBId: null },
+  ],
+  parentChild: [
+    { id: 'l1', unionId: 'ua', childId: 'b' },
+    { id: 'l2', unionId: 'ub', childId: 'a' },
+  ],
+};

@@ -1,7 +1,7 @@
 import {
-  closeRelativeSteps,
   GRAPH_DEPTH_MAX,
   type GraphQuery,
+  hourglassGenerations,
   type KinStep,
   type PersonSummary,
   type RelativeRole,
@@ -262,10 +262,11 @@ export function TreeWorkspace({
   const showPath = useCallback(
     (fromId: string, steps: KinStep[]) => {
       setHighlight(pathHighlight(fromId, steps));
-      const n = closeRelativeSteps(steps);
+      // The focus view is an hourglass: a path along the line fits it; a cousin's needs Full.
+      const n = hourglassGenerations(steps);
       go(
         pathname,
-        n <= GRAPH_DEPTH_MAX
+        n !== null && n <= GRAPH_DEPTH_MAX
           ? { view: null, branch: null, focus: fromId, depth: Math.max(1, n), tab: null }
           : { view: 'full', focus: null, tab: null },
       );

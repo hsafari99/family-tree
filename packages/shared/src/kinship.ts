@@ -198,6 +198,22 @@ function chunksOf(steps: readonly KinStep[]): Chunk[] {
 export const closeRelativeSteps = (steps: readonly KinStep[]) =>
   chunksOf(steps).reduce((n, c) => n + (c.kind === 'sibling' && c.half ? 2 : 1), 0);
 
+/**
+ * How many generations the focus view (an hourglass around the path's start) needs to show the
+ * whole path, or null when no hourglass can: a cousin, an in-law's family, a nephew.
+ */
+export function hourglassGenerations(steps: readonly KinStep[]): number | null {
+  const chunks = chunksOf(steps);
+  const first = chunks[0];
+  if (!first) return 1;
+  // A partner or a sibling sits on the person's own row; nothing beyond them is drawn.
+  if (first.kind === 'sibling' || first.kind === 'partner') return chunks.length === 1 ? 1 : null;
+  if (chunks.every((c) => c.kind === 'parent')) return chunks.length;
+  // Down the line, ending at a descendant or a descendant's partner.
+  const down = chunks.at(-1)!.kind === 'partner' ? chunks.slice(0, -1) : chunks;
+  return down.length > 0 && down.every((c) => c.kind === 'child') ? down.length : null;
+}
+
 function parentWord(s: KinStep): string {
   const base = bySex(s.sex, 'father', 'mother', 'parent');
   if (s.kind === 'step') return bySex(s.sex, 'stepfather', 'stepmother', 'step-parent');

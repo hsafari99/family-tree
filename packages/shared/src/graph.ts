@@ -15,7 +15,8 @@ export type GraphMode = (typeof GRAPH_MODES)[number];
 
 /**
  * GET /trees/:id/graph query (decision 1). `branch` only applies to mode=full, and `focus` and
- * `depth` only to mode=focus; the others are ignored, not rejected.
+ * `depth` only to mode=focus; the others are ignored, not rejected. The focus view is an
+ * hourglass: `depth` generations of the person's ancestors above and descendants below.
  */
 export const graphQuerySchema = z.object({
   mode: z.enum(GRAPH_MODES).default('focus'),
