@@ -27,6 +27,20 @@ function view(
 }
 
 describe('PersonCardView', () => {
+  it('reports keyboard focus (to pan the card into view) but not a pointer press', () => {
+    const onFocus = vi.fn();
+    view({ onFocus });
+    const open = screen.getByRole('button', { name: /^Robert Hale/ });
+    // A press focuses the card too; panning then would move it from under the pointer.
+    fireEvent.pointerDown(open);
+    fireEvent.focus(open);
+    fireEvent.pointerUp(open);
+    expect(onFocus).not.toHaveBeenCalled();
+    fireEvent.blur(open);
+    fireEvent.focus(open);
+    expect(onFocus).toHaveBeenCalledTimes(1);
+  });
+
   it('shows initials, name and years, and opens on click', () => {
     const { onOpen, container } = view();
     expect(screen.getByText('RH')).toHaveAttribute('aria-hidden', 'true');

@@ -63,6 +63,7 @@ export function PersonCardView({
 }) {
   const openButton = useRef<HTMLButtonElement>(null);
   const cardMenu = useCardMenu(() => openButton.current);
+  const pressed = useRef(false);
   const name = personName(person);
   const years = personYears(person);
   const deceased = !person.isLiving;
@@ -96,7 +97,17 @@ export function PersonCardView({
     </span>
   );
   return (
-    <div className={cls} onFocus={onFocus} {...(menu ? cardMenu.handlers : {})}>
+    <div
+      className={cls}
+      // Keyboard focus pans the card into view; a press doesn't, or the card would move out from
+      // under the pointer before the click lands.
+      onPointerDownCapture={() => void (pressed.current = true)}
+      onPointerUpCapture={() => void (pressed.current = false)}
+      onFocus={() => {
+        if (!pressed.current) onFocus?.();
+      }}
+      {...(menu ? cardMenu.handlers : {})}
+    >
       {detail === 'full' ? (
         <PersonPhoto
           url={person.photoThumbUrl}
