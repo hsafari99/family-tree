@@ -136,6 +136,7 @@ describe('graphToFlow', () => {
       aOrder: null,
       bOrder: null,
       since: null,
+      rank: 2,
     });
   });
 

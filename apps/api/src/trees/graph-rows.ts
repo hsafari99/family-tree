@@ -8,7 +8,7 @@ import type {
   UnionStatus,
   UnionType,
 } from '@family-tree/shared';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, asc, eq, isNull } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { parentChild, persons, photos, unions } from '../db/schema.js';
 import { summaryColumns } from './people.js';
@@ -70,7 +70,10 @@ export function loadGraphRows(db: Db, treeId: string): Promise<GraphRows> {
           partnerBOrder: unions.partnerBOrder,
         })
         .from(unions)
-        .where(and(eq(unions.treeId, treeId), isNull(unions.deletedAt)));
+        .where(and(eq(unions.treeId, treeId), isNull(unions.deletedAt)))
+        // Creation order: the canvas's last tie-break for unsaved partner orders, as in the person
+        // view (brief #16).
+        .orderBy(asc(unions.createdAt), asc(unions.id));
       const liveUnions = rawUnions
         .map((u) => ({
           ...u,

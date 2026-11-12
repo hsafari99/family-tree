@@ -89,6 +89,18 @@ describe('seatCouples', () => {
       GAP,
     );
     expect(order(pos)).toEqual(['anna', 'david', 'laura']);
+    // Undated: creation order (rank), not union id.
+    const p2 = row({ laura: 0, anna: 216, david: 432 });
+    seatCouples(
+      p2,
+      [
+        { ...couple('z1', 'david', 'anna'), rank: 0 },
+        { ...couple('a2', 'david', 'laura'), rank: 1 },
+      ],
+      new Set(['p:david']),
+      GAP,
+    );
+    expect(order(p2)).toEqual(['anna', 'david', 'laura']);
   });
 
   it('returns the shift of every person it moved, and only those', () => {

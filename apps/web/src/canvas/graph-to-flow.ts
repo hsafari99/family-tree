@@ -75,7 +75,7 @@ export function graphToFlow(
   const couples: Couple[] = [];
   const coupleIds = new Set<string>(); // people in an editable couple on screen
   const blood = new Set<string>();
-  for (const u of graph.unions) {
+  for (const [rank, u] of graph.unions.entries()) {
     const partnerIds = [u.partnerAId, u.partnerBId].filter(
       (id): id is string => id !== null && byId.has(id),
     );
@@ -148,6 +148,7 @@ export function graphToFlow(
         aOrder: u.partnerAOrder,
         bOrder: u.partnerBOrder,
         since: u.startDate ? sortYear(u.startDate) : null,
+        rank,
       });
     }
     for (const l of children) blood.add(personNodeId(l.childId));

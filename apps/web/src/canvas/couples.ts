@@ -10,19 +10,23 @@ export interface Couple {
   bOrder: number | null;
   /** The start year, for unsaved orders: the same fallback as the person panel's list. */
   since?: number | null;
+  /** Position in the graph's union list (creation order): the last fallback, as in the panel. */
+  rank?: number;
 }
 type Pos = { x: number; y: number };
 
 /**
  * One person's couples in *their own* saved order (their slot's column), then by start year, then
- * by union id. (Infinity - Infinity is NaN, which is falsy, so two blanks fall through.)
+ * creation order, then union id. (Infinity - Infinity is NaN, which is falsy, so two blanks fall through.)
  */
 const byOwnOrder = (p: string) => (m: Couple, n: Couple) => {
   const own = (c: Couple) => (c.a === p ? c.aOrder : c.bOrder) ?? Infinity;
   const since = (c: Couple) => c.since ?? Infinity;
+  const rank = (c: Couple) => c.rank ?? Infinity;
   return (
     own(m) - own(n) ||
     since(m) - since(n) ||
+    rank(m) - rank(n) ||
     (m.unionId < n.unionId ? -1 : m.unionId > n.unionId ? 1 : 0)
   );
 };
