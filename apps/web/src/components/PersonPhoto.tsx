@@ -26,21 +26,25 @@ export function PersonPhoto({
   person,
   className,
   alt = '',
+  tone,
 }: {
   url: string | null;
   person: Parameters<typeof initials>[0];
   className: string;
   alt?: string;
+  /** The `--avN` background for the initials (see avatarTone). */
+  tone?: number;
 }) {
   const refresh = useContext(PhotoRefreshContext);
   const [failed, setFailed] = useState<string | null>(null);
   if (!url || failed === url) {
+    const cls = tone ? `${className} tone-${tone}` : className;
     return alt ? (
-      <span className={className} role="img" aria-label={alt}>
+      <span className={cls} role="img" aria-label={alt}>
         {initials(person)}
       </span>
     ) : (
-      <span className={className} aria-hidden="true">
+      <span className={cls} aria-hidden="true">
         {initials(person)}
       </span>
     );

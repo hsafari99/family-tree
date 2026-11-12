@@ -4,6 +4,7 @@ import { Link, useSearchParams } from 'react-router';
 import { FormError } from '../../components/forms';
 import { PersonPhoto, PhotoRefreshContext, useThrottled } from '../../components/PersonPhoto';
 import { RowContent } from '../../canvas/PanelRow';
+import { avatarTone } from '../../canvas/avatar-tone';
 import { SectionDialog } from '../../components/SectionDialog';
 import { personName, personYears } from '../../trees/format';
 import { useTreesApi } from '../../trees/TreesApiContext';
@@ -131,6 +132,7 @@ export function PersonPanel({
             url={view.photos.find((x) => x.isPrimary)?.thumbUrl ?? null}
             person={p}
             className="panel-photo"
+            tone={avatarTone(p.id)}
           />
           <h2>
             {name}

@@ -25,7 +25,7 @@ describe('canvas settings', () => {
   });
   it('knows when a card is inside the visible pane', () => {
     const pane = { width: 800, height: 600 };
-    const size = { width: 184, height: 88 };
+    const size = { width: 200, height: 72 };
     expect(isNodeVisible({ x: 100, y: 100 }, size, { x: 0, y: 0, zoom: 1 }, pane)).toBe(true);
     expect(isNodeVisible({ x: 700, y: 100 }, size, { x: 0, y: 0, zoom: 1 }, pane)).toBe(false);
     expect(isNodeVisible({ x: 700, y: 100 }, size, { x: -400, y: 0, zoom: 1 }, pane)).toBe(true);

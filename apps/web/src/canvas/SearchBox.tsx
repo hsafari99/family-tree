@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { FormError } from '../components/forms';
 import { PersonPhoto } from '../components/PersonPhoto';
+import { avatarTone } from './avatar-tone';
 import { SearchIcon } from '../components/icons';
 import { PersonPicker } from '../components/PersonPicker';
 import { personName, personYears } from '../trees/format';
@@ -244,7 +245,12 @@ export function SearchBox({
                     void navigate(hrefOf(r.id));
                   }}
                 >
-                  <PersonPhoto url={r.photoThumbUrl} person={r} className="result-photo" />
+                  <PersonPhoto
+                    url={r.photoThumbUrl}
+                    person={r}
+                    className="result-photo"
+                    tone={avatarTone(r.id)}
+                  />
                   <span className="result-name">{personName(r)}</span>{' '}
                   <span className="result-years">{personYears(r)}</span>{' '}
                   <span className="result-relation">{relationLabel(r, meId)}</span>

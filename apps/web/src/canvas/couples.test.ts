@@ -31,24 +31,24 @@ describe('seatCouples', () => {
   const BLOOD = new Set(['p:ann', 'p:ben', 'p:cat']);
 
   it('seats a couple together, between the siblings around them', () => {
-    const pos = row({ xan: 0, ann: 216, ben: 432, cat: 648 });
+    const pos = row({ xan: 0, ann: 232, ben: 464, cat: 696 });
     seatCouples(pos, [couple('U', 'ben', 'xan')], BLOOD, GAP);
     expect(order(pos)).toEqual(['ann', 'ben', 'xan', 'cat']);
     expect(Math.abs(x(pos, 'ben') - x(pos, 'xan'))).toBe(STEP);
   });
 
   it('puts partner a on the left, or b when the slots are swapped', () => {
-    const a = row({ xan: 0, ann: 216, ben: 432, cat: 648 });
+    const a = row({ xan: 0, ann: 232, ben: 464, cat: 696 });
     seatCouples(a, [couple('U', 'ben', 'xan')], BLOOD, GAP);
     expect(x(a, 'ben')).toBeLessThan(x(a, 'xan'));
-    const b = row({ xan: 0, ann: 216, ben: 432, cat: 648 });
+    const b = row({ xan: 0, ann: 232, ben: 464, cat: 696 });
     seatCouples(b, [couple('U', 'xan', 'ben')], BLOOD, GAP);
     expect(x(b, 'xan')).toBeLessThan(x(b, 'ben'));
     expect(order(b)).toEqual(['ann', 'xan', 'ben', 'cat']);
   });
 
   it("seats a three-chain by the hub's own order only", () => {
-    const xs = { laura: 0, anna: 216, david: 432 };
+    const xs = { laura: 0, anna: 232, david: 464 };
     const blood = new Set(['p:david']);
     const a = row(xs);
     seatCouples(
@@ -78,7 +78,7 @@ describe('seatCouples', () => {
   });
 
   it('falls back to the start year when the hub has no saved order', () => {
-    const pos = row({ laura: 0, anna: 216, david: 432 });
+    const pos = row({ laura: 0, anna: 232, david: 464 });
     seatCouples(
       pos,
       [
@@ -90,7 +90,7 @@ describe('seatCouples', () => {
     );
     expect(order(pos)).toEqual(['anna', 'david', 'laura']);
     // Undated: creation order (rank), not union id.
-    const p2 = row({ laura: 0, anna: 216, david: 432 });
+    const p2 = row({ laura: 0, anna: 232, david: 464 });
     seatCouples(
       p2,
       [
@@ -104,10 +104,10 @@ describe('seatCouples', () => {
   });
 
   it('returns the shift of every person it moved, and only those', () => {
-    const pos = row({ ann: 0, ben: 216, xan: 432 });
+    const pos = row({ ann: 0, ben: 232, xan: 464 });
     const moved = seatCouples(pos, [couple('U', 'ben', 'xan')], BLOOD, GAP);
     expect(moved.size).toBe(0);
-    const pos2 = row({ ann: 0, ben: 216, xan: 600 });
+    const pos2 = row({ ann: 0, ben: 232, xan: 600 });
     const moved2 = seatCouples(pos2, [couple('U', 'ben', 'xan')], BLOOD, GAP);
     expect(moved2.has('p:ann')).toBe(false);
     expect(x(pos2, 'xan') - x(pos2, 'ben')).toBe(STEP);
@@ -136,7 +136,7 @@ describe('seatCouples', () => {
   });
 
   it('leaves other rows alone, and a couple split across rows', () => {
-    const pos = new Map([...row({ ann: 0, ben: 216 }), ...row({ xan: 1000, zed: 10 }, 200)]);
+    const pos = new Map([...row({ ann: 0, ben: 232 }), ...row({ xan: 1000, zed: 10 }, 200)]);
     const moved = seatCouples(pos, [couple('U', 'ben', 'xan')], BLOOD, GAP);
     expect(moved.size).toBe(0);
     expect(x(pos, 'xan')).toBe(1000);
@@ -149,7 +149,7 @@ describe('coupleChangeAfterDrop (brief #16)', () => {
     const at = (ben: number) =>
       new Map([
         ['p:ben', ben],
-        ['p:xan', 216],
+        ['p:xan', 232],
       ]);
     expect(coupleChangeAfterDrop(couples, 'p:ben', at(400))).toEqual({
       kind: 'swap',
@@ -180,8 +180,8 @@ describe('coupleChangeAfterDrop (brief #16)', () => {
     const x = (anna: number) =>
       new Map([
         ['p:anna', anna],
-        ['p:david', 216],
-        ['p:laura', 432],
+        ['p:david', 232],
+        ['p:laura', 464],
       ]);
     expect(coupleChangeAfterDrop(couples, 'p:anna', x(700))).toEqual({
       kind: 'unionOrder',
@@ -191,7 +191,7 @@ describe('coupleChangeAfterDrop (brief #16)', () => {
     expect(coupleChangeAfterDrop(couples, 'p:anna', x(100))).toBeNull();
     const laura = new Map([
       ['p:anna', 0],
-      ['p:david', 216],
+      ['p:david', 232],
       ['p:laura', 10],
     ]);
     expect(coupleChangeAfterDrop(couples, 'p:laura', laura)).toEqual({
@@ -206,7 +206,7 @@ describe('coupleChangeAfterDrop (brief #16)', () => {
     const x = new Map([
       ['p:anna', 0],
       ['p:david', 900],
-      ['p:laura', 432],
+      ['p:laura', 464],
     ]);
     expect(coupleChangeAfterDrop(couples, 'p:david', x)).toBeNull();
     expect(coupleChangeAfterDrop(couples, 'p:zed', x)).toBeNull();

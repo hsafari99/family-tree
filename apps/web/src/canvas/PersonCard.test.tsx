@@ -31,7 +31,7 @@ describe('PersonCardView', () => {
     const { onOpen, container } = view();
     expect(screen.getByText('RH')).toHaveAttribute('aria-hidden', 'true');
     expect(screen.getByText('Robert Hale')).toBeInTheDocument();
-    expect(screen.getByText(/† 1930–1998/)).toBeInTheDocument();
+    expect(container.querySelector('.card-years')).toHaveTextContent('† 1930–1998');
     expect(container.firstElementChild).toHaveClass('is-deceased');
     fireEvent.click(screen.getByRole('button', { name: 'Robert Hale, 1930–1998, deceased' }));
     expect(onOpen).toHaveBeenCalled();
@@ -59,21 +59,57 @@ describe('PersonCardView', () => {
     expect(screen.queryByRole('button', { name: /^Add a/ })).toBeNull();
   });
 
-  it('compact: name and years, no initials or add buttons', () => {
-    view({}, 'compact');
-    expect(screen.queryByText('RH')).toBeNull();
+  it('compact: the avatar and first name only, no years or add buttons', () => {
+    const { container } = view({}, 'compact');
+    expect(screen.getByText('RH')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Add a/ })).toBeNull();
-    expect(screen.getByText('Robert Hale')).toBeInTheDocument();
-    expect(screen.getByText(/1930–1998/)).toBeInTheDocument();
+    expect(screen.getByText('Robert')).toBeInTheDocument();
+    expect(screen.queryByText('Robert Hale')).toBeNull();
+    expect(container.querySelector('.card-years')).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Robert Hale, 1930–1998, deceased' }),
+    ).toBeInTheDocument();
   });
 
-  it('dot: one named button and no visible text', () => {
+  it('dot: one named button, the avatar circle and no visible text', () => {
     const { container } = view({}, 'dot');
     expect(screen.getAllByRole('button')).toHaveLength(1);
     expect(
       screen.getByRole('button', { name: 'Robert Hale, 1930–1998, deceased' }),
     ).toBeInTheDocument();
+    expect(container.querySelector('.card-avatar')).not.toBeNull();
     expect(container.textContent).toBe('');
+  });
+
+  it('shows initials on a stable tone when there is no photo', () => {
+    const { container } = view();
+    const avatar = container.querySelector('.card-avatar')!;
+    expect(avatar).toHaveTextContent('RH');
+    expect(avatar.className).toMatch(/\btone-[1-6]\b/);
+    const again = view().container.querySelector('.card-avatar')!;
+    expect(again.className).toBe(avatar.className);
+  });
+
+  it('puts the full name in a title on the one-line name', () => {
+    view();
+    expect(screen.getByText('Robert Hale')).toHaveAttribute('title', 'Robert Hale');
+  });
+
+  it.each([
+    [{ birthYear: 1902, deathYear: 1978, isLiving: false }, '† 1902–1978'],
+    [{ birthYear: 1986, deathYear: null, isLiving: true }, 'b. 1986'],
+    [{ birthYear: null, deathYear: 1950, isLiving: false }, '† d. 1950'],
+    [{ birthYear: null, deathYear: null, isLiving: false }, '†'],
+  ])('formats the years %o as %s', (over, text) => {
+    const { container } = view({ person: { ...robert, ...over } });
+    expect(container.querySelector('.card-years')!.textContent!.trim()).toBe(text);
+  });
+
+  it('has no years line for a living person with no known years', () => {
+    const { container } = view({
+      person: { ...robert, birthYear: null, deathYear: null, isLiving: true },
+    });
+    expect(container.querySelector('.card-years')).toBeNull();
   });
 
   it('marks you, focus, selection and hidden relatives', () => {
@@ -124,7 +160,7 @@ describe('PersonCardView', () => {
       expect(screen.getByText('RH')).toBeInTheDocument();
     });
 
-    it('renders no image on name-only and dot cards', () => {
+    it('renders no image on compact and dot cards (initials only)', () => {
       for (const d of ['compact', 'dot'] as const) {
         const { container, unmount } = view({ person: withPhoto }, d);
         expect(container.querySelector('img')).toBeNull();

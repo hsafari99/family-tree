@@ -213,10 +213,10 @@ test('dragging a partner past the other swaps the couple', async ({ page }) => {
     Math.sign((await left(page, 'Xan Other')) - (await left(page, 'Ben Pine')));
   await expect.poll(side).not.toBe(0);
   const before = await side();
-  // The photo is the card's drag handle (the name button and the "+" buttons don't drag).
+  // The avatar is the card's drag handle (the name button and the "+" buttons don't drag).
   const photo = page
     .locator('.react-flow__node', { has: card(page, 'Xan Other') })
-    .locator('.card-photo');
+    .locator('.card-avatar');
   const xan = (await photo.boundingBox())!;
   const ben = (await card(page, 'Ben Pine').boundingBox())!;
   const y = xan.y + xan.height / 2;

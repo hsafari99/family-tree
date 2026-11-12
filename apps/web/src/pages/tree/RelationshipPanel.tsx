@@ -12,6 +12,7 @@ import { MESSAGES } from '../../auth/api';
 import { usePersonHref } from '../../canvas/params';
 import { FormError } from '../../components/forms';
 import { PersonPhoto } from '../../components/PersonPhoto';
+import { avatarTone } from '../../canvas/avatar-tone';
 import { PersonPicker } from '../../components/PersonPicker';
 import { personName } from '../../trees/format';
 import { useTreesApi } from '../../trees/TreesApiContext';
@@ -135,7 +136,12 @@ function Result({
       <ol className="kin-path" aria-label="People on the path">
         {rel.persons.map((p) => (
           <li key={p.id}>
-            <PersonPhoto url={p.photoThumbUrl} person={p} className="result-photo" />{' '}
+            <PersonPhoto
+              url={p.photoThumbUrl}
+              person={p}
+              className="result-photo"
+              tone={avatarTone(p.id)}
+            />{' '}
             <Link to={hrefOf(p.id)}>{personName(p)}</Link>
           </li>
         ))}

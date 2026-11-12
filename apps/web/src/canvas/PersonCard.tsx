@@ -1,7 +1,8 @@
 import type { GraphPerson, RelativeRole } from '@family-tree/shared';
 import { Handle, type NodeProps, Position, type ReactFlowState, useStore } from '@xyflow/react';
 import { PersonPhoto } from '../components/PersonPhoto';
-import { personName, personYears } from '../trees/format';
+import { initials, personName, personYears } from '../trees/format';
+import { avatarTone } from './avatar-tone';
 import { type CardDetail, cardDetail } from './canvas-settings';
 import { useCanvasActions, useSelectionStore } from './CanvasActions';
 import { useIsSelected } from './selection';
@@ -54,10 +55,31 @@ export function PersonCardView({
   ]
     .filter(Boolean)
     .join(' ');
+  const tone = avatarTone(person.id);
+  const yearsLine = (years || deceased) && (
+    <span className="card-years">
+      {deceased && (
+        <span className="card-dagger" aria-hidden="true">
+          †{' '}
+        </span>
+      )}
+      {years}
+    </span>
+  );
   return (
     <div className={cls} onFocus={onFocus}>
-      {detail === 'full' && (
-        <PersonPhoto url={person.photoThumbUrl} person={person} className="card-photo" />
+      {detail === 'full' ? (
+        <PersonPhoto
+          url={person.photoThumbUrl}
+          person={person}
+          className="card-avatar"
+          tone={tone}
+        />
+      ) : (
+        // Compact and dot cards load no image (many cards at a low zoom); dot has no text at all.
+        <span className={`card-avatar tone-${tone}`} aria-hidden="true">
+          {detail === 'compact' && initials(person)}
+        </span>
       )}
       <button
         type="button"
@@ -66,19 +88,21 @@ export function PersonCardView({
         aria-label={label}
         onClick={onOpen}
       >
-        {detail !== 'dot' && (
+        {detail === 'full' && (
           <>
-            <span className="card-name">{name}</span>
-            {(years || deceased) && (
-              <span className="card-years">
-                {deceased && '† '}
-                {years}
-              </span>
-            )}
-            {isMe && <span className="card-you">You</span>}
+            <span className="card-name" title={name}>
+              {name}
+            </span>
+            {yearsLine}
           </>
         )}
+        {detail === 'compact' && (
+          <span className="card-name" title={name}>
+            {person.givenName || name}
+          </span>
+        )}
       </button>
+      {detail === 'full' && isMe && <span className="card-you">You</span>}
       {detail !== 'dot' && person.hiddenRelatives && (
         <span className="card-more" aria-hidden="true" title="More relatives not shown">
           …

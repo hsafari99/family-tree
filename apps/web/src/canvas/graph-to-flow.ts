@@ -9,8 +9,8 @@ import type { Edge, Node } from '@xyflow/react';
 import { personName, UNION_STATUS_LABEL } from '../trees/format';
 import type { Couple } from './couples';
 
-export const CARD_WIDTH = 184;
-export const CARD_HEIGHT = 88;
+export const CARD_WIDTH = 200;
+export const CARD_HEIGHT = 72;
 /** The union node's box, which is also its hit area: 24px meets WCAG 2.5.8. The visible dot inside is 12px. */
 export const UNION_SIZE = 24;
 
