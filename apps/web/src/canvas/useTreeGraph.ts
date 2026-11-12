@@ -45,6 +45,8 @@ export function useTreeGraph(
     /** Collapsed people (Task 13), and who to keep when hiding (the root in full view). */
     hidden?: ReadonlySet<string>;
     anchorId?: string | null;
+    /** False for the fan and the tree, which draw the graph themselves: no layout, no nodes. */
+    layout?: boolean;
   },
   refreshKey: number,
 ): TreeGraphState {
@@ -53,7 +55,7 @@ export function useTreeGraph(
   const [state, setState] = useState<TreeGraphState>({ status: 'loading' });
   const layouts = useRef(0);
   const { mode, focus, depth, generations, branch } = query;
-  const { focusId, meId, hidden = NONE, anchorId = null } = ctx;
+  const { focusId, meId, hidden = NONE, anchorId = null, layout = true } = ctx;
   // A string, so a new Set with the same ids doesn't lay out again.
   const hiddenKey = [...hidden].sort().join('\n');
   // The last response: collapsing or expanding a branch lays out again without fetching.
@@ -84,6 +86,21 @@ export function useTreeGraph(
       const flow = graphToFlow(cut.graph, { focusId, meId });
       markBranches(flow, shut, cut.hiddenCount);
       if (!active) return;
+      if (!layout) {
+        return setState({
+          status: 'ready',
+          treeId,
+          graph: cut.graph,
+          nodes: [],
+          edges: [],
+          families: flow.families,
+          couples: [],
+          layoutKey: ++layouts.current,
+          hiddenBy: cut.hiddenBy,
+          generations: null,
+          rows: [],
+        });
+      }
       try {
         const generations = assignGenerations(flow);
         const laid = await engine.layout(toElkGraph(flow, generations));
@@ -128,6 +145,7 @@ export function useTreeGraph(
     meId,
     refreshKey,
     hiddenKey,
+    layout,
     anchorId,
   ]);
 

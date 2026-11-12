@@ -1,13 +1,20 @@
-import { GRAPH_DEPTH_MAX, type PersonSummary, type TreeDetail } from '@family-tree/shared';
+import {
+  GRAPH_DEPTH_MAX,
+  GRAPH_GENERATIONS_MAX,
+  type PersonSummary,
+  type TreeDetail,
+} from '@family-tree/shared';
 import type { ReactNode, Ref } from 'react';
 import {
   ArrowIcon,
+  FanIcon,
   FocusIcon,
   FullIcon,
   ListIcon,
   PlusIcon,
   SettingsIcon,
   TrashIcon,
+  TreeIcon,
   UsersIcon,
   XIcon,
 } from '../components/icons';
@@ -17,35 +24,26 @@ import { RowContent } from './PanelRow';
 import { type CanvasChange, type CanvasParams, canvasSearch } from './params';
 
 /**
- * Focus | Full above the canvas: real links that set `view`, so a view can be shared. The current
- * one is marked with aria-current (aria-pressed is for buttons).
+ * Focus | Full | Fan | Tree above the canvas: real links that set `view`, so a view can be shared.
+ * The current one is marked with aria-current (aria-pressed is for buttons).
  */
 export function ViewLinks({ params }: { params: CanvasParams }) {
   const [search] = useSearchParams();
   const { pathname } = useLocation();
-  const full = params.mode === 'full';
   const links = [
-    {
-      label: 'Focus',
-      current: !full,
-      to: canvasSearch(search, { view: null, branch: null }),
-      icon: <FocusIcon />,
-    },
-    {
-      label: 'Full',
-      current: full,
-      to: canvasSearch(search, { view: 'full', focus: null }),
-      icon: <FullIcon />,
-    },
-  ];
+    { view: 'focus', label: 'Focus', change: { view: null, branch: null }, icon: <FocusIcon /> },
+    { view: 'full', label: 'Full', change: { view: 'full', focus: null }, icon: <FullIcon /> },
+    { view: 'fan', label: 'Fan', change: { view: 'fan', branch: null }, icon: <FanIcon /> },
+    { view: 'tree', label: 'Tree', change: { view: 'tree', branch: null }, icon: <TreeIcon /> },
+  ] as const;
   return (
     <div role="group" aria-label="View" className="view-links">
       {links.map((l) => (
         <Link
           key={l.label}
-          to={`${pathname}${l.to}`}
+          to={`${pathname}${canvasSearch(search, l.change)}`}
           className="view-link"
-          aria-current={l.current ? 'true' : undefined}
+          aria-current={params.view === l.view ? 'true' : undefined}
         >
           {l.icon}
           {l.label}
@@ -55,7 +53,10 @@ export function ViewLinks({ params }: { params: CanvasParams }) {
   );
 }
 
-/** The focus view's Generations slider: an hourglass, N up and N down (the full view has none). */
+/**
+ * The Generations slider: the focus view's hourglass (N up and N down, 1 to 3), or the fan's and
+ * the tree's generations (1 to 6). The full view has none.
+ */
 export function DepthControl({
   params,
   onChange,
@@ -63,7 +64,16 @@ export function DepthControl({
   params: CanvasParams;
   onChange: (change: CanvasChange) => void;
 }) {
-  if (params.mode === 'full') return null;
+  if (params.view === 'full') return null;
+  const focus = params.view === 'focus';
+  const value = focus ? params.depth : params.gens;
+  const plural = value === 1 ? 'generation' : 'generations';
+  const what = focus ? 'up and down' : params.view === 'fan' ? 'of ancestors' : 'of descendants';
+  const hint = focus
+    ? 'Generations up and down from the focus person'
+    : params.view === 'fan'
+      ? 'Generations of ancestors in the fan'
+      : 'Generations of descendants in the tree';
   return (
     <div className="depth-control">
       <label htmlFor="tree-depth">Generations</label>
@@ -71,16 +81,18 @@ export function DepthControl({
         id="tree-depth"
         type="range"
         min="1"
-        max={GRAPH_DEPTH_MAX}
+        max={focus ? GRAPH_DEPTH_MAX : GRAPH_GENERATIONS_MAX}
         step="1"
-        value={params.depth}
-        aria-valuetext={`${params.depth} ${params.depth === 1 ? 'generation' : 'generations'} up and down`}
+        value={value}
+        aria-valuetext={`${value} ${plural} ${what}`}
         aria-describedby="tree-depth-hint"
-        onChange={(e) => onChange({ depth: Number(e.target.value) })}
+        onChange={(e) =>
+          onChange(focus ? { depth: Number(e.target.value) } : { gens: Number(e.target.value) })
+        }
       />
-      <output htmlFor="tree-depth">{params.depth}</output>
+      <output htmlFor="tree-depth">{value}</output>
       <p id="tree-depth-hint" className="depth-hint">
-        Generations up and down from the focus person
+        {hint}
       </p>
     </div>
   );

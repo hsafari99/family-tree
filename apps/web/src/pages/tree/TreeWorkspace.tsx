@@ -31,6 +31,7 @@ import { FamilyCanvas } from '../../canvas/FamilyCanvas';
 import {
   type CanvasChange,
   canvasSearch,
+  graphModeOf,
   readCanvasParams,
   usePersonHref,
 } from '../../canvas/params';
@@ -78,22 +79,32 @@ export function TreeWorkspace({
   const refreshPhotos = useThrottled(() => setRefreshKey((k) => k + 1));
   const [disconnected, setDisconnected] = useState<PersonSummary[]>([]);
 
+  // The fan chart and the illustrated tree (Batch 5) draw their own pictures, not the canvas.
+  const onCanvas = view.view === 'focus' || view.view === 'full';
   // Focus view centres on: an explicit focus, else the selected person, else the root (decision 10).
-  const focusId = view.focus ?? personId ?? detail.tree.rootPersonId;
+  // The fan and the tree grow from an explicit focus, else you, else the root, so opening someone
+  // from them doesn't move the picture.
+  const focusId = onCanvas
+    ? (view.focus ?? personId ?? detail.tree.rootPersonId)
+    : (view.focus ?? detail.me.personId ?? detail.tree.rootPersonId);
+  const mode = graphModeOf(view.view);
   const query: GraphQuery =
-    view.mode === 'full'
-      ? { mode: 'full', ...(view.branch ? { branch: view.branch } : {}) }
-      : { mode: 'focus', ...(focusId ? { focus: focusId } : {}), depth: view.depth };
+    mode === 'full'
+      ? { mode, ...(view.branch ? { branch: view.branch } : {}) }
+      : mode === 'focus'
+        ? { mode, ...(focusId ? { focus: focusId } : {}), depth: view.depth }
+        : { mode, ...(focusId ? { focus: focusId } : {}), generations: view.gens };
   // Collapsed branches (Task 13), remembered per tree; hiding keeps whoever links to the root.
   const branches = useHiddenBranches(treeId);
   const graph = useTreeGraph(
     treeId,
     query,
     {
-      focusId: view.mode === 'focus' ? focusId : null,
+      focusId: view.view === 'focus' ? focusId : null,
       meId: detail.me.personId,
-      hidden: branches.hidden,
+      hidden: onCanvas ? branches.hidden : NO_IDS,
       anchorId: detail.tree.rootPersonId ?? detail.me.personId,
+      layout: onCanvas,
     },
     refreshKey,
   );
@@ -116,7 +127,7 @@ export function TreeWorkspace({
   // navigation doesn't re-render every card.
   const meId = detail.me.personId;
   const latest = useRef({ navigate, params, keepFocus: null as string | null, meId });
-  const keepFocus = view.mode === 'focus' ? focusId : null;
+  const keepFocus = view.view === 'focus' ? focusId : null;
   useEffect(() => {
     latest.current = { navigate, params, keepFocus, meId };
   });
@@ -343,7 +354,7 @@ export function TreeWorkspace({
     return ready;
   }, [ready, highlight, linePerson]);
   // Generation names (Task 14): relative to the focus person, or to you in Full view.
-  const bandAnchor = view.mode === 'focus' ? focusId : meId;
+  const bandAnchor = view.view === 'focus' ? focusId : meId;
   const bands = useMemo(() => {
     if (!ready) return [];
     const who = ready.graph.persons.find((p) => p.id === bandAnchor);
@@ -481,7 +492,7 @@ export function TreeWorkspace({
             hidden={!shown}
           >
             <BranchStatus
-              name={view.mode === 'full' && view.branch ? nameOf(view.branch) : null}
+              name={view.view === 'full' && view.branch ? nameOf(view.branch) : null}
               onClear={clearBranch}
             />
             <DepthControl params={view} onChange={(c) => go(pathname, c)} />
@@ -614,21 +625,26 @@ export function TreeWorkspace({
                   rest.
                 </p>
               )}
-              {ready && !ready.graph.needsBranch && ready.nodes.length === 0 && (
+              {onCanvas && ready && !ready.graph.needsBranch && ready.nodes.length === 0 && (
                 <p>No one to show yet.</p>
+              )}
+              {!onCanvas && ready && (
+                <div className="line-view" data-view={view.view}>
+                  {ready.graph.persons.length} people
+                </div>
               )}
               {offView && (
                 <p role="status" className="notice">
                   Part of the path is outside this view. Try the full view.
                 </p>
               )}
-              {drawn && drawn.nodes.length > 0 && (
+              {onCanvas && drawn && drawn.nodes.length > 0 && (
                 <FamilyCanvas
                   nodes={drawn.nodes}
                   edges={drawn.edges}
                   families={drawn.families}
                   layoutKey={drawn.layoutKey}
-                  focusId={view.mode === 'focus' ? focusId : null}
+                  focusId={view.view === 'focus' ? focusId : null}
                   actions={actions}
                   selectedId={personId ?? null}
                   meId={detail.me.personId}
@@ -667,6 +683,8 @@ export function TreeWorkspace({
     </>
   );
 }
+
+const NO_IDS: ReadonlySet<string> = new Set();
 
 /** The `from`/`to` pair of "How are we related?", dropped when someone else is opened. */
 const NO_PAIR = { from: null, to: null } as const;

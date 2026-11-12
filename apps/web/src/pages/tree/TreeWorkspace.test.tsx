@@ -447,6 +447,40 @@ describe('TreeWorkspace panel focus and keys', () => {
   });
 });
 
+describe('TreeWorkspace fan and tree views (Task 17)', () => {
+  it('the fan fetches ancestors of you, and opening someone keeps it on you', async () => {
+    const s = setup({ graph: { mode: 'ancestors' } });
+    s.t.detail.me.personId = 'leo';
+    renderAt(`/trees/${s.id}/people/david?view=fan&gens=5`, s);
+    await waitFor(() =>
+      expect(graphCalls(s.trees)).toContainEqual({
+        mode: 'ancestors',
+        focus: 'leo',
+        generations: 5,
+      }),
+    );
+    expect(graphCalls(s.trees).some((q) => (q as { focus?: string }).focus === 'david')).toBe(
+      false,
+    );
+    expect(screen.getByRole('link', { name: 'Fan' })).toHaveAttribute('aria-current', 'true');
+    expect(screen.getByLabelText('Generations')).toHaveAttribute('max', '6');
+  });
+
+  it('the tree fetches descendants of the URL focus, with 4 generations by default', async () => {
+    const s = setup({ graph: { mode: 'descendants' } });
+    renderAt(`/trees/${s.id}/people/leo?view=tree&focus=robert`, s);
+    await waitFor(() =>
+      expect(graphCalls(s.trees)).toContainEqual({
+        mode: 'descendants',
+        focus: 'robert',
+        generations: 4,
+      }),
+    );
+    // No canvas: the tree draws its own picture.
+    expect(document.querySelector('.react-flow')).toBeNull();
+  });
+});
+
 describe('TreeWorkspace lineage', () => {
   const node = (id: string) =>
     document.querySelector(`.react-flow__node[data-id="p:${id}"]`) as HTMLElement | null;
