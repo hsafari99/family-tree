@@ -852,25 +852,46 @@ img.card-avatar {
 .generation-band.is-shaded {
   background: color-mix(in srgb, var(--surface-2) 60%, transparent);
 }
-.generation-labels {
-  position: absolute;
-  inset: 0;
-  z-index: 4;
+/* The generations' names, in a column beside the pane (never over a card), each centred on its band. */
+.generation-gutter {
+  position: relative;
+  flex: none;
+  width: var(--gutter-width, 7.5rem);
   overflow: hidden;
-  pointer-events: none;
+  border-right: 1px solid var(--line);
+  background: var(--bg);
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+.generation-gutter-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 0.5rem;
+}
+.generation-gutter-band.is-shaded {
+  background: color-mix(in srgb, var(--surface-2) 60%, transparent);
 }
 .generation-label {
-  position: absolute;
-  left: 8px;
-  padding: 1px 6px;
-  border-radius: var(--radius-pill);
-  background: color-mix(in srgb, var(--surface) 80%, transparent);
   color: var(--ink-2);
-  font-size: var(--text-xs);
+  font-size: 0.6875rem;
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  white-space: nowrap;
+  line-height: 1.25;
+  letter-spacing: 0.02em;
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+@media (max-width: 720px) {
+  .generation-gutter {
+    --gutter-width: 5.25rem;
+  }
+  .generation-gutter-band {
+    padding: 0 0.375rem;
+  }
+  .generation-label {
+    font-size: 0.625rem;
+  }
 }
 /* The canvas toolbar: a vertical pill in the bottom right (Task 10). The minimap sits to its left,
    smaller on a phone (where it starts hidden). */
@@ -1401,9 +1422,15 @@ button.section-row > svg {
   border-radius: var(--radius);
 }
 .family-canvas {
+  display: flex;
   width: 100%;
   flex: 1;
   min-height: 0;
+}
+.family-canvas-pane {
+  position: relative;
+  flex: 1;
+  min-width: 0;
 }
 .tree-panel {
   height: var(--workspace-height);

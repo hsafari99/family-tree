@@ -127,4 +127,17 @@ describe('FamilyCanvas', () => {
     rerender(<FamilyCanvas {...next} focusId={null} actions={a} selectedId={null} />);
     await vi.waitFor(() => expect(screen.queryByRole('button', DAVID)).toBeNull());
   });
+
+  it('names the generations in a column beside the pane, never over it', async () => {
+    const flow = await laidOut();
+    const bands = [{ label: 'Your generation', top: -40, bottom: 112, cardsTop: 0 }];
+    render(
+      <FamilyCanvas {...flow} focusId={null} actions={actions()} selectedId={null} bands={bands} />,
+    );
+    await screen.findByRole('button', DAVID);
+    const label = [...document.querySelectorAll('.generation-label')];
+    expect(label.map((l) => l.textContent)).toEqual(['Your generation']);
+    expect(label[0]!.closest('.react-flow')).toBeNull();
+    expect(label[0]!.closest('.family-canvas')).not.toBeNull();
+  });
 });

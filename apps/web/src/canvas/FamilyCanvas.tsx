@@ -32,7 +32,7 @@ import {
 import { CanvasToolbar, motionMs, useMiniMapShown } from './CanvasToolbar';
 import { FamilyEdge } from './FamilyEdge';
 import type { Band } from './generation-labels';
-import { GenerationBands } from './GenerationBands';
+import { GenerationBands, GenerationGutter } from './GenerationBands';
 import { type NavDirection, neighbour } from './keyboard-nav';
 import { PersonNode } from './PersonCard';
 import { reparentFromReconnect } from './reparent';
@@ -396,52 +396,56 @@ function CanvasInner({
   return (
     <CanvasActionsProvider value={ctx}>
       <SelectionProvider value={selection}>
-        <div className="family-canvas" ref={pane}>
-          <ReactFlow<CanvasNode>
-            nodes={shown}
-            edges={edges}
-            nodeTypes={NODE_TYPES}
-            edgeTypes={EDGE_TYPES}
-            colorMode="system"
-            onNodesChange={onNodesChange}
-            onNodeDragStop={onNodeDragStop}
-            onMoveStart={(e) => {
-              // Only a person's pan or zoom has an event; our own fitView has none.
-              if (e) userMoved.current = true;
-            }}
-            edgesReconnectable={false}
-            onReconnect={onReparent ? onReconnect : undefined}
-            isValidConnection={isValidConnection}
-            nodesDraggable={false}
-            nodesConnectable={false}
-            elementsSelectable={false}
-            nodesFocusable={false}
-            edgesFocusable={false}
-            onlyRenderVisibleElements={settings.onlyRenderVisibleElements}
-            minZoom={MIN_ZOOM}
-            maxZoom={2}
-            aria-label="Family tree. Use arrow keys to move between relatives, Enter to open."
-          >
-            <Background variant={BackgroundVariant.Dots} gap={22} size={1.2} />
-            <GenerationBands bands={bands} />
-            <Panel position="bottom-right">
-              <CanvasToolbar
-                canCentreMe={meId !== null && nodes.some((n) => n.id === personNodeId(meId))}
-                onFit={() => void fit()}
-                onCentreMe={() => meId && flyTo(meId)}
-                map={{ available: settings.showMiniMap, shown: mapShown, toggle: toggleMap }}
-              />
-            </Panel>
-            {mapShown && (
-              <MiniMap
-                className="canvas-minimap"
-                position="bottom-right"
-                pannable
-                zoomable
-                ariaLabel="Overview of the tree"
-              />
-            )}
-          </ReactFlow>
+        <div className={bands.length > 0 ? 'family-canvas has-gutter' : 'family-canvas'}>
+          {/* Beside the pane, not over it: the names never cover a card (Task 14). */}
+          {bands.length > 0 && <GenerationGutter bands={bands} />}
+          <div className="family-canvas-pane" ref={pane}>
+            <ReactFlow<CanvasNode>
+              nodes={shown}
+              edges={edges}
+              nodeTypes={NODE_TYPES}
+              edgeTypes={EDGE_TYPES}
+              colorMode="system"
+              onNodesChange={onNodesChange}
+              onNodeDragStop={onNodeDragStop}
+              onMoveStart={(e) => {
+                // Only a person's pan or zoom has an event; our own fitView has none.
+                if (e) userMoved.current = true;
+              }}
+              edgesReconnectable={false}
+              onReconnect={onReparent ? onReconnect : undefined}
+              isValidConnection={isValidConnection}
+              nodesDraggable={false}
+              nodesConnectable={false}
+              elementsSelectable={false}
+              nodesFocusable={false}
+              edgesFocusable={false}
+              onlyRenderVisibleElements={settings.onlyRenderVisibleElements}
+              minZoom={MIN_ZOOM}
+              maxZoom={2}
+              aria-label="Family tree. Use arrow keys to move between relatives, Enter to open."
+            >
+              <Background variant={BackgroundVariant.Dots} gap={22} size={1.2} />
+              <GenerationBands bands={bands} />
+              <Panel position="bottom-right">
+                <CanvasToolbar
+                  canCentreMe={meId !== null && nodes.some((n) => n.id === personNodeId(meId))}
+                  onFit={() => void fit()}
+                  onCentreMe={() => meId && flyTo(meId)}
+                  map={{ available: settings.showMiniMap, shown: mapShown, toggle: toggleMap }}
+                />
+              </Panel>
+              {mapShown && (
+                <MiniMap
+                  className="canvas-minimap"
+                  position="bottom-right"
+                  pannable
+                  zoomable
+                  ariaLabel="Overview of the tree"
+                />
+              )}
+            </ReactFlow>
+          </div>
         </div>
       </SelectionProvider>
     </CanvasActionsProvider>

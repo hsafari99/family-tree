@@ -346,8 +346,8 @@ export function TreeWorkspace({
   const bands = useMemo(() => {
     if (!ready) return [];
     const who = ready.graph.persons.find((p) => p.id === bandAnchor);
-    const self = !who || who.id === meId ? 'You' : who.givenName || personName(who);
-    return bandRows(ready.rows, ready.generations, who ? who.id : null, self);
+    const name = !who || who.id === meId ? null : who.givenName || personName(who);
+    return bandRows(ready.rows, ready.generations, who ? who.id : null, name);
   }, [ready, bandAnchor, meId]);
   const offView =
     highlight !== null &&

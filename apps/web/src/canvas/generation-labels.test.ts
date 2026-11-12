@@ -1,21 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { bandRows, generationLabel, rowTops } from './generation-labels';
+import { bandRows, generationLabel, gutterLabels, rowTops } from './generation-labels';
 import type { CanvasNode } from './graph-to-flow';
 import { CARD_HEIGHT } from './graph-to-flow';
 
 describe('generationLabel', () => {
-  it('names generations relative to the anchor', () => {
-    expect(generationLabel(0)).toBe('You');
-    expect(generationLabel(0, 'Leo')).toBe('Leo');
-    expect(generationLabel(-1)).toBe('Parents');
-    expect(generationLabel(-2)).toBe('Grandparents');
-    expect(generationLabel(-3)).toBe('Great-grandparents');
-    expect(generationLabel(-4)).toBe('2× great-grandparents');
-    expect(generationLabel(-6)).toBe('4× great-grandparents');
-    expect(generationLabel(1)).toBe('Children');
-    expect(generationLabel(2)).toBe('Grandchildren');
-    expect(generationLabel(3)).toBe('Great-grandchildren');
-    expect(generationLabel(5)).toBe('3× great-grandchildren');
+  it('names a generation, not people, relative to the anchor', () => {
+    expect(generationLabel(0)).toBe('Your generation');
+    expect(generationLabel(0, 'Leo')).toBe('Leo’s generation');
+    expect(generationLabel(-1)).toBe('Parents’ generation');
+    expect(generationLabel(-2)).toBe('Grandparents’ generation');
+    expect(generationLabel(-3)).toBe('Great-grandparents’ generation');
+    expect(generationLabel(-4)).toBe('2× great-grandparents’ generation');
+    expect(generationLabel(-6)).toBe('4× great-grandparents’ generation');
+    expect(generationLabel(1)).toBe('Children’s generation');
+    expect(generationLabel(2)).toBe('Grandchildren’s generation');
+    expect(generationLabel(3)).toBe('Great-grandchildren’s generation');
+    expect(generationLabel(5)).toBe('3× great-grandchildren’s generation');
   });
 });
 
@@ -49,7 +49,11 @@ describe('rows from the layout', () => {
 
   it('bands each row out to halfway to its neighbours, labelled from the anchor', () => {
     const rows = bandRows(rowTops(nodes, gens), gens, 'c', 'Cat');
-    expect(rows.map((r) => r.label)).toEqual(['Parents', 'Cat', 'Children']);
+    expect(rows.map((r) => r.label)).toEqual([
+      'Parents’ generation',
+      'Cat’s generation',
+      'Children’s generation',
+    ]);
     const gap = (128 - CARD_HEIGHT) / 2;
     expect(rows[1]).toMatchObject({
       top: 128 - gap,
@@ -60,11 +64,29 @@ describe('rows from the layout', () => {
   });
 
   it('numbers the rows without an anchor, and has none without generations', () => {
-    expect(bandRows(rowTops(nodes, gens), gens, null, 'You').map((r) => r.label)).toEqual([
+    expect(bandRows(rowTops(nodes, gens), gens, null, null).map((r) => r.label)).toEqual([
       'Generation 1',
       'Generation 2',
       'Generation 3',
     ]);
     expect(rowTops(nodes, null)).toEqual([]);
+  });
+});
+
+describe('gutter labels', () => {
+  const bands = [
+    { label: 'A', top: -40, bottom: 100, cardsTop: 0 },
+    { label: 'B', top: 100, bottom: 300, cardsTop: 128 },
+  ];
+  it('centres each label on its band on screen, at any zoom', () => {
+    expect(gutterLabels(bands, 10, 0.5)).toEqual([
+      { label: 'A', top: -10, height: 70, centre: 25, shaded: true },
+      { label: 'B', top: 60, height: 100, centre: 110, shaded: false },
+    ]);
+    // Zoomed far out (the strip above a row is a few px): every label is still there.
+    expect(gutterLabels(bands, 0, 0.26).map((l) => l.label)).toEqual(['A', 'B']);
+  });
+  it('has none at the dot zoom', () => {
+    expect(gutterLabels(bands, 0, 0.2)).toEqual([]);
   });
 });
