@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { FormError } from '../components/forms';
 import { PersonPhoto } from '../components/PersonPhoto';
+import { SearchIcon } from '../components/icons';
 import { PersonPicker } from '../components/PersonPicker';
 import { personName, personYears } from '../trees/format';
 import { useTreesApi } from '../trees/TreesApiContext';
@@ -157,13 +158,16 @@ export function SearchBox({
       <form role="search" aria-label="Search people" onSubmit={(e) => e.preventDefault()}>
         <label>
           Search{' '}
-          <input
-            ref={searchInput}
-            type="search"
-            value={q}
-            autoComplete="off"
-            onChange={(e) => setQ(e.target.value)}
-          />
+          <span className="search-field">
+            <SearchIcon />
+            <input
+              ref={searchInput}
+              type="search"
+              value={q}
+              autoComplete="off"
+              onChange={(e) => setQ(e.target.value)}
+            />
+          </span>
         </label>{' '}
         <button
           type="button"

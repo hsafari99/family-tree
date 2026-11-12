@@ -145,9 +145,9 @@ export function PersonPanel({
                     <Fragment key={t}>
                       {' '}
                       <span className="name-tag">
-                        <span className="sr-only">(</span>
+                        <span className="name-tag-paren">(</span>
                         {t}
-                        <span className="sr-only">)</span>
+                        <span className="name-tag-paren">)</span>
                       </span>
                     </Fragment>
                   ))}

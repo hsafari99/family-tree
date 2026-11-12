@@ -97,14 +97,41 @@ test('the side panel and the bar above the canvas: search, generations, tags, di
   // In the full view the branch picker takes the slider's place.
   await expect(panel.getByLabel('Generations')).toHaveCount(0);
   await expect(panel.getByLabel('Show the branch of')).toBeVisible();
+  // Its matches overlay the panel: nothing below moves.
+  const row = panel.getByRole('button', { name: 'How are we related?' });
+  const before = (await row.boundingBox())!;
+  await panel.getByLabel('Show the branch of').fill('Si');
+  const matches = page.locator('.picker-matches');
+  await expect(matches.getByRole('button', { name: /^Sid Side/ })).toBeVisible();
+  expect(await matches.evaluate((el) => getComputedStyle(el).position)).toBe('fixed');
+  expect((await row.boundingBox())!.y).toBe(before.y);
+  await panel.getByLabel('Show the branch of').fill('');
+  await expect(matches).toHaveCount(0);
   await focus.click();
   await expect(page).not.toHaveURL(/view=full/);
+
+  // A picker inside a dialog isn't clipped by it: its matches show whole, on top.
+  await panel.getByRole('button', { name: 'How are we related?' }).click();
+  const rel = page.getByRole('dialog', { name: 'How are we related?' });
+  await rel.getByRole('button', { name: 'Change To' }).click();
+  await rel.getByLabel('To', { exact: true }).fill('Si');
+  const relHit = rel.locator('.picker-matches').getByRole('button', { name: /^Sid Side/ });
+  await expect(relHit).toBeVisible();
+  const hb = (await relHit.boundingBox())!;
+  expect(
+    await page.evaluate(
+      ([x, y]) => !!document.elementFromPoint(x!, y!)?.closest('.picker-matches'),
+      [hb.x + hb.width / 2, hb.y + hb.height / 2],
+    ),
+  ).toBe(true);
+  await rel.getByRole('button', { name: 'Close' }).click();
+  await expect(rel).toBeHidden();
 
   // Tree settings is a row in the panel that opens a dialog (and has a deep link).
   await expect(page.getByLabel('Tree name')).toHaveCount(0);
   const settings = await openTreeSettings(page);
   await expect(page).toHaveURL(/[?&]tab=settings/);
-  await expect(settings.getByLabel('Tree name')).toHaveValue(/.+/);
+  await expect(settings.getByLabel('Tree name', { exact: true })).toHaveValue(/.+/);
   await settings.getByRole('button', { name: 'Close' }).click();
   await expect(settings).toBeHidden();
 

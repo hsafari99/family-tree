@@ -1,5 +1,7 @@
 import { GRAPH_DEPTH_MAX, type PersonSummary, type TreeDetail } from '@family-tree/shared';
-import type { ReactNode, Ref } from 'react';
+import { type ReactNode, type Ref, useEffect, useRef } from 'react';
+import { XIcon } from '../components/SectionDialog';
+import { personName } from '../trees/format';
 import { Link, useLocation, useSearchParams } from 'react-router';
 import { PersonPicker } from '../components/PersonPicker';
 import { DisconnectedPeople } from './DisconnectedPeople';
@@ -56,17 +58,7 @@ export function DepthControl({
   onChange: (change: CanvasChange) => void;
 }) {
   if (params.mode === 'full') {
-    return (
-      <div className="depth-control">
-        <PersonPicker
-          label="Show the branch of"
-          clearLabel="Whole tree"
-          persons={persons}
-          value={params.branch}
-          onChange={(id) => onChange({ branch: id })}
-        />
-      </div>
-    );
+    return <BranchControl persons={persons} branch={params.branch} onChange={onChange} />;
   }
   return (
     <div className="depth-control">
@@ -82,6 +74,69 @@ export function DepthControl({
         onChange={(e) => onChange({ depth: Number(e.target.value) })}
       />
       <output htmlFor="tree-depth">{params.depth}</output>
+    </div>
+  );
+}
+
+/**
+ * The full view's branch: a person search (named "Show the branch of"), or once someone is chosen
+ * their name with an × back to the whole tree, and a status line saying whose branch is drawn.
+ */
+function BranchControl({
+  persons,
+  branch,
+  onChange,
+}: {
+  persons: PersonSummary[];
+  branch: string | null;
+  onChange: (change: CanvasChange) => void;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  // The control swaps its own elements: move focus to the one that replaced the one used.
+  const focusNext = useRef<'clear' | 'input' | null>(null);
+  useEffect(() => {
+    const target = focusNext.current;
+    focusNext.current = null;
+    if (target === 'clear') box.current?.querySelector<HTMLElement>('.branch-clear')?.focus();
+    if (target === 'input') box.current?.querySelector<HTMLElement>('input')?.focus();
+  }, [branch]);
+  const chosen = branch ? persons.find((p) => p.id === branch) : undefined;
+  const name = chosen ? personName(chosen) : 'someone';
+  return (
+    <div className="depth-control branch-control" ref={box}>
+      {branch ? (
+        <p className="branch-chosen">
+          <span className="sr-only">Show the branch of: </span>
+          <strong>{name}</strong>
+          <button
+            type="button"
+            className="icon-button branch-clear"
+            aria-label="Show whole tree"
+            title="Show whole tree"
+            onClick={() => {
+              focusNext.current = 'input';
+              onChange({ branch: null });
+            }}
+          >
+            <XIcon />
+          </button>
+        </p>
+      ) : (
+        <PersonPicker
+          label="Show the branch of"
+          hideLabel
+          placeholder="Search a person to show their branch"
+          persons={persons}
+          value={null}
+          onChange={(id) => {
+            focusNext.current = 'clear';
+            onChange({ branch: id });
+          }}
+        />
+      )}
+      <p className="hint branch-status" aria-live="polite">
+        {branch ? `Showing ${name}’s branch` : ''}
+      </p>
     </div>
   );
 }

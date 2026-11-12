@@ -95,7 +95,9 @@ test('the panel is on the left, collapses to a thin line with an edge toggle, an
   const canvas = page.getByRole('region', { name: 'Family tree view' });
   expect((await panel.boundingBox())!.x).toBeLessThan((await canvas.boundingBox())!.x);
   // No Details toggle and no X: one toggle on the panel's right edge, vertically centred.
-  await expect(page.getByRole('button', { name: 'Details', exact: true })).toHaveCount(0);
+  // (The only "Details" button is the person's section row.)
+  await expect(page.getByRole('button', { name: 'Details', exact: true })).toHaveCount(1);
+  await expect(panel.getByRole('button', { name: 'Details', exact: true })).toHaveCount(1);
   await expect(panel.getByRole('button', { name: /^Collapse/ })).toHaveCount(0);
   const toggle = page.getByRole('button', { name: /side panel$/ });
   await expect(toggle).toHaveAccessibleName('Collapse side panel');

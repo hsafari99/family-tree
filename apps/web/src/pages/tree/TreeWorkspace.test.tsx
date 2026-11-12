@@ -151,8 +151,18 @@ describe('TreeWorkspace', () => {
     await waitFor(() =>
       expect(graphCalls(s.trees)).toContainEqual({ mode: 'full', branch: 'robert' }),
     );
-    fireEvent.click(await screen.findByRole('button', { name: 'Whole tree' }));
-    await waitFor(() => expect(screen.queryByRole('button', { name: 'Whole tree' })).toBeNull());
+    const clear = await screen.findByRole('button', { name: 'Show whole tree' });
+    expect(screen.getByText('Showing Robert Hale’s branch')).toHaveAttribute('aria-live', 'polite');
+    await waitFor(() => expect(clear).toHaveFocus());
+    fireEvent.click(clear);
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Show whole tree' })).toBeNull(),
+    );
+    expect(screen.getByLabelText('Show the branch of')).toHaveAttribute(
+      'placeholder',
+      'Search a person to show their branch',
+    );
+    await waitFor(() => expect(screen.getByLabelText('Show the branch of')).toHaveFocus());
   });
 
   it('changes the depth', async () => {
