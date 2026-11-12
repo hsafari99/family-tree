@@ -5,13 +5,12 @@ import { ConfirmButton } from '../../components/ConfirmButton';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { MenuButton, type MenuItem } from '../../components/MenuButton';
 import { FormError } from '../../components/forms';
-import { personName } from '../../trees/format';
+import { personName, ROLE_LABEL } from '../../trees/format';
 import { useTreesApi } from '../../trees/TreesApiContext';
 import { CopyLink } from './CopyLink';
 import { actionMessage, type SectionProps } from './types';
 
 const COLUMNS = ['Name', 'Role', 'Branch / steward scope', 'Joined', 'Actions'] as const;
-const ROLE_LABEL = { owner: 'Owner', editor: 'Editor', viewer: 'Viewer' } as const;
 
 export function MembersSection({
   treeId,

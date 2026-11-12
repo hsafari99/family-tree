@@ -16,6 +16,9 @@ export function personYears(p: YearParts): string {
   return '';
 }
 
+/** A member's role, as the app names it everywhere. */
+export const ROLE_LABEL = { owner: 'Owner', editor: 'Editor', viewer: 'Viewer' } as const;
+
 export const MONTHS = [
   'January',
   'February',

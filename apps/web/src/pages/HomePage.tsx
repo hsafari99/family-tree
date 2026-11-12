@@ -5,10 +5,8 @@ import { useAuth } from '../auth/AuthContext';
 import { FormError } from '../components/forms';
 import { Page } from '../components/Page';
 import { HealthStatus } from '../HealthStatus';
-import { ACTION_LABEL, countPeople, timeAgo } from '../trees/format';
+import { ACTION_LABEL, countPeople, ROLE_LABEL, timeAgo } from '../trees/format';
 import { useTreesApi } from '../trees/TreesApiContext';
-
-const ROLE_LABEL = { owner: 'Owner', editor: 'Editor', viewer: 'Viewer' } as const;
 
 const firstName = (name: string) => name.trim().split(/\s+/)[0] ?? name;
 
