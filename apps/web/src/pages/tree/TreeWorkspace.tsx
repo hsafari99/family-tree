@@ -22,13 +22,7 @@ import { PhotoRefreshContext, useThrottled } from '../../components/PersonPhoto'
 import { ChevronIcon, SectionDialog } from '../../components/SectionDialog';
 import { RowContent } from '../../canvas/PanelRow';
 import { SearchBox } from '../../canvas/SearchBox';
-import {
-  BranchStatus,
-  DepthControl,
-  FullIcon,
-  TreeLinks,
-  ViewLinks,
-} from '../../canvas/TreeControls';
+import { BranchStatus, DepthControl, TreeLinks, ViewLinks } from '../../canvas/TreeControls';
 import type { CoupleChange } from '../../canvas/couples';
 import { FamilyCanvas } from '../../canvas/FamilyCanvas';
 import {
@@ -225,14 +219,13 @@ export function TreeWorkspace({
     [go, pathname],
   );
   const relatedRow = useRef<HTMLButtonElement>(null);
-  const branchRow = useRef<HTMLAnchorElement>(null);
   const toggle = useRef<HTMLButtonElement>(null);
   const nameOf = (id: string) => {
     const p = persons.find((x) => x.id === id);
     return p ? personName(p) : 'someone';
   };
-  // The × goes back to the whole tree; focus moves to the branch row (back once its branch is no
-  // longer shown), or to the panel's toggle.
+  // A branch comes only from the URL (an older or shared link); the × goes back to the whole tree,
+  // and focus moves to the panel's toggle.
   const refocus = useRef(false);
   const clearBranch = useCallback(() => {
     refocus.current = true;
@@ -241,7 +234,7 @@ export function TreeWorkspace({
   useEffect(() => {
     if (!refocus.current) return;
     refocus.current = false;
-    (branchRow.current ?? toggle.current)?.focus();
+    toggle.current?.focus();
   }, [view.branch]);
   const setRelated = useCallback(
     (open: boolean) =>
@@ -417,19 +410,6 @@ export function TreeWorkspace({
               )}
             </div>
             <ul className="section-list related-list">
-              {/* The selected person's branch, in the full view (a link, so it can be shared);
-                  left out while that branch is the one shown (the status line says so). */}
-              {personId && !(view.mode === 'full' && view.branch === personId) && (
-                <li>
-                  <Link
-                    className="section-row"
-                    ref={branchRow}
-                    to={`${pathname}${canvasSearch(params, { view: 'full', branch: personId, focus: null })}`}
-                  >
-                    <RowContent title="Show only this branch" icon={<FullIcon />} />
-                  </Link>
-                </li>
-              )}
               <li>
                 <button
                   type="button"
@@ -507,7 +487,7 @@ export function TreeWorkspace({
               {ready?.graph.needsBranch && (
                 <p role="status">
                   This tree has {ready.graph.total.toLocaleString('en')} people, too many to draw at
-                  once. Search for someone, then choose “Show only this branch”.
+                  once. Search for someone to see their place in the tree, or use the focus view.
                 </p>
               )}
               {ready?.graph.truncated && (

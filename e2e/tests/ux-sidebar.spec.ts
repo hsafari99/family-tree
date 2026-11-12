@@ -103,17 +103,6 @@ test('the side panel and the bar above the canvas: search, generations, tags, di
   await expect(panel.getByLabel('Generations')).toHaveCount(0);
   await expect(panel.getByLabel('Show the branch of')).toHaveCount(0);
   await expect(panel.getByRole('button', { name: 'Show whole tree' })).toHaveCount(0);
-  // "Show only this branch" (a link) draws Kim's branch; the × goes back to the whole tree.
-  const branchRow = panel.getByRole('link', { name: 'Show only this branch' });
-  await expect(branchRow).toHaveAttribute('href', /view=full&branch=/);
-  await branchRow.click();
-  await expect(page).toHaveURL(/[?&]branch=/);
-  await expect(panel.getByText('Showing Kim Side’s branch')).toBeVisible();
-  await expect(branchRow).toHaveCount(0);
-  await panel.getByRole('button', { name: 'Show whole tree' }).click();
-  await expect(page).not.toHaveURL(/branch=/);
-  await expect(panel.getByText(/^Showing .* branch$/)).toHaveCount(0);
-  await expect(branchRow).toBeFocused();
   await focus.click();
   await expect(page).not.toHaveURL(/view=full/);
 
@@ -140,6 +129,14 @@ test('the side panel and the bar above the canvas: search, generations, tags, di
   ).toBe(true);
   await rel.getByRole('button', { name: 'Close' }).click();
   await expect(rel).toBeHidden();
+
+  // A branch only comes from a link: the panel says whose, and the × goes back to the whole tree.
+  await page.goto(`/trees/${treeId}?view=full&branch=${root}`);
+  await expect(panel.getByText('Showing Sid Side’s branch')).toBeVisible();
+  await panel.getByRole('button', { name: 'Show whole tree' }).click();
+  await expect(page).not.toHaveURL(/branch=/);
+  await expect(panel.getByText(/^Showing .* branch$/)).toHaveCount(0);
+  await page.goto(`/trees/${treeId}`);
 
   // Tree settings is a row in the panel that opens a dialog (and has a deep link).
   await expect(page.getByLabel('Tree name')).toHaveCount(0);

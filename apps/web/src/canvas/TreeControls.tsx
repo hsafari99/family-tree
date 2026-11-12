@@ -236,8 +236,8 @@ function FocusIcon() {
   );
 }
 
-/** A small family tree: the whole tree, or one person's branch. */
-export function FullIcon() {
+/** A small family tree: the whole tree. */
+function FullIcon() {
   return (
     <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
       <g stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round">
