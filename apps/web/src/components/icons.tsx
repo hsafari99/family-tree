@@ -153,6 +153,40 @@ export const TargetIcon = () => (
   </Icon>
 );
 
+/** A person's details: an id card. */
+export const IdCardIcon = () => (
+  <Icon>
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <circle cx="9" cy="11" r="2" />
+    <path d="M5.5 16a3.5 3.5 0 0 1 7 0M15 10h3M15 14h3" />
+  </Icon>
+);
+
+/** Places: a map pin. */
+export const MapPinIcon = () => (
+  <Icon>
+    <path d="M12 21s-7-6.1-7-11.5a7 7 0 0 1 14 0C19 14.9 12 21 12 21z" />
+    <circle cx="12" cy="9.5" r="2.5" />
+  </Icon>
+);
+
+/** Photos: a framed picture. */
+export const ImageIcon = () => (
+  <Icon>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <circle cx="8.5" cy="9.5" r="1.5" />
+    <path d="m21 16-5-5-8 9" />
+  </Icon>
+);
+
+/** History: a clock. */
+export const ClockIcon = () => (
+  <Icon>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 7v5l3 2" />
+  </Icon>
+);
+
 /** The minimap: a folded map. */
 export const MapIcon = () => (
   <Icon>

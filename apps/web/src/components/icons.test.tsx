@@ -28,6 +28,10 @@ const REQUIRED = [
   'ChevronIcon',
   'XIcon',
   'EyeIcon',
+  'IdCardIcon',
+  'MapPinIcon',
+  'ImageIcon',
+  'ClockIcon',
 ];
 
 const all = Object.entries(icons).filter(([name]) => name.endsWith('Icon')) as [

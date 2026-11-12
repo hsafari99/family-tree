@@ -4,6 +4,7 @@ import { Link, useSearchParams } from 'react-router';
 import { FormError } from '../../components/forms';
 import { PersonPhoto, PhotoRefreshContext, useThrottled } from '../../components/PersonPhoto';
 import { RowContent } from '../../canvas/PanelRow';
+import { ClockIcon, IdCardIcon, ImageIcon, MapPinIcon, UsersIcon } from '../../components/icons';
 import { avatarTone } from '../../canvas/avatar-tone';
 import { SectionDialog } from '../../components/SectionDialog';
 import { personName, personYears } from '../../trees/format';
@@ -16,11 +17,11 @@ import { RelationsTab } from './RelationsTab';
 
 /** The panel's sections. Each opens in a dialog; `?tab=<id>` deep-links to one (brief #15). */
 export const SECTIONS = [
-  { id: 'info', label: 'Details' },
-  { id: 'places', label: 'Places' },
-  { id: 'photos', label: 'Photos' },
-  { id: 'relations', label: 'Relations' },
-  { id: 'history', label: 'History' },
+  { id: 'info', label: 'Details', Lead: IdCardIcon },
+  { id: 'places', label: 'Places', Lead: MapPinIcon },
+  { id: 'photos', label: 'Photos', Lead: ImageIcon },
+  { id: 'relations', label: 'Relations', Lead: UsersIcon },
+  { id: 'history', label: 'History', Lead: ClockIcon },
 ] as const;
 type SectionId = (typeof SECTIONS)[number]['id'];
 
@@ -173,7 +174,7 @@ export function PersonPanel({
                 }}
                 onClick={() => setSection(s.id)}
               >
-                <RowContent title={s.label} count={sectionCount(s.id, view)} />
+                <RowContent title={s.label} count={sectionCount(s.id, view)} lead={<s.Lead />} />
               </button>
             </li>
           ))}

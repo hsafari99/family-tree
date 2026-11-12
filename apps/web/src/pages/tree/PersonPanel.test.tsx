@@ -250,6 +250,10 @@ describe('PersonPanel', () => {
       ]);
       expect(rows[1]!.querySelector('.section-row-count')).toHaveTextContent('1');
       expect(rows[0]).toHaveAttribute('aria-haspopup', 'dialog');
+      // Each row leads with its own decorative icon, like the tree rows.
+      const icons = rows.map((r) => r.querySelector('.section-row-lead svg.icon'));
+      for (const svg of icons) expect(svg).toHaveAttribute('aria-hidden', 'true');
+      expect(new Set(icons.map((svg) => svg!.innerHTML)).size).toBe(rows.length);
       expect(screen.queryByRole('dialog')).toBeNull();
       expect(screen.queryByRole('button', { name: 'Edit details' })).toBeNull();
     });
