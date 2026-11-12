@@ -4,7 +4,7 @@ import { readZip } from '../../apps/api/test/zip-reader';
 import { PROD_LOCAL, statePath } from '../support/env';
 import { treeUrl } from '../support/fixture';
 import { GPS_JPEG } from '../support/fixtures';
-import { card, clearPhotos, closeSection, openSection } from '../support/ui';
+import { card, clearPhotos, closeSection, openSection, openTreeSettings } from '../support/ui';
 
 test.skip(PROD_LOCAL, 'dev stack only');
 test.use({ storageState: statePath('owner.json') });
@@ -16,7 +16,7 @@ test.afterEach(async ({ page }) => clearPhotos(page, 'Margaret Hale', treeUrl())
 test('the owner downloads one ZIP with GEDCOM 5.5.1, JSON and photos', async ({ page }) => {
   await page.goto(treeUrl());
   // A photo of its own, so the archive has one whatever ran before; removed again at the end.
-  await page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Full' }).click();
+  await page.getByRole('group', { name: 'View' }).getByRole('link', { name: 'Full' }).click();
   await card(page, 'Margaret Hale').click();
   await openSection(page, 'Photos');
   await page.locator('input[type="file"]').setInputFiles(GPS_JPEG);
@@ -24,7 +24,7 @@ test('the owner downloads one ZIP with GEDCOM 5.5.1, JSON and photos', async ({ 
   await expect(page.getByText('Photo added')).toBeVisible();
   await closeSection(page);
 
-  const section = page.getByRole('region', { name: 'Export' });
+  const section = (await openTreeSettings(page)).getByRole('region', { name: 'Export' });
   // The download is a navigation (preflight, then a one-time ticket), so use the download event.
   const download = page.waitForEvent('download');
   await section.getByRole('button', { name: 'Download export' }).click();

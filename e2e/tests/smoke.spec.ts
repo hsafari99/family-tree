@@ -7,6 +7,7 @@ import {
   card,
   closeSection,
   openSection,
+  openTreeSettings,
   signUpViaUi,
   startTreeViaUi,
 } from '../support/ui';
@@ -36,7 +37,9 @@ test('@smoke the production stack: TLS, CSP, 2FA sign-up, a photo, export', asyn
   await closeSection(page);
 
   const download = page.waitForEvent('download');
-  await page
+  await (
+    await openTreeSettings(page)
+  )
     .getByRole('region', { name: 'Export' })
     .getByRole('button', { name: 'Download export' })
     .click();

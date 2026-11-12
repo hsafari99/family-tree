@@ -12,7 +12,7 @@ test('the layout runs in a worker and puts generations in rows', async ({ page }
   const worker = page.waitForEvent('worker');
   await page.goto(treeUrl());
   expect((await worker).url()).toMatch(/worker|elk/i);
-  await page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Full' }).click();
+  await page.getByRole('group', { name: 'View' }).getByRole('link', { name: 'Full' }).click();
   await expect(card(page, 'Margaret Hale')).toBeVisible();
   // Layout settles asynchronously, so poll the positions rather than read them once.
   await expect

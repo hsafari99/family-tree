@@ -8,10 +8,10 @@ test.use({ storageState: statePath('viewer.json') });
 
 test('a viewer can look and search, but not change or export (UI and API)', async ({ page }) => {
   await page.goto(treeUrl());
-  await expect(page.getByText('You are a viewer of this tree.')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Tree settings' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Members and invites' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Tree settings' })).toHaveCount(0);
   await expect(page.getByRole('region', { name: 'Export' })).toHaveCount(0);
-  await page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Full' }).click();
+  await page.getByRole('group', { name: 'View' }).getByRole('link', { name: 'Full' }).click();
   // The canvas is showing people, yet none of them offers an add button.
   await expect(card(page, 'Leo Hale')).toBeVisible();
   await expect(

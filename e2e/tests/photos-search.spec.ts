@@ -14,7 +14,7 @@ test.afterEach(async ({ page }) => clearPhotos(page, 'Robert Hale', treeUrl()));
 
 test('an uploaded photo is stored without EXIF and shows on the card', async ({ page }) => {
   await page.goto(treeUrl());
-  await page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Full' }).click();
+  await page.getByRole('group', { name: 'View' }).getByRole('link', { name: 'Full' }).click();
   await card(page, 'Robert Hale').click();
   await openSection(page, 'Photos');
   await page.locator('input[type="file"]').setInputFiles(GPS_JPEG);
@@ -53,13 +53,23 @@ test('search tolerates a typo and says how each person is related to you', async
   ).toBeVisible();
 });
 
-test('"How are we related?" words the path and highlights it', async ({ page }) => {
+test('"How are we related?" opens as a dialog, words the path and highlights it', async ({
+  page,
+}) => {
   await page.goto(treeUrl());
-  await page.getByRole('link', { name: 'How are we related?' }).click();
-  await page.getByLabel('To', { exact: true }).fill('Emma');
+  await page
+    .getByRole('complementary', { name: 'Details' })
+    .getByRole('button', { name: 'How are we related?' })
+    .click();
+  const dialog = page.getByRole('dialog', { name: 'How are we related?' });
+  await expect(dialog).toBeVisible();
+  await expect(page).toHaveURL(/[?&]tab=related/);
+  await dialog.getByLabel('To', { exact: true }).fill('Emma');
   await page.getByRole('button', { name: /^Emma Hale/ }).click();
   await expect(page.getByText('Emma Hale is your half-sister.')).toBeVisible();
   await page.getByRole('button', { name: 'Show on the tree' }).click();
+  // The dialog closes so the path can be seen.
+  await expect(dialog).toBeHidden();
   await expect.poll(() => page.locator('.is-path').count()).toBeGreaterThanOrEqual(3);
   // Collapsing the panel (brief #15) keeps the path drawn.
   await page.getByRole('button', { name: 'Collapse panel' }).click();

@@ -88,6 +88,17 @@ export async function openSection(page: Page, section: Section) {
   return dialog;
 }
 
+/** Opens Tree settings (owner only) from the side panel's tree rows; it shows in a dialog. */
+export async function openTreeSettings(page: Page) {
+  await page
+    .getByRole('complementary', { name: 'Details' })
+    .getByRole('button', { name: 'Tree settings' })
+    .click();
+  const dialog = page.getByRole('dialog', { name: 'Tree settings' });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
 /** Closes the open section dialog with its X. */
 export async function closeSection(page: Page) {
   await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
@@ -100,7 +111,7 @@ export async function closeSection(page: Page) {
  */
 export async function clearPhotos(page: Page, fullName: string, treeUrl: string) {
   await page.goto(treeUrl);
-  await page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Full' }).click();
+  await page.getByRole('group', { name: 'View' }).getByRole('link', { name: 'Full' }).click();
   await card(page, fullName).click();
   await openSection(page, 'Photos');
   await expect(page.getByText(/Photos use .* of this tree/)).toBeVisible();

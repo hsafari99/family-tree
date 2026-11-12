@@ -68,7 +68,7 @@ test('spec §9: family, steward invite, steward edits and deletes, owner restore
   await steward.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(steward.getByText('Architect')).toBeVisible();
   await closeSection(steward);
-  await steward.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Full' }).click();
+  await steward.getByRole('group', { name: 'View' }).getByRole('link', { name: 'Full' }).click();
   await card(steward, 'Paul Owner').click();
   // The panel is open on Paul (so "no Edit details" means something).
   await expect(steward.getByRole('heading', { name: /^Paul Owner/ })).toBeVisible();
@@ -102,7 +102,7 @@ test('spec §9: family, steward invite, steward edits and deletes, owner restore
   await owner.getByRole('button', { name: 'Restore' }).first().click();
   await expect(owner.getByText('Restored.')).toBeVisible();
   await owner.goto(`/trees/${treeId}`);
-  await owner.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Full' }).click();
+  await owner.getByRole('group', { name: 'View' }).getByRole('link', { name: 'Full' }).click();
   await expect(card(owner, 'Eve Partner')).toBeVisible();
   await card(owner, 'Cleo Owner').click();
   await openSection(owner, 'Details');

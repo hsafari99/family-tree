@@ -94,8 +94,8 @@ test('the panel is on the left, collapses to a rail, and stays collapsed after a
   await expect(heading).toBeVisible();
   const canvas = page.getByRole('region', { name: 'Family tree view' });
   expect((await panel.boundingBox())!.x).toBeLessThan((await canvas.boundingBox())!.x);
-  const toggle = page.getByRole('button', { name: 'Details', exact: true });
-  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  // No separate Details toggle: the X and the rail do it.
+  await expect(page.getByRole('button', { name: 'Details', exact: true })).toHaveCount(0);
   const expand = page.getByRole('button', { name: 'Expand panel' });
   await expect(expand).toHaveCount(0);
 
@@ -105,7 +105,6 @@ test('the panel is on the left, collapses to a rail, and stays collapsed after a
   await collapse.click();
   await expect(panel).toBeHidden();
   await expect(page).toHaveURL(/\/people\//);
-  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
   await expect(expand).toBeVisible();
   await expect(expand).toHaveAttribute('aria-expanded', 'false');
   await expect(expand).toContainText('LL');
@@ -117,16 +116,11 @@ test('the panel is on the left, collapses to a rail, and stays collapsed after a
   await expect(panel).toBeHidden();
   await expect(expand).toBeVisible();
 
-  // Expand brings the same person back; the toolbar toggle agrees.
+  // Expand brings the same person back.
   await expand.click();
   await expect(heading).toBeVisible();
   await expect(page).toHaveURL(/\/people\//);
-  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
   await expect(expand).toHaveCount(0);
-  await toggle.click();
-  await expect(panel).toBeHidden();
-  await toggle.click();
-  await expect(heading).toBeVisible();
   await heading.focus();
   await page.keyboard.press('Escape');
   await expect(panel).toBeHidden();
@@ -150,7 +144,7 @@ test('a section opens in a dialog: Escape closes it, focus returns, and nested E
   await page.goto(`/trees/${treeId}`);
   await card(page, 'Dia Log').click();
   const panel = page.getByRole('complementary', { name: 'Details' });
-  await expect(panel.getByRole('button', { name: /^Places/ })).toContainText('No places yet');
+  await expect(panel.getByRole('button', { name: /^Places/ })).toHaveText('Places');
   const row = panel.getByRole('button', { name: /^Relations/ });
   await row.click();
   const dialog = page.getByRole('dialog', { name: 'Relations — Dia Log' });
