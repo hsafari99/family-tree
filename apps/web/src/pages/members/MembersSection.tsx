@@ -1,5 +1,5 @@
 import { type InviteRole } from '@family-tree/shared';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { AuthError } from '../../auth/api';
 import { ConfirmButton } from '../../components/ConfirmButton';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
@@ -38,6 +38,7 @@ export function MembersSection({
   const isOwner = detail.me.role === 'owner';
   const activeSteward = detail.me.steward.active;
   const [transferTo, setTransferTo] = useState<string | null>(null);
+  const captionId = useId();
 
   const canManage = (m: (typeof members)[number]) =>
     m.role !== 'owner' && (isOwner || (activeSteward && m.invitedByUserId === me));
@@ -74,8 +75,10 @@ export function MembersSection({
       <h2>Members</h2>
       <FormError>{error}</FormError>
       <div className="table-wrap">
-        <table className="data members-table">
-          <caption className="sr-only">Members of {detail.tree.name}</caption>
+        <table className="data members-table" aria-labelledby={captionId}>
+          <caption id={captionId} className="sr-only">
+            Members of {detail.tree.name}
+          </caption>
           <thead>
             <tr>
               {COLUMNS.map((c) => (

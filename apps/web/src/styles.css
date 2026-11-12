@@ -1274,8 +1274,19 @@ table.data td > .cell {
 table.data select {
   width: auto;
 }
+/* The date and the buttons keep to one line; the name and scope columns take the wrapping. */
+.members-table td:nth-child(4),
+.members-table td:nth-child(5) {
+  white-space: nowrap;
+}
+.members-table td:nth-child(4) > .cell {
+  overflow-wrap: normal;
+}
 .members-table .row-actions {
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+}
+.row-actions button.link {
+  font-size: 0.9rem;
 }
 @media (max-width: 720px) {
   table.data thead {
@@ -1305,6 +1316,12 @@ table.data select {
     content: attr(data-label);
     color: var(--muted);
     font-size: 0.85rem;
+  }
+  .members-table td:nth-child(n) {
+    white-space: normal;
+  }
+  .members-table .row-actions {
+    flex-wrap: wrap;
   }
   /* An empty cell (no actions) has nothing to label. */
   table.data td:empty {
