@@ -845,3 +845,215 @@ describe('new pair of parents and both parents in one step (brief #9)', () => {
     expect(await db.select().from(persons).where(eq(persons.treeId, treeId))).toHaveLength(before);
   });
 });
+
+describe('partner sides and order (brief #16)', () => {
+  const swap = (jar: CookieJar | undefined, treeId: string, unionId: string, a = app) =>
+    call(a, 'POST', `/api/v1/trees/${treeId}/unions/${unionId}/swap-partners`, { jar });
+  const order = (
+    jar: CookieJar | undefined,
+    treeId: string,
+    personId: string,
+    unionIds: string[],
+    a = app,
+  ) =>
+    call(a, 'POST', `/api/v1/trees/${treeId}/persons/${personId}/union-order`, {
+      jar,
+      body: { unionIds },
+    });
+  const row = async (id: string) => (await db.select().from(unions).where(eq(unions.id, id)))[0]!;
+  const ownIds = async (jar: CookieJar, treeId: string, personId: string) =>
+    (await view(jar, treeId, personId)).relations.unions.map((u) => u.id);
+  const union = async (
+    treeId: string,
+    a: { id: string },
+    b: { id: string } | null,
+    extra: Partial<typeof unions.$inferInsert> = {},
+  ) =>
+    (
+      await db
+        .insert(unions)
+        .values({ treeId, partnerAId: a.id, partnerBId: b?.id ?? null, ...extra })
+        .returning()
+    )[0]!;
+  const year = (y: number) => ({ startDate: { qualifier: 'exact' as const, date1: String(y) } });
+
+  /** David with Anna (1970), Laura (1980), Sam (1990), and U1 (single-parent, undated) with a child. */
+  async function david() {
+    const s = await setup();
+    const d = await addPerson(db, s.treeId, 'David');
+    const anna = await addPerson(db, s.treeId, 'Anna');
+    const laura = await addPerson(db, s.treeId, 'Laura');
+    const sam = await addPerson(db, s.treeId, 'Sam');
+    const kid = await addPerson(db, s.treeId, 'Kid');
+    const uAnna = await union(s.treeId, d, anna, year(1970));
+    const uLaura = await union(s.treeId, d, laura, year(1980));
+    const uSam = await union(s.treeId, sam, d, year(1990)); // David in slot b here
+    const u1 = await family(db, s.treeId, d, null, [kid]);
+    return { ...s, d, anna, laura, sam, kid, uAnna, uLaura, uSam, u1 };
+  }
+
+  describe('POST …/unions/:unionId/swap-partners', () => {
+    it('swaps the slots with their orders, audits, and the graph follows', async () => {
+      const { owner, treeId, d, laura, uLaura } = await david();
+      await db
+        .update(unions)
+        .set({ partnerAOrder: 2, partnerBOrder: 1 })
+        .where(eq(unions.id, uLaura.id));
+      const before = await ownIds(owner.jar, treeId, d.id);
+      const lauraBefore = await ownIds(owner.jar, treeId, laura.id);
+      const res = await swap(owner.jar, treeId, uLaura.id);
+      expect(res.statusCode, res.body).toBe(204);
+      const r = await row(uLaura.id);
+      expect([r.partnerAId, r.partnerAOrder, r.partnerBId, r.partnerBOrder]).toEqual([
+        laura.id,
+        1,
+        d.id,
+        2,
+      ]);
+      expect(await ownIds(owner.jar, treeId, d.id)).toEqual(before);
+      expect(await ownIds(owner.jar, treeId, laura.id)).toEqual(lauraBefore);
+      const a = (await auditRows(db, treeId)).find((x) => x.action === 'union.swapPartners')!;
+      expect(a.entityId).toBe(uLaura.id);
+      expect(a.before).toEqual({ partnerAId: d.id, partnerBId: laura.id });
+      expect(a.after).toEqual({ partnerAId: laura.id, partnerBId: d.id });
+      const g = await call(app, 'GET', `/api/v1/trees/${treeId}/graph?mode=full`, {
+        jar: owner.jar,
+      });
+      const gu = (
+        g.json().unions as { id: string; partnerAId: string; partnerAOrder: number }[]
+      ).find((u) => u.id === uLaura.id)!;
+      expect([gu.partnerAId, gu.partnerAOrder]).toEqual([laura.id, 1]);
+    });
+
+    it('400s for an empty slot or a parents-unknown union', async () => {
+      const { owner, treeId, root, u1 } = await david();
+      expect((await swap(owner.jar, treeId, u1.id)).statusCode).toBe(400);
+      await newPerson(owner.jar, treeId, 'Sis', { to: root, as: 'sibling' });
+      const [u0] = (await db.select().from(unions).where(eq(unions.treeId, treeId))).filter(
+        (u) => u.parentsUnknown,
+      );
+      expect((await swap(owner.jar, treeId, u0!.id)).statusCode).toBe(400);
+    });
+
+    it('403 for a viewer, 404 for an outsider, 204 for a steward with one partner in scope', async () => {
+      const { owner, treeId, d, uLaura } = await david();
+      const viewer = await signUp(app, { name: 'Vi' });
+      await addMember(db, treeId, viewer.userId, 'viewer', owner.userId);
+      expect((await swap(viewer.jar, treeId, uLaura.id)).statusCode).toBe(403);
+      const outsider = await signUp(app, { name: 'Out' });
+      expect((await swap(outsider.jar, treeId, uLaura.id)).statusCode).toBe(404);
+      const st = await userWith2fa(app, 'Stew');
+      await addMember(db, treeId, st.userId, 'viewer', owner.userId);
+      const lone = await addPerson(db, treeId, 'Lone');
+      const other = await addPerson(db, treeId, 'Other');
+      const uLone = await union(treeId, lone, other);
+      await addGrant(db, treeId, st.userId, d.id, owner.userId);
+      expect((await swap(st.jar, treeId, uLaura.id)).statusCode).toBe(204);
+      expect((await swap(st.jar, treeId, uLone.id)).statusCode).toBe(403);
+    });
+
+    it('is rate-limited', async () => {
+      const { owner, treeId, uLaura } = await david();
+      const limited = buildApp({ config, checks: deps.checks, auth, db, rateLimitMax: 2 });
+      await swap(owner.jar, treeId, uLaura.id, limited);
+      await swap(owner.jar, treeId, uLaura.id, limited);
+      const third = await swap(owner.jar, treeId, uLaura.id, limited);
+      expect(third.statusCode).toBe(429);
+      await limited.close();
+    });
+  });
+
+  describe('POST …/persons/:personId/union-order', () => {
+    it('sets the whole order in each slot, and the view and graph follow', async () => {
+      const { owner, treeId, d, uAnna, uLaura, uSam, u1 } = await david();
+      const want = [u1.id, uSam.id, uAnna.id, uLaura.id];
+      const res = await order(owner.jar, treeId, d.id, want);
+      expect(res.statusCode, res.body).toBe(204);
+      expect(await ownIds(owner.jar, treeId, d.id)).toEqual(want);
+      expect((await row(uSam.id)).partnerBOrder).toBe(2); // David is partner b there
+      expect((await row(uSam.id)).partnerAOrder).toBeNull(); // Sam's own slot untouched
+      expect((await row(uAnna.id)).partnerAOrder).toBe(3);
+      const g = await call(app, 'GET', `/api/v1/trees/${treeId}/graph?mode=full`, {
+        jar: owner.jar,
+      });
+      const byId = new Map(
+        (
+          g.json().unions as {
+            id: string;
+            partnerAOrder: number | null;
+            partnerBOrder: number | null;
+          }[]
+        ).map((u) => [u.id, u]),
+      );
+      expect(byId.get(uLaura.id)!.partnerAOrder).toBe(4);
+      expect(byId.get(uSam.id)!.partnerBOrder).toBe(2);
+      const a = (await auditRows(db, treeId)).find((x) => x.action === 'union.reorder')!;
+      expect(a.entityId).toBe(d.id);
+      expect(a.after).toEqual({ unionIds: want });
+    });
+
+    it('a subset trades places among the positions it holds; the rest stay put', async () => {
+      const { owner, treeId, d, uAnna, uLaura, uSam, u1 } = await david();
+      expect(await ownIds(owner.jar, treeId, d.id)).toEqual([uAnna.id, uLaura.id, uSam.id, u1.id]);
+      expect((await order(owner.jar, treeId, d.id, [uSam.id, uAnna.id])).statusCode).toBe(204);
+      expect(await ownIds(owner.jar, treeId, d.id)).toEqual([uSam.id, uLaura.id, uAnna.id, u1.id]);
+      expect((await row(uSam.id)).partnerBOrder).toBe(1);
+      expect((await row(uLaura.id)).partnerAOrder).toBe(2);
+      expect((await row(uAnna.id)).partnerAOrder).toBe(3);
+      expect((await row(u1.id)).partnerAOrder).toBe(4);
+      expect((await order(owner.jar, treeId, d.id, [uLaura.id, uSam.id])).statusCode).toBe(204);
+      expect(await ownIds(owner.jar, treeId, d.id)).toEqual([uLaura.id, uSam.id, uAnna.id, u1.id]);
+    });
+
+    it("keeps each partner's own order", async () => {
+      const { owner, treeId, d, laura, sam, uAnna, uLaura } = await david();
+      const uLS = await union(treeId, laura, sam, year(1995));
+      expect((await order(owner.jar, treeId, d.id, [uLaura.id, uAnna.id])).statusCode).toBe(204);
+      expect(await ownIds(owner.jar, treeId, laura.id)).toEqual([uLaura.id, uLS.id]);
+      expect((await order(owner.jar, treeId, laura.id, [uLS.id, uLaura.id])).statusCode).toBe(204);
+      expect(await ownIds(owner.jar, treeId, laura.id)).toEqual([uLS.id, uLaura.id]);
+      expect((await ownIds(owner.jar, treeId, d.id)).slice(0, 2)).toEqual([uLaura.id, uAnna.id]);
+    });
+
+    it("filling an empty slot leaves that slot's order empty", async () => {
+      const { owner, treeId, d, kid, u1 } = await david();
+      await db.update(unions).set({ partnerBOrder: 7 }).where(eq(unions.id, u1.id));
+      const pat = await addPerson(db, treeId, 'Pat');
+      const res = await call(app, 'POST', relatives(treeId, kid.id), {
+        jar: owner.jar,
+        body: { as: 'parent', personId: pat.id },
+      });
+      expect(res.statusCode, res.body).toBe(204);
+      const r = await row(u1.id);
+      expect([r.partnerAId, r.partnerBId, r.partnerBOrder]).toEqual([d.id, pat.id, null]);
+    });
+
+    it('409 for a union that is not theirs or is in the Trash, 400 for bad lists, 404 across trees', async () => {
+      const { owner, treeId, d, anna, uAnna, uLaura } = await david();
+      const stranger = await union(treeId, anna, await addPerson(db, treeId, 'X'));
+      expect((await order(owner.jar, treeId, d.id, [uAnna.id, stranger.id])).statusCode).toBe(409);
+      await db.update(unions).set({ deletedAt: new Date() }).where(eq(unions.id, uLaura.id));
+      expect((await order(owner.jar, treeId, d.id, [uAnna.id, uLaura.id])).statusCode).toBe(409);
+      expect((await order(owner.jar, treeId, d.id, [uAnna.id, uAnna.id])).statusCode).toBe(400);
+      expect((await order(owner.jar, treeId, d.id, [uAnna.id])).statusCode).toBe(400);
+      const other = await david();
+      expect(
+        (await order(owner.jar, treeId, other.d.id, [uAnna.id, other.uAnna.id])).statusCode,
+      ).toBe(404);
+    });
+
+    it('403 for a viewer and is rate-limited', async () => {
+      const { owner, treeId, d, uAnna, uLaura } = await david();
+      const viewer = await signUp(app, { name: 'Vi' });
+      await addMember(db, treeId, viewer.userId, 'viewer', owner.userId);
+      expect((await order(viewer.jar, treeId, d.id, [uLaura.id, uAnna.id])).statusCode).toBe(403);
+      const limited = buildApp({ config, checks: deps.checks, auth, db, rateLimitMax: 2 });
+      await order(owner.jar, treeId, d.id, [uLaura.id, uAnna.id], limited);
+      await order(owner.jar, treeId, d.id, [uLaura.id, uAnna.id], limited);
+      expect(
+        (await order(owner.jar, treeId, d.id, [uLaura.id, uAnna.id], limited)).statusCode,
+      ).toBe(429);
+      await limited.close();
+    });
+  });
+});

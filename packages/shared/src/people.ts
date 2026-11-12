@@ -190,6 +190,16 @@ export const updateParentChildSchema = z.object({ kind: z.enum(CHILD_KINDS) });
 export const reparentLinkSchema = z.object({ unionId: z.uuid() });
 export type ReparentLinkInput = z.infer<typeof reparentLinkSchema>;
 
+export const unionOrderSchema = z.object({
+  /** Some or all of the person's unions, in the new order; the others keep their places (brief #16). */
+  unionIds: z
+    .array(z.uuid())
+    .min(2)
+    .max(100)
+    .refine((ids) => new Set(ids).size === ids.length, 'List each relationship once'),
+});
+export type UnionOrderInput = z.infer<typeof unionOrderSchema>;
+
 export const residenceInputSchema = z.object({
   place: z.string().trim().min(1, 'Enter a place').max(PLACE_MAX, tooLong(PLACE_MAX)),
   fromDate: fuzzyDateSchema.nullable().default(null),
@@ -312,6 +322,8 @@ export const AUDIT_ACTIONS = [
   'union.create',
   'union.update',
   'union.delete',
+  'union.swapPartners',
+  'union.reorder',
   'link.create',
   'link.update',
   'link.delete',

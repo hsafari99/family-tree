@@ -6,10 +6,11 @@ import {
   reparentLinkSchema,
   unionDatesError,
   updateParentChildSchema,
+  unionOrderSchema,
   updateUnionSchema,
   wouldCycle,
 } from '@family-tree/shared';
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 import { requireSession } from '../auth/session-guard.js';
 import { deletionBatches, parentChild, unions } from '../db/schema.js';
@@ -17,6 +18,7 @@ import { conflict, idParam, invalid, notFound, parseBody } from '../errors.js';
 import { authorize, loadAccess } from '../trees/access.js';
 import { audit, changedFields } from '../trees/audit.js';
 import { loadLiveGraph, lockTreeGraph } from '../trees/graph.js';
+import { byOwnOrder } from '../trees/person-view.js';
 import {
   requireLiveLink,
   requireLiveUnion,
@@ -206,6 +208,119 @@ export const relationsRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app,
           before: unionFieldsOf(fromRow!),
         });
       }
+    });
+    return reply.code(204).send();
+  });
+
+  // Swap a couple's sides on the tree (brief #16). Each person's own union order goes with them.
+  app.post('/api/v1/trees/:treeId/unions/:unionId/swap-partners', async (req, reply) => {
+    const treeId = idParam(req.params, 'treeId');
+    await loadAccess(db, treeId, req.user!.id); // outsiders: 404 before anything else
+    const unionId = idParam(req.params, 'unionId');
+    await db.transaction(async (tx) => {
+      await lockTreeGraph(tx, treeId);
+      const access = await loadAccess(tx, treeId, req.user!.id);
+      const graph = await loadLiveGraph(tx, treeId);
+      const u = graph.unions.find((x) => x.id === unionId);
+      if (!u) throw notFound();
+      if (u.partnerAId === null || u.partnerBId === null) {
+        throw invalid('unionId', 'Only a couple has two sides');
+      }
+      const [a, b] = [u.partnerAId, u.partnerBId];
+      authorize(access, 'relation.edit', { kind: 'relation', ends: [a, b] });
+      const [row] = await tx
+        .update(unions)
+        .set({
+          partnerAId: b,
+          partnerBId: a,
+          partnerAOrder: sql`${unions.partnerBOrder}`,
+          partnerBOrder: sql`${unions.partnerAOrder}`,
+        })
+        .where(
+          and(
+            eq(unions.treeId, treeId),
+            eq(unions.id, u.id),
+            eq(unions.partnerAId, a),
+            eq(unions.partnerBId, b),
+            isNull(unions.deletedAt),
+          ),
+        )
+        .returning({ id: unions.id });
+      if (!row) throw conflict('That relationship changed; reload and try again');
+      await audit(tx, access, {
+        action: 'union.swapPartners',
+        entityType: 'union',
+        entityId: u.id,
+        personIds: [a, b],
+        before: { partnerAId: a, partnerBId: b },
+        after: { partnerAId: b, partnerBId: a },
+      });
+    });
+    return reply.code(204).send();
+  });
+
+  // Order someone's partners (brief #16). Only this person's own slot order changes.
+  app.post('/api/v1/trees/:treeId/persons/:personId/union-order', async (req, reply) => {
+    const treeId = idParam(req.params, 'treeId');
+    await loadAccess(db, treeId, req.user!.id); // outsiders: 404 before anything else
+    const personId = idParam(req.params, 'personId');
+    const { unionIds } = parseBody(unionOrderSchema, req.body);
+    await db.transaction(async (tx) => {
+      await lockTreeGraph(tx, treeId);
+      const access = await loadAccess(tx, treeId, req.user!.id);
+      const graph = await loadLiveGraph(tx, treeId);
+      if (!graph.persons.some((p) => p.id === personId)) throw notFound();
+      const mine = graph.unions.filter((u) => partnersOf(u).includes(personId));
+      // A subset is fine (the canvas knows only the couples on screen), but every id must be theirs.
+      if (!unionIds.every((id) => mine.some((u) => u.id === id))) {
+        throw conflict('Their relationships changed; reload and try again');
+      }
+      const ends = [...new Set(mine.flatMap(partnersOf))];
+      authorize(access, 'relation.edit', { kind: 'relation', ends });
+      // Their current order, exactly as the person view shows it.
+      const rows = await tx
+        .select({
+          id: unions.id,
+          partnerAId: unions.partnerAId,
+          partnerAOrder: unions.partnerAOrder,
+          partnerBOrder: unions.partnerBOrder,
+          startDate: unions.startDate,
+          createdAt: unions.createdAt,
+        })
+        .from(unions)
+        .where(
+          and(
+            eq(unions.treeId, treeId),
+            inArray(
+              unions.id,
+              mine.map((u) => u.id),
+            ),
+          ),
+        );
+      const before = rows.sort(byOwnOrder(personId)).map((x) => x.id);
+      // The listed unions trade places among the positions they already hold; the rest stay put.
+      const picked = new Set(unionIds);
+      let k = 0;
+      const after = before.map((id) => (picked.has(id) ? unionIds[k++]! : id));
+      // 1..n for all of this person's unions, so an unsaved one (ordered by start date) can't later
+      // jump ahead of or behind a saved order. Their partners' own orders stay as they are.
+      await tx.execute(sql`
+        update unions set
+          partner_a_order = case when unions.partner_a_id = ${personId}::uuid then o.ord else unions.partner_a_order end,
+          partner_b_order = case when unions.partner_b_id = ${personId}::uuid then o.ord else unions.partner_b_order end
+        from unnest(array[${sql.join(
+          after.map((id) => sql`${id}::uuid`),
+          sql`, `,
+        )}]) with ordinality as o(id, ord)
+        where unions.id = o.id and unions.tree_id = ${treeId}::uuid`);
+      await audit(tx, access, {
+        action: 'union.reorder',
+        entityType: 'person',
+        entityId: personId,
+        personIds: ends,
+        before: { unionIds: before },
+        after: { unionIds: after },
+      });
     });
     return reply.code(204).send();
   });

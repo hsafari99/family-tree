@@ -114,6 +114,8 @@ export const ACTION_LABEL: Record<AuditAction, string> = {
   'union.create': 'Relationship added',
   'union.update': 'Relationship changed',
   'union.delete': 'Relationship removed',
+  'union.swapPartners': 'Sides swapped',
+  'union.reorder': 'Partners reordered',
   'link.create': 'Parent and child linked',
   'link.update': 'Parent and child link changed',
   'link.delete': 'Parent and child link removed',
