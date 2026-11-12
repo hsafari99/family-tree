@@ -179,6 +179,27 @@ describe('design tokens', () => {
       /@media \(forced-colors: active\)\s*\{\s*:root\s*\{[^}]*--accent: LinkText/,
     );
   });
+  it('draws UI lines (--line-strong) at 3:1 or more on the page and on surfaces', () => {
+    const hex = (block: string, name: string) =>
+      block.match(new RegExp(`${name}:\\s*(#[0-9a-f]{6})`, 'i'))![1]!;
+    const lum = (h: string) => {
+      const [r, g, b] = [1, 3, 5].map((i) => {
+        const c = parseInt(h.slice(i, i + 2), 16) / 255;
+        return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+    };
+    const ratio = (a: string, b: string) => {
+      const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p);
+      return (x! + 0.05) / (y! + 0.05);
+    };
+    for (const block of [light, dark]) {
+      const line = hex(block, '--line-strong');
+      for (const bg of ['--bg', '--surface', '--surface-2']) {
+        expect(ratio(line, hex(block, bg)), bg).toBeGreaterThanOrEqual(3);
+      }
+    }
+  });
   it('has no literal white outside the tokens and the QR code', () => {
     const rest = css.replace(/:root\s*\{[^}]*\}/g, '').replace(/\.qr\s*\{[^}]*\}/g, '');
     expect(rest).not.toMatch(/#fff(fff)?\b/i);

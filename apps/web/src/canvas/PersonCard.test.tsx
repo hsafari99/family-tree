@@ -54,6 +54,20 @@ describe('PersonCardView', () => {
     expect(onAdd).toHaveBeenCalledWith('sibling');
   });
 
+  it('on a touch screen, shows the add buttons on the selected card only (a tap selects first)', () => {
+    const { unmount } = view({ isCoarse: true });
+    expect(screen.queryByRole('button', { name: /^Add a/ })).toBeNull();
+    unmount();
+    view({ isCoarse: true, isSelected: true });
+    expect(screen.getAllByRole('button', { name: /^Add a/ })).toHaveLength(4);
+  });
+
+  it('gives each add button a tooltip with its title text', () => {
+    view();
+    const b = screen.getByRole('button', { name: 'Add a parent of Robert Hale' });
+    expect(b).toHaveAttribute('data-tip', 'Add a parent');
+  });
+
   it('has no add buttons without permission', () => {
     view({ person: { ...robert, canAddRelative: false } });
     expect(screen.queryByRole('button', { name: /^Add a/ })).toBeNull();

@@ -6,6 +6,7 @@ import { avatarTone } from './avatar-tone';
 import { type CardDetail, cardDetail } from './canvas-settings';
 import { useCanvasActions, useSelectionStore } from './CanvasActions';
 import { useIsSelected } from './selection';
+import { usePointerCoarse } from './use-pointer';
 import type { PersonFlowNode } from './graph-to-flow';
 
 const ADD: { as: RelativeRole; where: 'top' | 'left' | 'right' | 'bottom'; word: string }[] = [
@@ -21,6 +22,7 @@ export function PersonCardView({
   isFocus,
   isMe,
   isSelected = false,
+  isCoarse = false,
   onOpen,
   onAdd,
   onFocus,
@@ -30,6 +32,8 @@ export function PersonCardView({
   isFocus: boolean;
   isMe: boolean;
   isSelected?: boolean;
+  /** A touch screen: no hover, so the "+" buttons show on the selected card only. */
+  isCoarse?: boolean;
   onOpen: () => void;
   onAdd: (as: RelativeRole) => void;
   onFocus?: () => void;
@@ -110,6 +114,7 @@ export function PersonCardView({
       )}
       {detail === 'full' &&
         person.canAddRelative &&
+        (!isCoarse || isSelected) &&
         ADD.map(({ as, where, word }) => (
           // A sibling of someone with no recorded parents shares a parents-unknown union (brief #11).
           <button
@@ -117,7 +122,7 @@ export function PersonCardView({
             type="button"
             className={`card-add card-add-${where} nodrag`}
             aria-label={`Add a ${word} of ${name}`}
-            title={`Add a ${word}`}
+            data-tip={`Add a ${word}`}
             onClick={() => onAdd(as)}
           >
             +
@@ -137,6 +142,7 @@ export function PersonNode({ data }: NodeProps<PersonFlowNode>) {
   const actions = useCanvasActions();
   const id = data.person.id;
   const selected = useIsSelected(useSelectionStore(), id);
+  const coarse = usePointerCoarse();
   return (
     <>
       <Handle
@@ -152,6 +158,7 @@ export function PersonNode({ data }: NodeProps<PersonFlowNode>) {
         isFocus={data.isFocus}
         isMe={data.isMe}
         isSelected={selected}
+        isCoarse={coarse}
         onOpen={() => actions.openPerson(id)}
         onAdd={(as) => actions.addRelative(id, as)}
         onFocus={() => actions.reveal(id)}

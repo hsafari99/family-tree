@@ -7,7 +7,7 @@
   --ink: #18221f; /* main text */
   --ink-2: #4f5d58; /* secondary text (>= 4.5:1 on --bg and --surface) */
   --line: #d9e1de; /* hairlines */
-  --line-strong: #b9c6c1;
+  --line-strong: #7d8a85; /* UI lines and field borders: 3:1 on --bg, --surface and --surface-2 */
   --accent: #1f7a68; /* brand teal; links, primary buttons, focus line */
   --accent-ink: #ffffff; /* text on --accent */
   --accent-soft: #d6ece6; /* selected rows, pills */
@@ -65,7 +65,7 @@
     --ink: #e6ede9;
     --ink-2: #a3b3ad;
     --line: #2b3632;
-    --line-strong: #3d4b46;
+    --line-strong: #6b7a74;
     --accent: #5cc7ad;
     --accent-ink: #0d1f1a;
     --accent-soft: #1e3a33;
@@ -717,49 +717,105 @@ img.card-avatar {
   color: var(--ink-2);
   pointer-events: none;
 }
+/* The "+" buttons: 24px accent circles, half outside the card, shown on hover, on focus inside the
+   card and on the selected card (a touch screen renders them on the selected card only). They sit
+   off the lines' axes: the side ones above the partner line and its dot, the top and bottom ones
+   beside the children's line, so none of them covers a line or a dot. */
 .person-card .card-add {
   position: absolute;
+  display: grid;
+  place-items: center;
   width: 24px;
   height: 24px;
   padding: 0;
+  border: 0;
   border-radius: 50%;
-  font-size: 14px;
-  line-height: 22px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: var(--shadow-1);
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1;
   opacity: 0;
-  transition: opacity 0.1s;
+  transform: scale(0.8);
 }
 .person-card:hover .card-add,
 .person-card:focus-within .card-add,
 .person-card.is-selected .card-add {
   opacity: 1;
+  transform: none;
 }
-/* Touch screens have no hover: always show the "+" buttons there. */
-@media (hover: none) {
+.person-card .card-add:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 88%, var(--ink));
+  box-shadow: var(--shadow-2);
+}
+@media (prefers-reduced-motion: no-preference) {
   .person-card .card-add {
-    opacity: 1;
+    transition:
+      opacity var(--dur) var(--ease),
+      transform var(--dur) var(--ease);
   }
 }
-/* "Add a sibling" without parents stays dimmed when the buttons show. */
-.person-card:hover .card-add:disabled,
-.person-card:focus-within .card-add:disabled,
-.person-card.is-selected .card-add:disabled {
-  opacity: 0.45;
-}
 .card-add-top {
-  top: -13px;
-  left: calc(50% - 12px);
+  top: -12px;
+  left: calc(50% + 14px);
 }
 .card-add-bottom {
-  bottom: -13px;
-  left: calc(50% - 12px);
+  bottom: -12px;
+  left: calc(50% + 14px);
 }
 .card-add-left {
-  left: -13px;
-  top: calc(50% - 12px);
+  left: -12px;
+  top: 4px;
 }
 .card-add-right {
-  right: -13px;
-  top: calc(50% - 12px);
+  right: -12px;
+  top: 4px;
+}
+/* A card's tooltip and "+" buttons draw over its neighbours while it is hovered or focused. */
+.react-flow__node-person:is(:hover, :focus-within) {
+  z-index: 10 !important;
+}
+/* A small tooltip from data-tip, on hover and keyboard focus (the "+" buttons, the canvas
+   toolbar). It never takes the pointer. */
+[data-tip] {
+  position: relative;
+}
+[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  translate: -50% 0;
+  padding: 3px 8px;
+  border-radius: var(--radius-s);
+  background: var(--ink);
+  color: var(--bg);
+  box-shadow: var(--shadow-2);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+}
+[data-tip]:hover::after,
+[data-tip]:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
+}
+[data-tip-side='left']::after {
+  bottom: auto;
+  top: 50%;
+  left: auto;
+  right: calc(100% + 8px);
+  translate: 0 -50%;
+}
+@media (prefers-reduced-motion: no-preference) {
+  [data-tip]::after {
+    transition: opacity var(--dur) var(--ease) 0.25s;
+  }
 }
 /* Zoomed out: the avatar and a larger first name, so it can still be read. */
 .person-card-compact .card-name {
@@ -851,7 +907,7 @@ button.union-dot:hover {
    Flow's own dark colours are replaced). */
 .family-canvas .react-flow {
   --xy-background-color: var(--bg);
-  --xy-background-pattern-color: var(--line-strong);
+  --xy-background-pattern-color: color-mix(in srgb, var(--line-strong) 45%, transparent);
   --xy-edge-stroke: var(--line-strong);
   --xy-edge-stroke-width: 1.6;
   --xy-minimap-background-color: var(--surface);
