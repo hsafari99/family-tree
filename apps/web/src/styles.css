@@ -583,6 +583,9 @@ button.google:hover:not(:disabled) {
 .person-card {
   position: relative;
   box-sizing: border-box;
+  /* A long-press opens the card menu, not the browser's text selection or link callout. */
+  -webkit-touch-callout: none;
+  user-select: none;
   width: 200px;
   height: 72px;
   display: flex;
