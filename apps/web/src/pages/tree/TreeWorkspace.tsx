@@ -28,6 +28,7 @@ import { SearchBox } from '../../canvas/SearchBox';
 import { BranchStatus, DepthControl, TreeLinks, ViewLinks } from '../../canvas/TreeControls';
 import type { CoupleChange } from '../../canvas/couples';
 import { FamilyCanvas } from '../../canvas/FamilyCanvas';
+import { FanChart } from '../../canvas/fan/FanChart';
 import {
   type CanvasChange,
   canvasSearch,
@@ -191,6 +192,11 @@ export function TreeWorkspace({
       },
     }),
     [go, base, setCollapsed, toggleBranchOf],
+  );
+  // The fan and the tree grow from someone else: their panel opens, and the picture moves.
+  const recentre = useCallback(
+    (id: string) => go(`${base}/people/${id}`, { focus: id, tab: null, add: null, ...NO_PAIR }),
+    [go, base],
   );
   const [notice, setNotice] = useState<string | null>(null);
   const onReorder = useCallback(
@@ -366,6 +372,13 @@ export function TreeWorkspace({
     ready !== null &&
     [...highlight.personIds].some((id) => !ready.graph.persons.some((p) => p.id === id));
   const panel = useRef<HTMLElement>(null);
+  // A fan or a tree wider than the screen (a phone) starts scrolled to its middle.
+  const lineView = useRef<HTMLDivElement>(null);
+  const lineKey = ready && !onCanvas ? `${view.view}/${focusId}/${view.gens}` : null;
+  useEffect(() => {
+    const el = lineView.current;
+    if (el && lineKey) el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2;
+  }, [lineKey]);
   const selection = useRef<HTMLDivElement>(null);
   const canvasArea = useRef<HTMLElement>(null);
   const panelKey = `${newPerson}/${personId}/${unionId}`;
@@ -496,6 +509,15 @@ export function TreeWorkspace({
               onClear={clearBranch}
             />
             <DepthControl params={view} onChange={(c) => go(pathname, c)} />
+            {!onCanvas && personId && personId !== focusId && (
+              <button
+                type="button"
+                className="secondary recentre"
+                onClick={() => recentre(personId)}
+              >
+                {view.view === 'fan' ? 'Centre the fan here' : 'Grow the tree from here'}
+              </button>
+            )}
             <div className="panel-selection" ref={selection}>
               {newPerson && canAdd ? (
                 <AddPersonForm
@@ -628,9 +650,19 @@ export function TreeWorkspace({
               {onCanvas && ready && !ready.graph.needsBranch && ready.nodes.length === 0 && (
                 <p>No one to show yet.</p>
               )}
-              {!onCanvas && ready && (
-                <div className="line-view" data-view={view.view}>
-                  {ready.graph.persons.length} people
+              {!onCanvas && ready && focusId && (
+                <div className="line-view" data-view={view.view} ref={lineView}>
+                  {view.view === 'fan' ? (
+                    <FanChart
+                      graph={ready.graph}
+                      rootId={focusId}
+                      gens={view.gens}
+                      selectedId={personId ?? null}
+                      onOpen={actions.openPerson}
+                      onAdd={actions.addRelative}
+                      onRecentre={recentre}
+                    />
+                  ) : null}
                 </div>
               )}
               {offView && (

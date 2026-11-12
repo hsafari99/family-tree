@@ -2903,3 +2903,126 @@ button.section-row {
     min-height: 2.5rem;
   }
 }
+
+/* The fan chart and the illustrated tree (Batch 5): plain SVG pictures in the canvas area. */
+.line-view {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-4);
+  border-radius: inherit;
+  background-color: var(--bg);
+  background-image: radial-gradient(
+    color-mix(in srgb, var(--line-strong) 45%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 22px 22px;
+}
+.recentre {
+  margin-top: 0.5rem;
+}
+@media (max-width: 720px) {
+  /* Readable text on a phone: the picture is wider than the screen and scrolls sideways. */
+  .line-view {
+    padding: var(--space-2);
+  }
+  .fan-chart {
+    min-width: 720px;
+  }
+}
+.svg-av1 {
+  fill: var(--av1);
+}
+.svg-av2 {
+  fill: var(--av2);
+}
+.svg-av3 {
+  fill: var(--av3);
+}
+.svg-av4 {
+  fill: var(--av4);
+}
+.svg-av5 {
+  fill: var(--av5);
+}
+.svg-av6 {
+  fill: var(--av6);
+}
+.svg-av-ini {
+  fill: var(--av-ink);
+  font-weight: 600;
+  pointer-events: none;
+}
+.fan-chart {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 340px;
+  min-height: 200px;
+}
+.fan-slot {
+  cursor: pointer;
+}
+.fan-slot text {
+  pointer-events: none;
+}
+.fan-slot:focus {
+  outline: none;
+}
+.fan-slot:focus-visible .fan-seg,
+.fan-slot:focus-visible .fan-hub {
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+.fan-seg {
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+.fan-slot:hover .fan-seg:not(.is-empty) {
+  filter: brightness(0.95);
+}
+.fan-seg.is-empty {
+  fill: var(--bg);
+  stroke: var(--line-strong);
+  stroke-width: 1.2;
+  stroke-dasharray: 4 4;
+}
+.fan-add:hover .fan-seg.is-empty {
+  fill: var(--accent-soft);
+}
+.fan-add-t {
+  fill: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+}
+.fan-t {
+  fill: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+.fan-s {
+  fill: var(--ink);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+.fan-xs {
+  fill: var(--ink);
+  font-size: 9px;
+  font-weight: 500;
+}
+.fan-sel {
+  fill: none;
+  stroke: var(--ring);
+  stroke-width: 3;
+  pointer-events: none;
+}
+.fan-hub {
+  fill: var(--surface);
+  stroke: var(--line);
+}
+.fan-root-name {
+  fill: var(--ink);
+  font-size: 14px;
+  font-weight: 650;
+}
