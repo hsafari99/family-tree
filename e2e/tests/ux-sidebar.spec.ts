@@ -111,6 +111,8 @@ test('the side panel and the bar above the canvas: search, generations, tags, di
   await panel.getByRole('button', { name: 'How are we related?' }).click();
   const rel = page.getByRole('dialog', { name: 'How are we related?' });
   await rel.getByRole('button', { name: 'Change To' }).click();
+  // The picker replaces the result once the URL has changed; measure after that.
+  await expect(rel.getByLabel('To', { exact: true })).toBeVisible();
   const body = rel.locator('.section-dialog-body');
   const height = await body.evaluate((el) => el.scrollHeight);
   await rel.getByLabel('To', { exact: true }).fill('Si');

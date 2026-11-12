@@ -101,7 +101,7 @@ function TreeCard({ tree: t }: { tree: HomeTree }) {
     <li className="tree-card">
       <div className="tree-card-head">
         <h3>{t.name}</h3>
-        <span className="badge">{ROLE_LABEL[t.role]}</span>
+        <span className="badge pill">{ROLE_LABEL[t.role]}</span>
       </div>
       <p className="tree-card-meta">
         <span>{countPeople(t.peopleCount)}</span>

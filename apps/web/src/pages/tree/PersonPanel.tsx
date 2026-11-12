@@ -144,7 +144,7 @@ export function PersonPanel({
                   {tags.map((t) => (
                     <Fragment key={t}>
                       {' '}
-                      <span className="name-tag">
+                      <span className="name-tag pill">
                         <span className="name-tag-paren">(</span>
                         {t}
                         <span className="name-tag-paren">)</span>

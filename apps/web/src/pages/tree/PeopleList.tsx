@@ -38,7 +38,7 @@ export function PeopleList({
                   {name}
                 </Link>
                 {years && <span className="row-meta">{years}</span>}
-                {p.id === me.personId && <span className="badge">You</span>}
+                {p.id === me.personId && <span className="badge pill">You</span>}
               </span>
               <span className="row-actions">
                 <button

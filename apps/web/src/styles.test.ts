@@ -8,14 +8,42 @@ const css = readFileSync(resolve(process.cwd(), 'src/styles.css'), 'utf8');
 
 describe('global form styles', () => {
   it('gives select and textarea the same box as input', () => {
-    expect(css).toMatch(/input,\s*select,\s*textarea\s*\{[^}]*padding: 0\.6rem 0\.7rem/);
-    expect(css).toMatch(/select\s*\{[^}]*min-height: 2\.75rem/);
+    expect(css).toMatch(/input,\s*select,\s*textarea\s*\{[^}]*padding: 0\.4rem 0\.75rem/);
+    // 38px on a desktop, 44px on a touch screen; the text input and the select always match.
+    expect(css).toMatch(/\n\s*input:not\([^)]*\)\s*\{\s*min-height: 2\.375rem/);
+    expect(css).toMatch(/\nselect\s*\{[^}]*min-height: 2\.375rem/);
+    expect(css).toMatch(
+      /@media \(pointer: coarse\)\s*\{\s*input:not\([^)]*\),\s*select\s*\{\s*min-height: 2\.75rem/,
+    );
   });
   it('spaces a button or action row that follows a field outside a form grid', () => {
     expect(css).toContain(':not(form) > .field + :is(button, .confirm, .actions)');
   });
   it("keeps a form's direct buttons at their own width instead of the grid's", () => {
     expect(css).toMatch(/form > :is\(button, \.confirm\)\s*\{[^}]*justify-self: start/);
+  });
+});
+
+describe('controls', () => {
+  it('rings a focused field in the accent', () => {
+    expect(css).toMatch(
+      /:focus\s*\{[^}]*border-color: var\(--accent\);[^}]*box-shadow: 0 0 0 3px var\(--accent-soft\)/,
+    );
+  });
+  it('fills a danger button only on the confirm step', () => {
+    expect(css).toMatch(/button\.danger\s*\{[^}]*color: var\(--danger\)/);
+    expect(css).toMatch(/\.confirm > button\.danger[^{]*\{[^}]*background: var\(--danger\)/);
+  });
+  it('gives dialogs the large radius, deep shadow and a blurred backdrop', () => {
+    expect(css).toMatch(
+      /\.confirm-dialog\s*\{[^}]*border-radius: var\(--radius-l\)[^}]*box-shadow: var\(--shadow-3\)/,
+    );
+    expect(css).toMatch(/::backdrop\s*\{[^}]*backdrop-filter: blur\(2px\)/);
+  });
+  it('has a generic pill', () => {
+    expect(css).toMatch(
+      /\.pill\s*\{[^}]*border-radius: var\(--radius-pill\)[^}]*background: var\(--accent-soft\)/,
+    );
   });
 });
 
@@ -74,6 +102,7 @@ describe('design tokens', () => {
     '--accent',
     '--accent-ink',
     '--accent-soft',
+    '--danger-ink',
     '--ring',
     '--pat',
     '--mat',

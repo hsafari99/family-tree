@@ -181,7 +181,7 @@ export function PlacesTab(props: TabProps) {
             ) : (
               <>
                 <div className="row-main">
-                  <span className="badge">{BADGE[row.kind]}</span>
+                  <span className="badge pill">{BADGE[row.kind]}</span>
                   <strong>{row.place}</strong>
                   {row.meta && <span className="row-meta">{row.meta}</span>}
                 </div>

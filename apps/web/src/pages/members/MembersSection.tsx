@@ -112,7 +112,7 @@ export function MembersSection({
                       {m.userId === me && (
                         <>
                           {' '}
-                          <span className="badge">You</span>
+                          <span className="badge pill">You</span>
                         </>
                       )}
                       {m.email !== undefined && <div className="row-meta">{m.email}</div>}

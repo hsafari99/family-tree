@@ -86,7 +86,7 @@ export function PhotosTab({ treeId, view, reload, onChanged }: TabProps) {
                   alt={`Photo ${i + 1} of ${name}${ph.isPrimary ? ', main photo' : ''} (opens full size)`}
                 />
               </a>
-              {ph.isPrimary && <span className="badge">Main photo</span>}
+              {ph.isPrimary && <span className="badge pill">Main photo</span>}
               {canEdit && (
                 <p className="photo-actions">
                   {!ph.isPrimary && (

@@ -132,7 +132,7 @@ export function RelationsTab({
   const modeOf = (key: string) => (row?.key === key ? row.mode : null);
 
   const kindBadge = (kind: ChildKind) =>
-    kind !== 'biological' && <span className="badge">{CHILD_KIND_LABEL[kind]}</span>;
+    kind !== 'biological' && <span className="badge pill">{CHILD_KIND_LABEL[kind]}</span>;
 
   /** The inline link-kind select, shown after "Change link kind…". */
   const kindPicker = (key: string, linkId: string, kind: ChildKind, label: string) => (
