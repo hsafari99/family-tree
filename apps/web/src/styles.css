@@ -1026,6 +1026,14 @@ a.section-row:hover {
   border: 1px solid var(--border);
   border-radius: 8px;
 }
+.branch-matches button {
+  width: 100%;
+  border-color: transparent;
+  text-align: left;
+}
+.branch-matches button:hover {
+  background: var(--surface);
+}
 .people-fallback {
   margin-top: 1rem;
 }
