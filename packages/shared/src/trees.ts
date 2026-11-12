@@ -120,6 +120,8 @@ export const memberSchema = z.object({
   role: roleSchema,
   personId: z.uuid().nullable(),
   invitedByUserId: z.uuid().nullable(),
+  /** When they joined the tree (ISO date-time). */
+  joinedAt: z.string(),
   /** Owner only. */
   email: z.string().optional(),
   /** Owner only: needed to know who can receive ownership or a reset link. */

@@ -1,4 +1,3 @@
-import type { StewardGrant } from '@family-tree/shared';
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { ConfirmButton } from '../../components/ConfirmButton';
 import { FormError } from '../../components/forms';
@@ -15,7 +14,7 @@ export function StewardsSection({
   reload,
   onActed,
   stewards,
-}: SectionProps & { stewards: StewardGrant[] }) {
+}: SectionProps) {
   const api = useTreesApi();
   const [error, setError] = useState<string | null>(null);
   const [userId, setUserId] = useState('');

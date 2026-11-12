@@ -2,11 +2,16 @@ import { type InviteRole } from '@family-tree/shared';
 import { useEffect, useRef, useState } from 'react';
 import type { AuthError } from '../../auth/api';
 import { ConfirmButton } from '../../components/ConfirmButton';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { MenuButton, type MenuItem } from '../../components/MenuButton';
 import { FormError } from '../../components/forms';
 import { personName } from '../../trees/format';
 import { useTreesApi } from '../../trees/TreesApiContext';
 import { CopyLink } from './CopyLink';
 import { actionMessage, type SectionProps } from './types';
+
+const COLUMNS = ['Name', 'Role', 'Branch / steward scope', 'Joined', 'Actions'] as const;
+const ROLE_LABEL = { owner: 'Owner', editor: 'Editor', viewer: 'Viewer' } as const;
 
 export function MembersSection({
   treeId,
@@ -17,6 +22,7 @@ export function MembersSection({
   reload,
   acted,
   onActed,
+  stewards,
 }: SectionProps) {
   const api = useTreesApi();
   const [error, setError] = useState<string | null>(null);
@@ -31,7 +37,7 @@ export function MembersSection({
   }, [acted]);
   const isOwner = detail.me.role === 'owner';
   const activeSteward = detail.me.steward.active;
-  const showEmail = members.some((m) => m.email !== undefined);
+  const [transferTo, setTransferTo] = useState<string | null>(null);
 
   const canManage = (m: (typeof members)[number]) =>
     m.role !== 'owner' && (isOwner || (activeSteward && m.invitedByUserId === me));
@@ -60,95 +66,143 @@ export function MembersSection({
     onActed('reset');
   }
 
+  const grantsOf = (userId: string) => stewards.filter((g) => g.userId === userId);
+  const transferTarget = members.find((m) => m.userId === transferTo) ?? null;
+
   return (
     <section>
       <h2>Members</h2>
       <FormError>{error}</FormError>
-      <table>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Role</th>
-            {showEmail && <th>Email</th>}
-            <th>Their card</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {members.map((m) => (
-            <tr key={m.userId}>
-              <td>
-                {m.name}
-                {m.userId === me && ' (you)'}
-              </td>
-              <td>
-                {canManage(m) ? (
-                  <select
-                    aria-label={`Role for ${m.name}`}
-                    value={m.role}
-                    onChange={(e) =>
-                      void act(
-                        () => api.changeRole(treeId, m.userId, e.target.value as InviteRole),
-                        ['members'],
-                      )
-                    }
-                  >
-                    <option value="editor">Editor</option>
-                    <option value="viewer">Viewer</option>
-                  </select>
-                ) : (
-                  { owner: 'Owner', editor: 'Editor', viewer: 'Viewer' }[m.role]
-                )}
-              </td>
-              {showEmail && <td>{m.email ?? ''}</td>}
-              <td>{personLabel(m.personId)}</td>
-              <td>
-                {canManage(m) && (
-                  <ConfirmButton
-                    label="Remove"
-                    confirmLabel="Remove from tree"
-                    danger
-                    onConfirm={() =>
-                      void act(
-                        () => api.removeMember(treeId, m.userId),
-                        ['members', 'stewards', 'invites'],
-                      )
-                    }
-                  />
-                )}
-                {isOwner && m.role !== 'owner' && (
-                  <>
-                    {m.twoFactorEnabled ? (
-                      <ConfirmButton
-                        label="Make owner"
-                        confirmLabel="Transfer ownership"
-                        onConfirm={() =>
-                          void act(
-                            () => api.transferOwnership(treeId, m.userId),
-                            ['tree', 'members', 'stewards', 'invites'],
-                          )
-                        }
-                      />
-                    ) : (
-                      <>
-                        <span className="hint">Needs two-step verification to become owner</span>{' '}
-                        <button type="button" onClick={() => void resetLink(m.userId, m.name)}>
-                          Reset link
-                        </button>
-                      </>
-                    )}
-                  </>
-                )}
-              </td>
+      <div className="table-wrap">
+        <table className="data members-table">
+          <caption className="sr-only">Members of {detail.tree.name}</caption>
+          <thead>
+            <tr>
+              {COLUMNS.map((c) => (
+                <th key={c} scope="col">
+                  {c}
+                </th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {members.map((m) => {
+              const grants = grantsOf(m.userId);
+              const card = m.personId ? personLabel(m.personId) : null;
+              const more: MenuItem[] =
+                isOwner && m.role !== 'owner'
+                  ? m.twoFactorEnabled
+                    ? [{ label: 'Make owner', onSelect: () => setTransferTo(m.userId) }]
+                    : [
+                        {
+                          label: 'Make owner (needs two-step verification)',
+                          disabled: true,
+                          onSelect: () => {},
+                        },
+                        { label: 'Reset link', onSelect: () => void resetLink(m.userId, m.name) },
+                      ]
+                  : [];
+              return (
+                <tr key={m.userId}>
+                  <td data-label={COLUMNS[0]}>
+                    <div className="cell">
+                      <span className="member-name">{m.name}</span>
+                      {m.userId === me && (
+                        <>
+                          {' '}
+                          <span className="badge">You</span>
+                        </>
+                      )}
+                      {m.email !== undefined && <div className="row-meta">{m.email}</div>}
+                    </div>
+                  </td>
+                  <td data-label={COLUMNS[1]}>
+                    <div className="cell">
+                      {canManage(m) ? (
+                        <select
+                          aria-label={`Role for ${m.name}`}
+                          value={m.role}
+                          onChange={(e) =>
+                            void act(
+                              () => api.changeRole(treeId, m.userId, e.target.value as InviteRole),
+                              ['members'],
+                            )
+                          }
+                        >
+                          <option value="editor">Editor</option>
+                          <option value="viewer">Viewer</option>
+                        </select>
+                      ) : (
+                        ROLE_LABEL[m.role]
+                      )}
+                    </div>
+                  </td>
+                  <td data-label={COLUMNS[2]}>
+                    <div className="cell">
+                      {grants.map((g) => (
+                        <div key={g.id}>
+                          Steward of {personLabel(g.anchorPersonId)}’s branch
+                          {!g.active && ' (waiting for 2FA)'}
+                        </div>
+                      ))}
+                      {grants.length === 0 && !card && '—'}
+                      {card && <div className="row-meta">Card: {card}</div>}
+                    </div>
+                  </td>
+                  <td data-label={COLUMNS[3]}>
+                    <div className="cell">{new Date(m.joinedAt).toLocaleDateString()}</div>
+                  </td>
+                  <td data-label={COLUMNS[4]}>
+                    {(canManage(m) || more.length > 0) && (
+                      <div className="row-actions cell">
+                        {canManage(m) && (
+                          <ConfirmButton
+                            label="Remove"
+                            confirmLabel="Remove from tree"
+                            danger
+                            compact
+                            onConfirm={() =>
+                              void act(
+                                () => api.removeMember(treeId, m.userId),
+                                ['members', 'stewards', 'invites'],
+                              )
+                            }
+                          />
+                        )}
+                        {more.length > 0 && (
+                          <MenuButton label={`More actions for ${m.name}`} items={more} />
+                        )}
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
       {link && (
         <CopyLink label="Reset link" url={link.url}>
           Send this link to {link.name} yourself. It works once, for 24 hours.
         </CopyLink>
       )}
+      <ConfirmDialog
+        open={transferTarget !== null}
+        title={`Make ${transferTarget?.name ?? 'them'} the owner?`}
+        confirmLabel="Transfer ownership"
+        onCancel={() => setTransferTo(null)}
+        onConfirm={() => {
+          const to = transferTo;
+          setTransferTo(null);
+          if (to)
+            void act(
+              () => api.transferOwnership(treeId, to),
+              ['tree', 'members', 'stewards', 'invites'],
+            );
+        }}
+      >
+        <p>You become an editor of this tree, and the invite links you made stop working.</p>
+      </ConfirmDialog>
     </section>
   );
 }

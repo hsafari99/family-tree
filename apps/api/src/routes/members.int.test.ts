@@ -63,6 +63,17 @@ describe('GET members', () => {
     expect(e).toHaveLength(5);
     expect(e.some((m: object) => 'email' in m || 'twoFactorEnabled' in m)).toBe(false);
   });
+
+  it('says when each member joined, as an ISO date, to everyone (brief #19)', async () => {
+    const { owner, treeId, E } = await setup();
+    for (const jar of [owner.jar, E.jar]) {
+      const list = (await call(app, 'GET', members(treeId), { jar })).json().members;
+      for (const m of list as { joinedAt: unknown }[]) {
+        expect(typeof m.joinedAt).toBe('string');
+        expect(new Date(m.joinedAt as string).toISOString()).toBe(m.joinedAt);
+      }
+    }
+  });
 });
 
 describe('PATCH member role', () => {

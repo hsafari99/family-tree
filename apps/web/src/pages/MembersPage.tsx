@@ -103,12 +103,22 @@ export function MembersPage() {
     );
   }
 
-  const props = { treeId, detail, persons, members, me: user.id, reload, acted, onActed };
+  const props = {
+    treeId,
+    detail,
+    persons,
+    members,
+    stewards,
+    me: user.id,
+    reload,
+    acted,
+    onActed,
+  };
   return (
     <Page title={`Members of ${detail.tree.name}`} wide>
       <FormError>{error}</FormError>
       <MembersSection {...props} />
-      <StewardsSection {...props} stewards={stewards} />
+      <StewardsSection {...props} />
       {detail.capabilities.invite && <InvitesSection {...props} invites={invites} />}
       <p>
         <Link to={`/trees/${treeId}`}>Back to the tree</Link>

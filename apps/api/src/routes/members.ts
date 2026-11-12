@@ -55,14 +55,17 @@ export const membersRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
         role: treeMembers.role,
         personId: treeMembers.personId,
         invitedByUserId: treeMembers.invitedByUserId,
+        joinedAt: treeMembers.createdAt,
       })
       .from(treeMembers)
       .innerJoin(users, eq(users.id, treeMembers.userId))
       .where(eq(treeMembers.treeId, access.treeId));
     rows.sort((a, b) => ROLE_RANK[b.role] - ROLE_RANK[a.role] || a.name.localeCompare(b.name));
-    const members: Member[] = rows.map(({ email, twoFactorEnabled, ...m }) =>
-      details ? { ...m, email, twoFactorEnabled } : m,
-    );
+    const members: Member[] = rows.map(({ email, twoFactorEnabled, joinedAt, ...m }) => ({
+      ...m,
+      joinedAt: joinedAt.toISOString(),
+      ...(details ? { email, twoFactorEnabled } : {}),
+    }));
     return { members };
   });
 

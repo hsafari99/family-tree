@@ -1247,3 +1247,67 @@ button.menu-item.danger-text {
     flex-wrap: wrap;
   }
 }
+
+/* Data tables: aligned columns on desktop, one labelled block per row on a phone (brief #19) */
+.table-wrap {
+  overflow-x: auto;
+}
+table.data {
+  width: 100%;
+  border-collapse: collapse;
+}
+table.data th,
+table.data td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+table.data th {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+table.data td > .cell {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+table.data select {
+  width: auto;
+}
+.members-table .row-actions {
+  flex-wrap: wrap;
+}
+@media (max-width: 720px) {
+  table.data thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  table.data,
+  table.data tbody {
+    display: block;
+  }
+  table.data tr {
+    display: block;
+    border-bottom: 1px solid var(--border);
+    padding: 0.5rem 0;
+  }
+  table.data td {
+    display: grid;
+    grid-template-columns: 8rem minmax(0, 1fr);
+    gap: 0.5rem;
+    border: 0;
+    padding: 0.25rem 0;
+  }
+  table.data td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+  /* An empty cell (no actions) has nothing to label. */
+  table.data td:empty {
+    display: none;
+  }
+}

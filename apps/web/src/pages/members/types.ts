@@ -1,5 +1,5 @@
 import { type AuthError, MESSAGES } from '../../auth/api';
-import type { Member, PersonSummary, TreeDetail } from '@family-tree/shared';
+import type { Member, PersonSummary, StewardGrant, TreeDetail } from '@family-tree/shared';
 
 export interface Acted {
   n: number;
@@ -14,6 +14,7 @@ export interface SectionProps {
   detail: TreeDetail;
   persons: PersonSummary[];
   members: Member[];
+  stewards: StewardGrant[];
   /** The signed-in user's id. */
   me: string;
   reload: (...parts: Part[]) => Promise<void>;

@@ -24,7 +24,13 @@ function member(
     unknown
   >,
 ) {
-  return { userId: crypto.randomUUID(), personId: null, invitedByUserId: null, ...over };
+  return {
+    userId: crypto.randomUUID(),
+    personId: null,
+    invitedByUserId: null,
+    joinedAt: '2026-03-04T12:00:00.000Z',
+    ...over,
+  };
 }
 
 /** A signed-in user (`me`) looking at a tree seeded as the given role. */
@@ -87,7 +93,13 @@ function setup(kind: 'owner' | 'editor' | 'steward' = 'owner') {
   return { auth, trees, id, user, mine, invitedByMe, other };
 }
 
-const rowOf = (name: string) => screen.getByText(name, { selector: 'td' }).closest('tr')!;
+const rowOf = (name: string) => screen.getByText(name, { selector: '.member-name' }).closest('tr')!;
+
+/** Opens a row's "More actions" menu and picks an item. */
+function pick(row: HTMLElement, name: string, item: string) {
+  fireEvent.click(within(row).getByRole('button', { name: `More actions for ${name}` }));
+  fireEvent.click(screen.getByRole('menuitem', { name: item }));
+}
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -101,7 +113,7 @@ describe('MembersPage', () => {
       await screen.findByRole('heading', { name: 'Members of Hale family' }),
     ).toBeInTheDocument();
     expect(await screen.findByText('a@example.com')).toBeInTheDocument();
-    expect(screen.getByText('Me (you)')).toBeInTheDocument();
+    expect(within(rowOf('Me')).getByText('You')).toHaveClass('badge');
     expect(screen.queryByLabelText('Role for Me')).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Role for Invited By Me'), {
       target: { value: 'editor' },
@@ -119,22 +131,90 @@ describe('MembersPage', () => {
     await waitFor(() => expect(screen.queryByText('Invited By Me')).not.toBeInTheDocument());
   });
 
+  it('is a real table: five headers, five cells per row, each labelled (brief #19)', async () => {
+    const s = setup();
+    const t = s.trees.trees.get(s.id)!;
+    t.members = t.members.map((m) =>
+      m.userId === s.other.userId ? { ...m, personId: dee.id } : m,
+    );
+    t.stewards.push(
+      {
+        id: crypto.randomUUID(),
+        userId: s.other.userId,
+        userName: 'Other Person',
+        anchorPersonId: bob.id,
+        grantedByUserId: s.user.id,
+        grantedByName: 'Me',
+        parentGrantId: null,
+        active: true,
+      },
+      {
+        id: crypto.randomUUID(),
+        userId: s.invitedByMe.userId,
+        userName: 'Invited By Me',
+        anchorPersonId: cy.id,
+        grantedByUserId: s.user.id,
+        grantedByName: 'Me',
+        parentGrantId: null,
+        active: false,
+      },
+    );
+    renderAt(`/trees/${s.id}/members`, s);
+    await screen.findByText('a@example.com');
+    const table = screen.getByRole('table', { name: 'Members of Hale family' });
+    expect(table).toHaveClass('data');
+    const headers = within(table)
+      .getAllByRole('columnheader')
+      .map((h) => h.textContent);
+    expect(headers).toEqual(['Name', 'Role', 'Branch / steward scope', 'Joined', 'Actions']);
+    for (const h of within(table).getAllByRole('columnheader')) {
+      expect(h).toHaveAttribute('scope', 'col');
+    }
+    const rows = within(table).getAllByRole('row').slice(1);
+    expect(rows).toHaveLength(3);
+    for (const r of rows) {
+      const cells = within(r).getAllByRole('cell');
+      expect(cells).toHaveLength(5);
+      expect(cells.map((c) => c.getAttribute('data-label'))).toEqual(headers);
+    }
+    const other = within(rowOf('Other Person')).getAllByRole('cell');
+    expect(other[0]).toHaveTextContent('Other Person');
+    expect(other[0]!.querySelector('.row-meta')).toHaveTextContent('b@example.com');
+    expect(other[1]).toContainElement(screen.getByLabelText('Role for Other Person'));
+    expect(other[2]).toHaveTextContent('Steward of Bob Hale’s branch');
+    expect(other[2]!.querySelector('.row-meta')).toHaveTextContent('Card: Dee Hale');
+    expect(other[3]).toHaveTextContent(new Date('2026-03-04T12:00:00.000Z').toLocaleDateString());
+    expect(within(other[4]!).getByRole('button', { name: 'Remove' })).toHaveClass('compact');
+    expect(within(rowOf('Invited By Me')).getAllByRole('cell')[2]).toHaveTextContent(
+      'Steward of Cy Hale’s branch (waiting for 2FA)',
+    );
+    const mine = within(rowOf('Me')).getAllByRole('cell');
+    expect(mine[1]).toHaveTextContent('Owner');
+    expect(mine[2]).toHaveTextContent('—');
+    expect(mine[4]).toBeEmptyDOMElement();
+  });
+
   it('owner: Make owner only on 2FA rows, and the controls vanish after a transfer', async () => {
     const s = setup();
     renderAt(`/trees/${s.id}/members`, s);
     await screen.findByText('a@example.com');
+    fireEvent.click(
+      within(rowOf('Invited By Me')).getByRole('button', {
+        name: 'More actions for Invited By Me',
+      }),
+    );
+    expect(screen.queryByRole('menuitem', { name: 'Make owner' })).not.toBeInTheDocument();
     expect(
-      within(rowOf('Invited By Me')).queryByRole('button', { name: 'Make owner' }),
-    ).not.toBeInTheDocument();
-    expect(
-      within(rowOf('Invited By Me')).getByText('Needs two-step verification to become owner'),
-    ).toBeInTheDocument();
-    const row = rowOf('Other Person');
-    fireEvent.click(within(row).getByRole('button', { name: 'Make owner' }));
-    fireEvent.click(within(row).getByRole('button', { name: 'Transfer ownership' }));
+      screen.getByRole('menuitem', { name: 'Make owner (needs two-step verification)' }),
+    ).toBeDisabled();
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+    pick(rowOf('Other Person'), 'Other Person', 'Make owner');
+    const dialog = screen.getByRole('dialog', { name: 'Make Other Person the owner?' });
+    expect(s.trees.callsTo('transferOwnership')).toHaveLength(0);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Transfer ownership' }));
     await waitFor(() => expect(s.trees.callsTo('transferOwnership')).toHaveLength(1));
     await waitFor(() =>
-      expect(screen.queryByRole('button', { name: 'Make owner' })).not.toBeInTheDocument(),
+      expect(screen.queryByRole('button', { name: /More actions for/ })).not.toBeInTheDocument(),
     );
     expect(screen.queryByLabelText('Role for Other Person')).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Invite someone' })).not.toBeInTheDocument();
@@ -146,7 +226,7 @@ describe('MembersPage', () => {
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
     renderAt(`/trees/${s.id}/members`, s);
     await screen.findByText('a@example.com');
-    fireEvent.click(within(rowOf('Invited By Me')).getByRole('button', { name: 'Reset link' }));
+    pick(rowOf('Invited By Me'), 'Invited By Me', 'Reset link');
     const input = (await screen.findByLabelText('Reset link')) as HTMLInputElement;
     expect(input.value).toBe(`${window.location.origin}/reset/fake-reset-1`);
     expect(
@@ -159,14 +239,14 @@ describe('MembersPage', () => {
       code: 'RESET_LINK_NOT_ALLOWED',
       message: MESSAGES.resetNotAllowed,
     });
-    fireEvent.click(within(rowOf('Invited By Me')).getByRole('button', { name: 'Reset link' }));
+    pick(rowOf('Invited By Me'), 'Invited By Me', 'Reset link');
     expect(await screen.findByText(MESSAGES.resetNotAllowed)).toBeInTheDocument();
   });
 
   it('editor: no role selects, Remove, invite form or email column', async () => {
     const s = setup('editor');
     renderAt(`/trees/${s.id}/members`, s);
-    await screen.findByText('Other Person', { selector: 'td' });
+    await screen.findByText('Other Person', { selector: '.member-name' });
     expect(screen.queryByRole('combobox', { name: /Role for/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Remove' })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Invite someone' })).not.toBeInTheDocument();
@@ -177,7 +257,7 @@ describe('MembersPage', () => {
   it('active steward: controls only on rows they invited; invite form visible', async () => {
     const s = setup('steward');
     renderAt(`/trees/${s.id}/members`, s);
-    await screen.findByText('Other Person', { selector: 'td' });
+    await screen.findByText('Other Person', { selector: '.member-name' });
     expect(
       within(rowOf('Invited By Me')).getByLabelText('Role for Invited By Me'),
     ).toBeInTheDocument();
@@ -187,7 +267,7 @@ describe('MembersPage', () => {
     expect(
       within(rowOf('Other Person')).queryByRole('button', { name: 'Remove' }),
     ).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Make owner' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /More actions for/ })).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Invite someone' })).toBeInTheDocument();
     // A steward may only anchor stewardship in their own branch.
     const anchors = within(screen.getByLabelText('Make them a steward of'));
@@ -282,9 +362,8 @@ describe('MembersPage', () => {
       code: 'TWO_FACTOR_REQUIRED',
       message: MESSAGES.twoFactorRequired,
     });
-    const row = rowOf('Other Person');
-    fireEvent.click(within(row).getByRole('button', { name: 'Make owner' }));
-    fireEvent.click(within(row).getByRole('button', { name: 'Transfer ownership' }));
+    pick(rowOf('Other Person'), 'Other Person', 'Make owner');
+    fireEvent.click(screen.getByRole('button', { name: 'Transfer ownership' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(MESSAGES.twoFactorRequired);
   });
 
@@ -310,7 +389,9 @@ describe('MembersPage', () => {
     const row = rowOf('Other Person');
     fireEvent.click(within(row).getByRole('button', { name: 'Remove' }));
     fireEvent.click(within(row).getByRole('button', { name: 'Remove from tree' }));
-    await waitFor(() => expect(screen.queryByText('Other Person', { selector: 'td' })).toBeNull());
+    await waitFor(() =>
+      expect(screen.queryByText('Other Person', { selector: '.member-name' })).toBeNull(),
+    );
     expect((screen.getByLabelText('Member') as HTMLSelectElement).value).toBe(s.invitedByMe.userId);
   });
 
@@ -318,7 +399,7 @@ describe('MembersPage', () => {
     const s = setup();
     renderAt(`/trees/${s.id}/members`, s);
     await screen.findByText('a@example.com');
-    fireEvent.click(within(rowOf('Invited By Me')).getByRole('button', { name: 'Reset link' }));
+    pick(rowOf('Invited By Me'), 'Invited By Me', 'Reset link');
     await screen.findByLabelText('Reset link');
     fireEvent.change(screen.getByLabelText('Role for Invited By Me'), {
       target: { value: 'editor' },
@@ -346,7 +427,7 @@ describe('MembersPage', () => {
     });
     renderAt(`/trees/${s.id}/members`, s);
     await screen.findByText('a@example.com');
-    fireEvent.click(within(rowOf('Invited By Me')).getByRole('button', { name: 'Reset link' }));
+    pick(rowOf('Invited By Me'), 'Invited By Me', 'Reset link');
     await screen.findByLabelText('Reset link');
     fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
     expect(

@@ -78,6 +78,7 @@ describe('FakeTreesApi refuses what the real API refuses', () => {
       role: 'viewer',
       personId: null,
       invitedByUserId: null,
+      joinedAt: '2026-01-01T00:00:00.000Z',
     });
     const forbidden = { ok: false, error: { code: 'FORBIDDEN', message: MESSAGES.forbidden } };
     expect(await trees.changeRole(treeId, userId, 'editor')).toEqual(forbidden);
@@ -94,6 +95,7 @@ describe('FakeTreesApi refuses what the real API refuses', () => {
       role: 'editor',
       personId: null,
       invitedByUserId: null,
+      joinedAt: '2026-01-01T00:00:00.000Z',
       twoFactorEnabled: false,
     });
     expect(await trees.transferOwnership(treeId, userId)).toMatchObject({
