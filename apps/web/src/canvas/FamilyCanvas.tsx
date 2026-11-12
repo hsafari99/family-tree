@@ -1,7 +1,6 @@
 import {
   applyNodeChanges,
   Background,
-  Controls,
   type Connection,
   type Edge,
   type EdgeTypes,
@@ -9,6 +8,7 @@ import {
   MiniMap,
   type NodeChange,
   type NodeTypes,
+  Panel,
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
@@ -27,6 +27,7 @@ import {
   type Family,
   personNodeId,
 } from './graph-to-flow';
+import { CanvasToolbar, motionMs, useMiniMapShown } from './CanvasToolbar';
 import { FamilyEdge } from './FamilyEdge';
 import { PersonNode } from './PersonCard';
 import { reparentFromReconnect } from './reparent';
@@ -49,7 +50,11 @@ export interface FamilyCanvasProps {
   layoutKey?: number;
   /** Centred after each layout in focus view; null in full view. */
   focusId: string | null;
-  actions: Omit<CanvasActions, 'reveal'>; // keep it referentially stable
+  actions: Omit<CanvasActions, 'reveal' | 'flyTo'>; // keep it referentially stable
+  /** The viewer's own person, for "Centre on me"; null when they have none in the tree. */
+  meId?: string | null;
+  /** A search pick to fly to; a new `seq` flies again (after the next layout if not shown yet). */
+  flyRequest?: { personId: string; seq: number } | null;
   /** The open person; read through a store so a change doesn't re-render every card. */
   selectedId: string | null;
   /** Sibling drag (Task 17). */
@@ -82,6 +87,8 @@ function CanvasInner({
   couples,
   onCoupleChange,
   layoutKey,
+  meId = null,
+  flyRequest = null,
 }: FamilyCanvasProps) {
   const flow = useReactFlow<CanvasNode>();
   const pane = useRef<HTMLDivElement>(null);
@@ -94,17 +101,22 @@ function CanvasInner({
 
   // Whether the person moved or zoomed the view since the last fit (then a resize keeps their place).
   const userMoved = useRef(false);
+  const [mapChosen, toggleMap] = useMiniMapShown();
+  const mapShown = canvasSettings(nodes.length).showMiniMap && mapChosen;
   // Read through a ref, so a class-only change of `nodes` doesn't make a new `fit` (and a refit).
-  const latest = useRef({ nodes, focusId });
-  latest.current = { nodes, focusId };
+  const latest = useRef({ nodes, focusId, mapShown });
+  latest.current = { nodes, focusId, mapShown };
   /** Fit the drawing, then (focus view) centre on the focus person. */
   const fit = useCallback(async () => {
-    const { nodes, focusId } = latest.current;
-    // With the minimap shown, keep the drawing clear of it (bottom right) and of the zoom
-    // controls (bottom left), so no card sits under them.
-    const padding = canvasSettings(nodes.length).showMiniMap
-      ? { top: 0.1, right: 0.1, left: '64px' as const, bottom: '176px' as const }
-      : 0.2;
+    const { nodes, focusId, mapShown } = latest.current;
+    // Keep the drawing clear of the toolbar (right edge) and of the minimap above its bottom
+    // corner, so no card sits under them.
+    const padding = {
+      top: 0.1,
+      left: 0.1,
+      right: '64px' as const,
+      bottom: mapShown ? ('176px' as const) : 0.1,
+    };
     await flow.fitView({ padding, maxZoom: 1.1, duration: 0 });
     const focus = focusId ? nodes.find((n) => n.id === personNodeId(focusId)) : undefined;
     if (focus) {
@@ -115,6 +127,29 @@ function CanvasInner({
     }
     userMoved.current = false;
   }, [flow]);
+
+  /** Pans and zooms (to at least 0.9) so the person's card is in the middle (Task 10). */
+  const flyTo = useCallback(
+    (personId: string): boolean => {
+      const node = flow.getNode(personNodeId(personId));
+      if (!node) return false;
+      userMoved.current = true; // a resize keeps them in the middle rather than refitting
+      void flow.setCenter(node.position.x + CARD_WIDTH / 2, node.position.y + CARD_HEIGHT / 2, {
+        zoom: Math.max(flow.getViewport().zoom, 0.9),
+        duration: motionMs(450),
+      });
+      return true;
+    },
+    [flow],
+  );
+  const pendingFly = useRef<string | null>(null);
+  const flySeq = flyRequest?.seq;
+  const flyId = flyRequest?.personId;
+  useEffect(() => {
+    if (flyId === undefined) return;
+    // Not drawn yet (a new layout is coming): fly after it has been fitted.
+    if (!flyTo(flyId)) pendingFly.current = flyId;
+  }, [flySeq, flyId, flyTo]);
 
   const layoutId = layoutKey ?? nodes;
   // After every new layout, and when the canvas changes width (the panel opening or closing beside
@@ -130,7 +165,12 @@ function CanvasInner({
       await settled();
       await nextFrame();
       await nextFrame();
-      if (!cancelled) await fit();
+      if (cancelled) return;
+      await fit();
+      // A search pick that wasn't drawn yet: fly once the new layout is in.
+      const pending = pendingFly.current;
+      pendingFly.current = null;
+      if (pending) flyTo(pending);
     };
     void refit();
     const el = pane.current;
@@ -150,7 +190,7 @@ function CanvasInner({
       cancelled = true;
       observer.disconnect();
     };
-  }, [flow, layoutId, fit, settled]);
+  }, [flow, layoutId, fit, settled, flyTo]);
 
   const onNodeDragStop = useCallback(
     (_: unknown, node: CanvasNode) => {
@@ -208,7 +248,11 @@ function CanvasInner({
   );
   const [selection] = useState(() => createSelectionStore(selectedId));
   useEffect(() => selection.set(selectedId), [selection, selectedId]);
-  const ctx = useMemo(() => ({ ...actions, reveal }), [actions, reveal]);
+  const flyToPerson = useCallback((id: string) => void flyTo(id), [flyTo]);
+  const ctx = useMemo(
+    () => ({ ...actions, reveal, flyTo: flyToPerson }),
+    [actions, reveal, flyToPerson],
+  );
   const settings = canvasSettings(nodes.length);
 
   return (
@@ -241,8 +285,23 @@ function CanvasInner({
             aria-label="Family tree"
           >
             <Background variant={BackgroundVariant.Dots} gap={22} size={1.2} />
-            <Controls showInteractive={false} />
-            {settings.showMiniMap && <MiniMap pannable zoomable ariaLabel="Overview of the tree" />}
+            <Panel position="bottom-right">
+              <CanvasToolbar
+                canCentreMe={meId !== null && nodes.some((n) => n.id === personNodeId(meId))}
+                onFit={() => void fit()}
+                onCentreMe={() => meId && flyTo(meId)}
+                map={{ available: settings.showMiniMap, shown: mapShown, toggle: toggleMap }}
+              />
+            </Panel>
+            {mapShown && (
+              <MiniMap
+                className="canvas-minimap"
+                position="bottom-right"
+                pannable
+                zoomable
+                ariaLabel="Overview of the tree"
+              />
+            )}
           </ReactFlow>
         </div>
       </SelectionProvider>

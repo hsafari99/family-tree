@@ -1,4 +1,8 @@
-import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
+import { AuthProvider } from '../auth/AuthContext';
+import { TreesApiProvider } from '../trees/TreesApiContext';
+import { SearchBox } from './SearchBox';
 import type { SearchQuery } from '@family-tree/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MESSAGES, toAuthError } from '../auth/api';
@@ -120,6 +124,24 @@ describe('SearchBox', () => {
     );
     expect(screen.queryByRole('list', { name: 'Search results' })).toBeNull();
     expect(screen.getByLabelText('Search')).toHaveValue('');
+  });
+
+  it('tells the page which person was chosen, so the canvas can fly to them', async () => {
+    const s = setup();
+    const onChoose = vi.fn();
+    render(
+      <AuthProvider api={s.auth}>
+        <TreesApiProvider api={s.trees}>
+          <MemoryRouter>
+            <SearchBox treeId={s.id} persons={summaries} meId="leo" onChoose={onChoose} />
+          </MemoryRouter>
+        </TreesApiProvider>
+      </AuthProvider>,
+    );
+    type(await box(), 'marg');
+    await settle();
+    fireEvent.click(await hit(/Margaret Hale/));
+    expect(onChoose).toHaveBeenCalledWith('margaret');
   });
 
   it('clears the box and results on Escape', async () => {

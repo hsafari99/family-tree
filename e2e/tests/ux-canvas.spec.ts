@@ -120,8 +120,8 @@ test('the panel is on the left, collapses to a thin line with an edge toggle, an
   expect(wide.x).toBeLessThan(p.x + 4);
   t = (await toggle.boundingBox())!;
   expect(Math.abs(t.x + t.width / 2 - wide.x)).toBeLessThan(4);
-  // It never covers the canvas's zoom controls.
-  const zoom = (await page.locator('.react-flow__controls').boundingBox())!;
+  // It never covers the canvas's toolbar.
+  const zoom = (await page.getByRole('group', { name: 'Canvas controls' }).boundingBox())!;
   expect(t.y + t.height <= zoom.y || zoom.y + zoom.height <= t.y || t.x + t.width <= zoom.x).toBe(
     true,
   );
@@ -151,7 +151,7 @@ test('the panel is on the left, collapses to a thin line with an edge toggle, an
   const hint = page.locator('.canvas-hint');
   await expect(hint).toBeVisible();
   const h = (await hint.boundingBox())!;
-  for (const el of [page.locator('.react-flow__controls'), card(page, 'Lee Left')]) {
+  for (const el of [page.getByRole('group', { name: 'Canvas controls' }), card(page, 'Lee Left')]) {
     await expect(el).toBeVisible();
     const b = (await el.boundingBox())!;
     expect(h.y + h.height <= b.y || b.y + b.height <= h.y).toBe(true);
@@ -249,6 +249,32 @@ test("Move later flips someone's partners on the canvas", async ({ page }) => {
   await page.getByRole('menuitem', { name: 'Move later' }).click();
   await expect(page.getByText('Order saved.')).toBeVisible();
   await expect.poll(annaLeft).toBe(!before);
+});
+
+test('choosing a search result flies the canvas to their card', async ({ page }) => {
+  await inLawTree(page);
+  const pane = (await page.locator('.react-flow').boundingBox())!;
+  // Zoom out and away first, so the card is off centre.
+  await page.getByRole('button', { name: 'Zoom out' }).click();
+  await page.mouse.move(pane.x + pane.width / 2, pane.y + pane.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(pane.x + 40, pane.y + 40, { steps: 6 });
+  await page.mouse.up();
+  await page.getByRole('searchbox', { name: 'Search' }).fill('Xan');
+  await page
+    .getByRole('list', { name: 'Search results' })
+    .getByRole('button', { name: /Xan Other/ })
+    .click();
+  await expect
+    .poll(async () => {
+      const p = (await page.locator('.react-flow').boundingBox())!;
+      const c = (await card(page, 'Xan Other').boundingBox())!;
+      return Math.max(
+        Math.abs(c.x + c.width / 2 - (p.x + p.width / 2)),
+        Math.abs(c.y + c.height / 2 - (p.y + p.height / 2)),
+      );
+    })
+    .toBeLessThan(80);
 });
 
 test.describe('on a phone', () => {

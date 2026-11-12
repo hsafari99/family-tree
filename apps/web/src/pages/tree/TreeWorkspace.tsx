@@ -176,6 +176,12 @@ export function TreeWorkspace({
     },
     [api, treeId, changed],
   );
+  // A search pick: the canvas flies to the card (a new seq each time, even for the same person).
+  const [flyRequest, setFlyRequest] = useState<{ personId: string; seq: number } | null>(null);
+  const flyToChosen = useCallback(
+    (personId: string) => setFlyRequest((r) => ({ personId, seq: (r?.seq ?? 0) + 1 })),
+    [],
+  );
   const returnFocusTo = useRef<{ id: string | null } | null>(null);
   // Escape collapses the panel and gives focus back to the card (the URL keeps the selection, so
   // the card stays marked). The edge toggle collapses it too, and keeps focus on itself.
@@ -390,7 +396,12 @@ export function TreeWorkspace({
       {/* Across the whole workspace, above the panel and the canvas (so search works on a phone
           without opening the sheet). */}
       <div className="canvas-bar">
-        <SearchBox treeId={treeId} persons={persons} meId={detail.me.personId} />
+        <SearchBox
+          treeId={treeId}
+          persons={persons}
+          meId={detail.me.personId}
+          onChoose={flyToChosen}
+        />
         <ViewLinks params={view} />
       </div>
       <PhotoRefreshContext.Provider value={refreshPhotos}>
@@ -549,6 +560,8 @@ export function TreeWorkspace({
                   focusId={view.mode === 'focus' ? focusId : null}
                   actions={actions}
                   selectedId={personId ?? null}
+                  meId={detail.me.personId}
+                  flyRequest={flyRequest}
                   onReorder={(u, ids) => void onReorder(u, ids)}
                   onReparent={(l, u) => void onReparent(l, u)}
                   couples={drawn.couples}

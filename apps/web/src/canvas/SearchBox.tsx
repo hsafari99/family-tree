@@ -53,10 +53,13 @@ export function SearchBox({
   treeId,
   persons,
   meId,
+  onChoose,
 }: {
   treeId: string;
   persons: PersonSummary[];
   meId: string | null;
+  /** A result was chosen (the canvas flies to it). */
+  onChoose?: (personId: string) => void;
 }) {
   const api = useTreesApi();
   const navigate = useNavigate();
@@ -243,6 +246,7 @@ export function SearchBox({
                   onClick={() => {
                     close();
                     void navigate(hrefOf(r.id));
+                    onChoose?.(r.id);
                   }}
                 >
                   <PersonPhoto

@@ -70,9 +70,21 @@ describe('FamilyCanvas', () => {
     card.focus();
     expect(document.activeElement).toBe(card);
     expect(document.querySelector('[aria-label="Family tree"]')).not.toBeNull();
-    for (const n of ['Zoom In', 'Zoom Out', 'Fit View']) {
+    // Our own toolbar replaced React Flow's controls (Task 10).
+    for (const n of ['Zoom in', 'Zoom out', 'Fit tree', 'Centre on me']) {
       expect(screen.getByRole('button', { name: n, hidden: true })).toBeInTheDocument();
     }
+    expect(screen.getByRole('button', { name: 'Centre on me', hidden: true })).toBeDisabled();
+    expect(document.querySelector('.react-flow__controls')).toBeNull();
+  });
+
+  it('enables Centre on me when the viewer is on the canvas', async () => {
+    const flow = await laidOut();
+    render(
+      <FamilyCanvas {...flow} focusId={null} actions={actions()} selectedId={null} meId="leo" />,
+    );
+    await screen.findByRole('button', DAVID);
+    expect(screen.getByRole('button', { name: 'Centre on me', hidden: true })).toBeEnabled();
   });
 
   it('updates when given a new layout', async () => {

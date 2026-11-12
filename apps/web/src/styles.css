@@ -772,6 +772,59 @@ img.card-avatar {
   right: -12px;
   top: 4px;
 }
+/* The canvas toolbar: a vertical pill in the bottom right (Task 10). The minimap sits to its left,
+   smaller on a phone (where it starts hidden). */
+.canvas-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  box-shadow: var(--shadow-2);
+}
+button.canvas-tool {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink);
+}
+button.canvas-tool:hover:not(:disabled) {
+  background: var(--surface-2);
+  box-shadow: none;
+}
+button.canvas-tool[aria-pressed='true'] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+button.canvas-tool:disabled {
+  color: var(--ink-2);
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+button.canvas-tool:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+.react-flow__minimap.canvas-minimap {
+  margin-right: 72px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-2);
+}
+@media (max-width: 720px) {
+  .react-flow__minimap.canvas-minimap svg {
+    width: 112px;
+    height: 80px;
+  }
+}
 /* A card or dot new to the layout fades in while the others glide (Task 9). */
 @media (prefers-reduced-motion: no-preference) {
   .react-flow__node.is-entering {
@@ -923,7 +976,7 @@ button.union-dot:hover {
   --xy-edge-stroke-width: 1.6;
   --xy-minimap-background-color: var(--surface);
   --xy-minimap-mask-background-color: color-mix(in srgb, var(--ink) 8%, transparent);
-  --xy-minimap-node-background-color: var(--line-strong);
+  --xy-minimap-node-background-color: color-mix(in srgb, var(--line-strong) 55%, var(--surface));
   --xy-attribution-background-color: transparent;
   border-radius: inherit;
   color: var(--ink);
@@ -2594,7 +2647,7 @@ button.section-row > .icon,
 /* Small round and icon-only buttons keep their own size, not the text buttons' minimum height. */
 button.icon-button,
 .person-card button.card-add,
-.react-flow__controls button,
+button.canvas-tool,
 button.search-result,
 button.menu-item,
 button.section-row {
