@@ -364,6 +364,54 @@ test.describe('on a phone', () => {
   });
 });
 
+test.describe('on a phone, the sheet', () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test('opens at half height with the card above it, and a swipe down on its handle closes it', async ({
+    page,
+  }) => {
+    await newTree(page, 'Swi', 'Pe');
+    const theCard = card(page, 'Swi Pe');
+    await theCard.click();
+    const sheet = page.getByRole('complementary', { name: 'Details' });
+    await expect(sheet.getByRole('heading', { name: /^Swi Pe/ })).toBeVisible();
+    const top = (await sheet.boundingBox())!.y;
+    expect(top).toBeGreaterThan(844 * 0.4);
+    // The open card stays in view above the sheet.
+    await expect
+      .poll(async () => {
+        const c = (await theCard.boundingBox())!;
+        return c.y + c.height <= top && c.y >= 0;
+      })
+      .toBe(true);
+    const handle = page.getByRole('button', { name: 'Collapse side panel' });
+    const h = (await handle.boundingBox())!;
+    const [x, y] = [h.x + h.width / 2, h.y + h.height / 2];
+    // Up: nearly full height.
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y - 60, { steps: 4 });
+    await page.mouse.move(x, y - 150, { steps: 4 });
+    await page.mouse.up();
+    await expect.poll(async () => (await sheet.boundingBox())!.y).toBeLessThan(844 * 0.2);
+    // Down twice: half, then closed.
+    for (let i = 0; i < 2; i++) {
+      const b = (await handle.boundingBox())!;
+      const [hx, hy] = [b.x + b.width / 2, b.y + b.height / 2];
+      await page.mouse.move(hx, hy);
+      await page.mouse.down();
+      await page.mouse.move(hx, hy + 60, { steps: 4 });
+      await page.mouse.move(hx, hy + 150, { steps: 4 });
+      await page.mouse.up();
+    }
+    await expect(sheet).toBeHidden();
+    await expect(page.getByRole('button', { name: 'Expand side panel' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+  });
+});
+
 test('a click outside a section dialog closes it; one inside, or on its menu, does not', async ({
   page,
 }) => {

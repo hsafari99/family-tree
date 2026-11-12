@@ -332,6 +332,34 @@ function CanvasInner({
     },
     [flow, coverOf],
   );
+  // A phone's sheet (Task 15): keep the open card in view above it, when another card is opened
+  // and when the sheet opens or changes height.
+  const openId = useRef(selectedId);
+  openId.current = selectedId;
+  const keepAboveSheet = useCallback(() => {
+    const id = openId.current;
+    if (id && coverOf().cover.bottom > 0) reveal(id);
+  }, [coverOf, reveal]);
+  const firstSelection = useRef(true);
+  useEffect(() => {
+    if (firstSelection.current) return void (firstSelection.current = false);
+    const t = setTimeout(keepAboveSheet, 250);
+    return () => clearTimeout(t);
+  }, [selectedId, keepAboveSheet]);
+  useEffect(() => {
+    const el = coverRef?.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const observer = new ResizeObserver(() => {
+      clearTimeout(t);
+      t = setTimeout(keepAboveSheet, 150);
+    });
+    observer.observe(el);
+    return () => {
+      clearTimeout(t);
+      observer.disconnect();
+    };
+  }, [coverRef, keepAboveSheet]);
   const [selection] = useState(() => createSelectionStore(selectedId));
   useEffect(() => selection.set(selectedId), [selection, selectedId]);
   const flyToPerson = useCallback((id: string) => void flyTo(id), [flyTo]);

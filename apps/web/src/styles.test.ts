@@ -229,3 +229,19 @@ describe('base styles', () => {
     expect(css).toMatch(/(?:^|\n)table\s*\{[^}]*font-variant-numeric: tabular-nums/);
   });
 });
+
+describe('touch (Task 15)', () => {
+  const coarse = [...css.matchAll(/@media \(pointer: coarse\)\s*\{([\s\S]*?)\n\}/g)]
+    .map((m) => m[1])
+    .join('\n');
+  it('gives the canvas toolbar 40px buttons and the card buttons a 40px hit area', () => {
+    expect(coarse).toMatch(/button\.canvas-tool\s*\{[^}]*width: 40px;[^}]*height: 40px/);
+    expect(coarse).toMatch(
+      /\.person-card \.card-add::before,\s*\.person-card \.card-branch::before\s*\{[^}]*inset: -8px/,
+    );
+  });
+  it('lets the phone sheet’s handle take the swipe, and sizes the sheet from --sheet-h', () => {
+    expect(css).toMatch(/button\.panel-toggle\s*\{\s*touch-action: none/);
+    expect(css).toMatch(/\.tree-workspace\.sheet-full\s*\{\s*--sheet-h: 88dvh/);
+  });
+});

@@ -8,6 +8,7 @@ import {
   type TreeDetail,
 } from '@family-tree/shared';
 import {
+  type CSSProperties,
   type ReactNode,
   type RefObject,
   useCallback,
@@ -46,6 +47,7 @@ import { PeopleList } from './PeopleList';
 import { PersonPanel } from './PersonPanel';
 import { RelationshipPanel } from './RelationshipPanel';
 import { UnionPanel } from './UnionPanel';
+import { useSheetSwipe } from './useSheetSwipe';
 
 export function TreeWorkspace({
   treeId,
@@ -131,9 +133,13 @@ export function TreeWorkspace({
   const [collapsed, setCollapsedState] = useState(
     () => readCollapsed() || (!selected && isPhone()),
   );
+  // On a phone the open sheet is half height, so the card stays in view above it; a swipe up on
+  // its handle makes it nearly full height (Task 15). Each opening starts at half.
+  const [sheetFull, setSheetFull] = useState(false);
   const setCollapsed = useCallback((v: boolean) => {
     setCollapsedState(v);
     writeCollapsed(v);
+    if (v) setSheetFull(false);
   }, []);
   const toggleBranchOf = branches.toggle;
   // Opening something from the canvas always shows it.
@@ -232,6 +238,10 @@ export function TreeWorkspace({
     focusSearch.current = true;
     setCollapsed(false);
   }, [setCollapsed]);
+  const swipe = useSheetSwipe({
+    onUp: () => (shown ? setSheetFull(true) : expand()),
+    onDown: () => (sheetFull ? setSheetFull(false) : setCollapsed(true)),
+  });
   // The member's own card says their role; the tree's root says so too (both after the name).
   const tagsOf = (id: string) => [
     ...(id === detail.me.personId
@@ -448,7 +458,19 @@ export function TreeWorkspace({
         <ViewLinks params={view} />
       </div>
       <PhotoRefreshContext.Provider value={refreshPhotos}>
-        <div className={shown ? 'tree-workspace has-panel' : 'tree-workspace is-collapsed'}>
+        <div
+          className={[
+            'tree-workspace',
+            shown ? 'has-panel' : 'is-collapsed',
+            shown && sheetFull && 'sheet-full',
+            swipe.drag !== 0 && 'is-dragging',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+          style={
+            swipe.drag !== 0 ? ({ '--sheet-drag': `${swipe.drag}px` } as CSSProperties) : undefined
+          }
+        >
           {/* Kept mounted while collapsed, so a half-filled form survives hiding the panel. */}
           <aside
             id="tree-panel"
@@ -525,7 +547,12 @@ export function TreeWorkspace({
             title={shown ? 'Collapse side panel' : 'Expand side panel'}
             aria-expanded={shown}
             aria-controls="tree-panel"
-            onClick={shown ? () => setCollapsed(true) : expand}
+            onClick={() => {
+              if (swipe.swallowClick()) return;
+              if (shown) setCollapsed(true);
+              else expand();
+            }}
+            {...swipe.handlers}
           >
             <ChevronIcon direction={shown ? 'left' : 'right'} />
             {/* The phone handle's visible words are part of its name (WCAG 2.5.3). */}

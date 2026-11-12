@@ -649,6 +649,40 @@ describe('TreeWorkspace collapsible panel (brief #15)', () => {
     expect(toggle).toHaveAccessibleName('Collapse side panel');
   });
 
+  it('a phone sheet’s handle: a long swipe down closes it, a short one doesn’t, up makes it taller', async () => {
+    const s = setup();
+    renderAt(`/trees/${s.id}/people/david`, s);
+    await screen.findByRole('heading', { level: 2, name: /David Hale/ });
+    const handle = screen.getByRole('button', { name: 'Collapse side panel' });
+    const workspace = handle.closest('.tree-workspace')!;
+    const swipe = (dy: number) => {
+      fireEvent.pointerDown(handle, { pointerId: 1, clientY: 500, isPrimary: true, button: 0 });
+      fireEvent.pointerMove(handle, { pointerId: 1, clientY: 500 + dy / 2 });
+      fireEvent.pointerMove(handle, { pointerId: 1, clientY: 500 + dy });
+      fireEvent.pointerUp(handle, { pointerId: 1, clientY: 500 + dy });
+      fireEvent.click(handle); // the click a real drag ends with
+    };
+    // A short drag: still open, and its click doesn't toggle it.
+    swipe(40);
+    expect(details()).not.toBeNull();
+    expect(handle).toHaveAttribute('aria-expanded', 'true');
+    // Up: the sheet goes from half height to nearly full; down again: back to half.
+    swipe(-120);
+    expect(workspace).toHaveClass('sheet-full');
+    swipe(120);
+    expect(workspace).not.toHaveClass('sheet-full');
+    expect(details()).not.toBeNull();
+    // Down from half height: closed. The label and aria-expanded follow.
+    swipe(120);
+    await waitFor(() => expect(details()).toBeNull());
+    expect(handle).toHaveAccessibleName('Expand side panel');
+    expect(handle).toHaveAttribute('aria-expanded', 'false');
+    // Up on the closed handle opens it again, at half height.
+    swipe(-120);
+    expect(await screen.findByRole('heading', { level: 2, name: /David Hale/ })).toBeVisible();
+    expect(workspace).not.toHaveClass('sheet-full');
+  });
+
   it('collapses and expands with nothing selected; expanding focuses its first control', async () => {
     const s = unselected(setup());
     const r = renderAt(`/trees/${s.id}`, s);

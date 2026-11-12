@@ -775,6 +775,14 @@ img.card-avatar {
   right: -12px;
   top: 4px;
 }
+@media (max-width: 720px) and (prefers-reduced-motion: no-preference) {
+  .tree-workspace:not(.is-dragging) .tree-panel,
+  .tree-workspace:not(.is-dragging) > button.panel-toggle {
+    transition:
+      height var(--dur) var(--ease),
+      bottom var(--dur) var(--ease);
+  }
+}
 /* Collapse a branch (Task 13): a chevron on the bottom edge, left of the children's line (the "+"
    is on its right), shown like the "+" buttons; a collapsed card's "+N" pill always shows. */
 .person-card .card-branch {
@@ -1579,7 +1587,9 @@ a.section-row:hover {
     right: 0;
     bottom: 0;
     z-index: 20;
-    height: 65dvh;
+    /* Half height by default, so the open card stays in view above it; nearly full after a swipe
+       up; following the finger while the handle is dragged (Task 15). */
+    height: clamp(120px, calc(var(--sheet-h) - var(--sheet-drag, 0px)), 92dvh);
     background: var(--surface);
     border: 0;
     border-top: 1px solid var(--border);
@@ -1609,8 +1619,18 @@ a.section-row:hover {
     box-shadow: 0 2px 10px rgb(0 0 0 / 20%);
   }
   .has-panel > button.panel-toggle {
-    bottom: 65dvh;
+    bottom: clamp(120px, calc(var(--sheet-h) - var(--sheet-drag, 0px)), 92dvh);
     transform: translate(-50%, 50%);
+  }
+  .tree-workspace {
+    --sheet-h: 46dvh;
+  }
+  .tree-workspace.sheet-full {
+    --sheet-h: 88dvh;
+  }
+  /* The handle takes the swipe itself, not the page. */
+  button.panel-toggle {
+    touch-action: none;
   }
   button.panel-toggle > svg {
     transform: rotate(-90deg) !important;
@@ -2746,4 +2766,24 @@ button.search-result,
 button.menu-item,
 button.section-row {
   min-height: 0;
+}
+
+/* Touch screens (Task 15): 40px targets. The card's small round buttons keep their look and get
+   an invisible 40px hit area around them. */
+@media (pointer: coarse) {
+  button.canvas-tool {
+    width: 40px;
+    height: 40px;
+  }
+  .person-card .card-add::before,
+  .person-card .card-branch::before {
+    content: '';
+    position: absolute;
+    inset: -8px;
+    border-radius: 50%;
+  }
+  button.menu-item,
+  button.search-result {
+    min-height: 2.5rem;
+  }
 }
