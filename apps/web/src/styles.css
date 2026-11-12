@@ -1534,6 +1534,11 @@ table.data select {
 main:focus {
   outline: none;
 }
+/* A heading focused by script (a page or panel announcing itself) isn't a control: no ring, which
+   would also cut across the photo floated beside the person panel's name. */
+:is(h1, h2, h3, h4)[tabindex='-1']:focus {
+  outline: none;
+}
 .app-header {
   position: relative;
   background: var(--surface);
