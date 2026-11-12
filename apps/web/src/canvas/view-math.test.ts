@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { centredOn, isClear, onScreen, pinnedAt } from './view-math';
+import { centredOn, focusZoom, isClear, onScreen, pinnedAt } from './view-math';
 
 const pane = { width: 1000, height: 600 };
 const none = { right: 0, bottom: 0, boxes: [] };
@@ -36,5 +36,13 @@ describe('view math', () => {
       width: 20,
       height: 10,
     });
+  });
+});
+
+describe('focusZoom', () => {
+  it('keeps the fitted zoom, but never below the compact cards', () => {
+    expect(focusZoom(0.8)).toBe(0.8);
+    expect(focusZoom(0.12)).toBe(0.4);
+    expect(focusZoom(2)).toBe(1.1);
   });
 });

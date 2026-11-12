@@ -68,3 +68,11 @@ export const onScreen = (box: Rect, vp: Viewport): Rect => ({
   width: box.width * vp.zoom,
   height: box.height * vp.zoom,
 });
+
+/**
+ * The focus view's zoom after a fit: never below the name-and-years card, because it centres on
+ * the focus person anyway and the rest is a pan away (a phone would otherwise get dots).
+ */
+export const FOCUS_MIN_ZOOM = 0.4;
+export const focusZoom = (fitted: number, max = 1.1) =>
+  Math.min(max, Math.max(fitted, FOCUS_MIN_ZOOM));

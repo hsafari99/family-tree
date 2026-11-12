@@ -38,7 +38,7 @@ import { PersonNode } from './PersonCard';
 import { reparentFromReconnect } from './reparent';
 import { UnionNode } from './UnionNode';
 import { useAnimatedNodes } from './useAnimatedNodes';
-import { centredOn, isClear, onScreen, pinnedAt } from './view-math';
+import { centredOn, focusZoom, isClear, onScreen, pinnedAt } from './view-math';
 
 const NODE_TYPES = { person: PersonNode, union: UnionNode } satisfies NodeTypes;
 const EDGE_TYPES = { family: FamilyEdge } satisfies EdgeTypes;
@@ -181,7 +181,7 @@ function CanvasInner({
     const focus = focusId ? nodes.find((n) => n.id === personNodeId(focusId)) : undefined;
     if (focus) {
       const [x, y] = [focus.position.x + CARD_WIDTH / 2, focus.position.y + CARD_HEIGHT / 2];
-      vp = centredOn(x, y, vp.zoom, size, cover);
+      vp = centredOn(x, y, focusZoom(vp.zoom), size, cover);
     }
     await flow.setViewport(vp, { duration });
   }, [flow, coverOf]);
