@@ -54,7 +54,7 @@ test('trash: compact row buttons, and Restore works', async ({ page }) => {
   await card(page, 'Una Trash').click();
   await expect(page.getByRole('heading', { name: /^Una Trash/ })).toBeVisible();
   await openSection(page, 'Details');
-  await page.getByRole('button', { name: 'Delete…' }).click();
+  await page.getByRole('button', { name: 'Delete this person…' }).click();
   await page.getByRole('radio', { name: /just this person/i }).check();
   await page.getByRole('button', { name: 'Move to Trash' }).click();
   await page.getByRole('button', { name: 'Yes, move to Trash' }).click();

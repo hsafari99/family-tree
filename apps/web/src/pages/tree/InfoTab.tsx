@@ -21,6 +21,7 @@ import {
   validate,
   type FieldErrors,
 } from '../../components/forms';
+import { EditIcon, TrashIcon } from '../../components/icons';
 import { formatFuzzyDate, lifeStatus, personName, SEX_LABEL } from '../../trees/format';
 import { DeletePerson } from './DeletePerson';
 import { type TabProps, usePersonSave } from './usePersonSave';
@@ -63,19 +64,56 @@ export function InfoTab(props: TabProps) {
   const { view, treeId } = props;
   const s = usePersonSave(props);
   const [editing, setEditing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const deleteButton = useRef<HTMLButtonElement>(null);
+  const { edit, delete: canDelete } = view.capabilities;
 
   return (
     <div>
       {s.saved && !editing && <Success>Saved</Success>}
       <Details person={view.person} />
-      {view.capabilities.edit && !editing && (
-        <button type="button" className="secondary" onClick={() => setEditing(true)}>
-          Edit details
-        </button>
+      {/* One row: Edit on the left, Delete… on the right; each only when allowed. */}
+      {!editing && (edit || canDelete) && (
+        <p className="detail-actions">
+          {edit && (
+            <button
+              type="button"
+              className="secondary"
+              // The visible words start the name (WCAG 2.5.3); the name says what is edited.
+              aria-label="Edit details"
+              onClick={() => {
+                setDeleting(false);
+                setEditing(true);
+              }}
+            >
+              <EditIcon /> Edit
+            </button>
+          )}
+          {canDelete && (
+            <button
+              type="button"
+              ref={deleteButton}
+              className="secondary danger"
+              aria-label="Delete this person…"
+              aria-expanded={deleting}
+              onClick={() => setDeleting((d) => !d)}
+            >
+              <TrashIcon /> Delete…
+            </button>
+          )}
+        </p>
       )}
       {editing && <InfoForm view={view} s={s} onClose={() => setEditing(false)} />}
-      {view.capabilities.delete && (
-        <DeletePerson treeId={treeId} personId={view.person.id} onChanged={props.onChanged} />
+      {canDelete && deleting && !editing && (
+        <DeletePerson
+          treeId={treeId}
+          personId={view.person.id}
+          onChanged={props.onChanged}
+          onCancel={() => {
+            setDeleting(false);
+            deleteButton.current?.focus();
+          }}
+        />
       )}
     </div>
   );

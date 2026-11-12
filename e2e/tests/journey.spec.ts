@@ -90,7 +90,7 @@ test('spec §9: family, steward invite, steward edits and deletes, owner restore
   await steward.getByRole('link', { name: 'Eve Partner' }).click();
   await expect(steward.getByRole('heading', { name: /^Eve Partner/ })).toBeVisible();
   await openSection(steward, 'Details');
-  await steward.getByRole('button', { name: 'Delete…' }).click();
+  await steward.getByRole('button', { name: 'Delete this person…' }).click();
   await steward.getByRole('radio', { name: /just this person/i }).check();
   await steward.getByRole('button', { name: 'Move to Trash' }).click();
   await steward.getByRole('button', { name: 'Yes, move to Trash' }).click();

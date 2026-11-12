@@ -1110,6 +1110,28 @@ button.union-dot:hover {
 .card > h1.sr-only + * {
   margin-top: 0;
 }
+/* Details' actions: Edit at the far left, Delete… at the far right of one row. */
+.detail-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1rem 0 0;
+}
+.detail-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.detail-actions button:only-child.danger {
+  margin-left: auto;
+}
+.delete-options {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
 /* A two- or three-option choice as one segmented control (Status: Living | Deceased). The radios
    stay real and focusable, drawn as the segments. */
 .status-field {
@@ -1124,6 +1146,9 @@ button.union-dot:hover {
 }
 .segmented {
   display: inline-flex;
+  justify-self: start;
+  width: max-content;
+  max-width: 100%;
   gap: 0.25rem;
   padding: 0.2rem;
   border: 1px solid var(--line);

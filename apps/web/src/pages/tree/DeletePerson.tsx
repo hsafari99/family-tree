@@ -11,14 +11,18 @@ export const DELETE_NOTICE = 'Moved to Trash. The owner can restore it from the 
 const SHOWN = 20;
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
+/** The delete options, shown under Details' Edit | Delete… row once Delete… is pressed; focus
+ *  starts on the first option. */
 export function DeletePerson({
   treeId,
   personId,
   onChanged,
+  onCancel,
 }: {
   treeId: string;
   personId: string;
   onChanged: () => void;
+  onCancel: () => void;
 }) {
   const api = useTreesApi();
   const navigate = useNavigate();
@@ -29,14 +33,14 @@ export function DeletePerson({
       alive.current = false;
     };
   }, []);
-  const [open, setOpen] = useState(false);
+  const first = useRef<HTMLInputElement>(null);
+  useEffect(() => first.current?.focus(), []);
   const [mode, setMode] = useState<DeleteMode>('person');
   const [preview, setPreview] = useState<DeletePreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
-    if (!open) return;
     let active = true;
     setPreview(null);
     setError(null);
@@ -48,7 +52,7 @@ export function DeletePerson({
     return () => {
       active = false;
     };
-  }, [api, treeId, personId, mode, open]);
+  }, [api, treeId, personId, mode]);
 
   async function remove() {
     setError(null);
@@ -62,52 +66,46 @@ export function DeletePerson({
   }
 
   return (
-    <section>
-      <h3>Delete this person</h3>
-      {!open ? (
-        <button type="button" className="secondary" onClick={() => setOpen(true)}>
-          Delete…
-        </button>
-      ) : (
-        <div>
-          <fieldset>
-            <legend>What to delete</legend>
-            <label>
-              <input
-                type="radio"
-                name="delete-mode"
-                checked={mode === 'person'}
-                onChange={() => setMode('person')}
-              />{' '}
-              Just this person
-            </label>
-            <label>
-              <input
-                type="radio"
-                name="delete-mode"
-                checked={mode === 'descendants'}
-                onChange={() => setMode('descendants')}
-              />{' '}
-              This person and their descendants
-            </label>
-          </fieldset>
-          <FormError>{error}</FormError>
-          {!preview && !error && <p>Loading preview…</p>}
-          {preview && (
-            <PreviewBody
-              preview={preview}
-              pending={pending}
-              onConfirm={() => void remove()}
-              mode={mode}
-            />
-          )}
-          <p>
-            <button type="button" className="secondary" onClick={() => setOpen(false)}>
-              Cancel
-            </button>
-          </p>
-        </div>
-      )}
+    <section className="delete-options" aria-label="Delete this person">
+      <div>
+        <fieldset>
+          <legend>What to delete</legend>
+          <label>
+            <input
+              type="radio"
+              ref={first}
+              name="delete-mode"
+              checked={mode === 'person'}
+              onChange={() => setMode('person')}
+            />{' '}
+            Just this person
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="delete-mode"
+              checked={mode === 'descendants'}
+              onChange={() => setMode('descendants')}
+            />{' '}
+            This person and their descendants
+          </label>
+        </fieldset>
+        <FormError>{error}</FormError>
+        {!preview && !error && <p>Loading preview…</p>}
+        {preview && (
+          <PreviewBody
+            preview={preview}
+            pending={pending}
+            onConfirm={() => void remove()}
+            mode={mode}
+          />
+        )}
+        <p>
+          <button type="button" className="secondary" onClick={onCancel}>
+            Cancel
+          </button>
+        </p>
+      </div>
     </section>
   );
 }

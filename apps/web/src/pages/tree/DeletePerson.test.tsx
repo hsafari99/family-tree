@@ -32,7 +32,7 @@ const preview = (over: object) => ({
 });
 const openDelete = async (s: ReturnType<typeof setup>) => {
   renderAt(`/trees/${s.id}/people/${ada.id}?tab=info`, s);
-  fireEvent.click(await screen.findByRole('button', { name: 'Delete…' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Delete this person…' }));
 };
 
 describe('DeletePerson', () => {
@@ -112,10 +112,38 @@ describe('DeletePerson', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('outside your branch');
   });
 
-  it('has no Delete section without the capability', async () => {
+  it('has no Delete button without the capability', async () => {
     const s = setup(false);
     renderAt(`/trees/${s.id}/people/${ada.id}?tab=info`, s);
     await screen.findByRole('heading', { name: /Ada King/ });
-    expect(screen.queryByText('Delete this person')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Edit details' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Delete/ })).toBeNull();
+  });
+
+  it('Edit and Delete share one row; Delete opens the options below it, with focus inside', async () => {
+    const s = setup();
+    renderAt(`/trees/${s.id}/people/${ada.id}?tab=info`, s);
+    const del = await screen.findByRole('button', { name: 'Delete this person…' });
+    const edit = screen.getByRole('button', { name: 'Edit details' });
+    expect(edit).toHaveTextContent(/^Edit/);
+    expect(del).toHaveTextContent(/^Delete/);
+    expect(edit.parentElement).toBe(del.parentElement);
+    expect(edit.parentElement).toHaveClass('detail-actions');
+    expect(screen.queryByRole('heading', { name: 'Delete this person' })).toBeNull();
+    expect(del).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(del);
+    expect(del).toHaveAttribute('aria-expanded', 'true');
+    const options = screen.getByRole('group', { name: 'What to delete' });
+    await waitFor(() => expect(options.contains(document.activeElement)).toBe(true));
+    // Below the row.
+    expect(del.compareDocumentPosition(options) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('group', { name: 'What to delete' })).toBeNull();
+    expect(del).toHaveFocus();
+    // Edit opens the form and hides the row.
+    fireEvent.click(edit);
+    expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete this person…' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Edit details' })).toBeNull();
   });
 });

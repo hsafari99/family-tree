@@ -97,7 +97,7 @@ describe('PersonPanel', () => {
     expect(screen.getByText('Status')).toBeInTheDocument();
     expect(screen.queryByText('Died')).toBeNull();
     expect(screen.getByText('Illness')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Edit details' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit details' }));
     const status = screen.getByRole('radiogroup', { name: 'Status' });
     expect(within(status).getByRole('radio', { name: 'Deceased' })).toBeChecked();
     // Before the dates.
