@@ -1,5 +1,6 @@
-import { type MouseEvent, type ReactNode, useEffect, useId, useRef } from 'react';
+import { type ReactNode, useEffect, useId, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useBackdropClose, useUnsavedInput } from './backdrop';
 import { XIcon } from './icons';
 
 /**
@@ -12,23 +13,30 @@ import { XIcon } from './icons';
  * `cancel` up the component tree, so only a cancel aimed at this dialog closes it.
  *
  * A click on the backdrop (outside the dialog's box) closes it too, but only when the press also
- * started there: a text selection dragged out of the dialog doesn't. A menu drawn past the edge is
- * a descendant, so a click on it never targets the dialog itself.
+ * started there (a text selection dragged out of the dialog doesn't), and never while a field
+ * inside holds unsaved input: then only Esc (outside a field) or the X closes it.
  */
 export function SectionDialog({
   title,
   onClose,
+  wide = false,
   children,
 }: {
   title: string;
   onClose: () => void;
+  /** Room for a table (Members and invites, the Trash). */
+  wide?: boolean;
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const latest = useRef(onClose);
-  const pressedOutside = useRef(false);
+  const unsaved = useUnsavedInput(ref);
+  const backdrop = useBackdropClose(
+    () => latest.current(),
+    () => !unsaved(),
+  );
   useEffect(() => {
     latest.current = onClose;
   });
@@ -54,16 +62,9 @@ export function SectionDialog({
   return createPortal(
     <dialog
       ref={ref}
-      className="section-dialog"
+      className={wide ? 'section-dialog is-wide' : 'section-dialog'}
       aria-labelledby={titleId}
-      onMouseDown={(e) => {
-        pressedOutside.current = isBackdrop(e);
-      }}
-      onClick={(e) => {
-        const outside = pressedOutside.current && isBackdrop(e);
-        pressedOutside.current = false;
-        if (outside) onClose();
-      }}
+      {...backdrop}
       onCancel={(e) => {
         if (e.target !== e.currentTarget) return;
         e.preventDefault();
@@ -90,11 +91,4 @@ export function SectionDialog({
     </dialog>,
     document.body,
   );
-}
-
-/** Whether a pointer event hit the backdrop: aimed at the <dialog> itself, outside its box. */
-function isBackdrop(e: MouseEvent<HTMLDialogElement>) {
-  if (e.target !== e.currentTarget) return false;
-  const r = e.currentTarget.getBoundingClientRect();
-  return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
 }

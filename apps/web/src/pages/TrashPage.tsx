@@ -45,6 +45,30 @@ function counts(b: TrashBatch): string {
 
 export function TrashPage() {
   const { treeId = '' } = useParams();
+  const { tree, body } = useTrash(treeId);
+  useHeaderTree(tree?.tree.id ?? null, tree?.tree.name ?? null);
+  const back = (
+    <BackLink
+      to={`/trees/${treeId}`}
+      label={tree ? `Back to ${tree.tree.name}` : 'Back to the tree'}
+    />
+  );
+  return (
+    <Page title="Trash" wide back={back}>
+      {body}
+    </Page>
+  );
+}
+
+/**
+ * The Trash, as in a dialog over the tree (`?tab=trash`); `onChanged` runs after a restore, so
+ * the tree behind shows who came back.
+ */
+export function TrashPanel({ treeId, onChanged }: { treeId: string; onChanged?: () => void }) {
+  return useTrash(treeId, onChanged).body;
+}
+
+function useTrash(treeId: string, onChanged?: () => void) {
   const api = useTreesApi();
   const [tree, setTree] = useState<TreeDetail | null>(null);
   const [batches, setBatches] = useState<TrashBatch[] | null>(null);
@@ -67,56 +91,40 @@ export function TrashPage() {
     };
   }, [api, treeId]);
 
-  useHeaderTree(tree?.tree.id ?? null, tree?.tree.name ?? null);
-  const back = (
-    <BackLink
-      to={`/trees/${treeId}`}
-      label={tree ? `Back to ${tree.tree.name}` : 'Back to the tree'}
-    />
-  );
-
-  if (error) {
-    return (
-      <Page title="Trash" wide back={back}>
-        <FormError>{error.message}</FormError>
-      </Page>
-    );
-  }
-  if (!batches) {
-    return (
-      <Page title="Trash" wide back={back}>
-        <p>Loading…</p>
-      </Page>
-    );
-  }
+  if (error) return { tree, body: <FormError>{error.message}</FormError> };
+  if (!batches) return { tree, body: <p>Loading…</p> };
 
   const gone = (id: string, message: string) => {
     setBatches((b) => (b ?? []).filter((x) => x.id !== id));
     setNotice(message);
+    onChanged?.();
   };
 
-  return (
-    <Page title="Trash" wide back={back}>
-      <p>
-        Deleted people and relationships stay here until you restore or erase them. Only you, the
-        owner, can see this page.
-      </p>
-      {notice && <Success>{notice}</Success>}
-      {batches.length === 0 ? (
-        <EmptyState
-          icon={<TrashIcon />}
-          title="The Trash is empty."
-          body="When someone is deleted from the tree, they wait here so you can bring them back."
-        />
-      ) : (
-        <ul className="row-list trash-rows">
-          {batches.map((b) => (
-            <TrashRow key={b.id} treeId={treeId} batch={b} onGone={gone} />
-          ))}
-        </ul>
-      )}
-    </Page>
-  );
+  return {
+    tree,
+    body: (
+      <>
+        <p>
+          Deleted people and relationships stay here until you restore or erase them. Only you, the
+          owner, can see the Trash.
+        </p>
+        {notice && <Success>{notice}</Success>}
+        {batches.length === 0 ? (
+          <EmptyState
+            icon={<TrashIcon />}
+            title="The Trash is empty."
+            body="When someone is deleted from the tree, they wait here so you can bring them back."
+          />
+        ) : (
+          <ul className="row-list trash-rows">
+            {batches.map((b) => (
+              <TrashRow key={b.id} treeId={treeId} batch={b} onGone={gone} />
+            ))}
+          </ul>
+        )}
+      </>
+    ),
+  };
 }
 
 function TrashRow({

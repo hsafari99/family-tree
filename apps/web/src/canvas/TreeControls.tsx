@@ -137,21 +137,17 @@ export function TreeLinks({
   detail,
   disconnected,
   hrefOf,
-  onPeople,
-  peopleRef,
-  onSettings,
-  settingsRef,
+  onDialog,
+  rowRefs,
 }: {
   treeId: string;
   detail: TreeDetail;
   disconnected: PersonSummary[];
   hrefOf: (personId: string) => string;
-  /** Opens the list of all people in a dialog (`?tab=people`). */
-  onPeople: () => void;
-  peopleRef?: Ref<HTMLButtonElement>;
-  /** Opens Tree settings in a dialog; left out for members who can't manage the tree. */
-  onSettings?: () => void;
-  settingsRef?: Ref<HTMLButtonElement>;
+  /** Opens one of the tree's dialogs (`?tab=`); Trash and Tree settings only for the owner. */
+  onDialog: (tab: TreeDialog) => void;
+  /** Where focus goes back to when that dialog closes. */
+  rowRefs?: Partial<Record<TreeDialog, Ref<HTMLButtonElement>>>;
 }) {
   const [search] = useSearchParams();
   const { me, capabilities } = detail;
@@ -177,49 +173,70 @@ export function TreeLinks({
           </li>
         )}
         <li>
-          <RowLink
-            to={`/trees/${treeId}/members`}
+          <DialogRow
             title="Members and invites"
-            icon={<ArrowIcon />}
             lead={<UsersIcon />}
+            onOpen={() => onDialog('members')}
+            rowRef={rowRefs?.members}
           />
         </li>
         {capabilities.manageTree && (
           <li>
-            <RowLink
-              to={`/trees/${treeId}/trash`}
+            <DialogRow
               title="Trash"
-              icon={<ArrowIcon />}
               lead={<TrashIcon />}
+              onOpen={() => onDialog('trash')}
+              rowRef={rowRefs?.trash}
             />
           </li>
         )}
         <li>
-          <button
-            type="button"
-            className="section-row"
-            aria-haspopup="dialog"
-            ref={peopleRef}
-            onClick={onPeople}
-          >
-            <RowContent title="List of all people" lead={<ListIcon />} />
-          </button>
+          <DialogRow
+            title="List of all people"
+            lead={<ListIcon />}
+            onOpen={() => onDialog('people')}
+            rowRef={rowRefs?.people}
+          />
         </li>
-        {onSettings && (
+        {capabilities.manageTree && (
           <li>
-            <button
-              type="button"
-              className="section-row"
-              aria-haspopup="dialog"
-              ref={settingsRef}
-              onClick={onSettings}
-            >
-              <RowContent title="Tree settings" lead={<SettingsIcon />} />
-            </button>
+            <DialogRow
+              title="Tree settings"
+              lead={<SettingsIcon />}
+              onOpen={() => onDialog('settings')}
+              rowRef={rowRefs?.settings}
+            />
           </li>
         )}
       </ul>
     </section>
+  );
+}
+
+/** The tree-wide dialogs the side panel's rows open, by their `?tab=` value. */
+export type TreeDialog = 'members' | 'trash' | 'people' | 'settings';
+
+function DialogRow({
+  title,
+  lead,
+  onOpen,
+  rowRef,
+}: {
+  title: string;
+  lead: ReactNode;
+  onOpen: () => void;
+  rowRef: Ref<HTMLButtonElement> | undefined;
+}) {
+  return (
+    <button
+      type="button"
+      className="section-row"
+      aria-haspopup="dialog"
+      ref={rowRef}
+      onClick={onOpen}
+    >
+      <RowContent title={title} lead={lead} />
+    </button>
   );
 }
 

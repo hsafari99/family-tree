@@ -1573,6 +1573,9 @@ a.section-row:hover {
   box-shadow: var(--shadow-3);
   overflow-wrap: anywhere;
 }
+.section-dialog.is-wide {
+  width: min(1040px, calc(100vw - 32px));
+}
 .section-dialog[open] {
   display: flex;
   flex-direction: column;
@@ -1761,7 +1764,8 @@ a.section-row:hover {
     border-left-width: 1px;
   }
   /* Section dialogs fill the screen on a phone. */
-  .section-dialog {
+  .section-dialog,
+  .section-dialog.is-wide {
     width: 100vw;
     max-width: 100vw;
     height: 100dvh;

@@ -1,9 +1,10 @@
 import { type ReactNode, useEffect, useId, useRef } from 'react';
+import { useBackdropClose } from './backdrop';
 
 /**
  * A modal confirmation for a destructive action, on a native <dialog> (never window.confirm: it
  * blocks browser automation). While `open`, it is shown with showModal(): the rest of the page is
- * inert and focus starts on Cancel. Esc or Cancel calls `onCancel`; focus then returns to where
+ * inert and focus starts on Cancel. Esc, Cancel or a click on the backdrop calls `onCancel`; focus then returns to where
  * it was before the dialog opened (usually the button that opened it).
  */
 export function ConfirmDialog({
@@ -33,6 +34,7 @@ export function ConfirmDialog({
   const returnTo = useRef<HTMLElement | null>(null);
   const titleId = useId();
   const bodyId = useId();
+  const backdrop = useBackdropClose(onCancel, () => !pending);
 
   useEffect(() => {
     const dialog = ref.current;
@@ -65,6 +67,7 @@ export function ConfirmDialog({
       className="confirm-dialog"
       aria-labelledby={titleId}
       {...(children ? { 'aria-describedby': bodyId } : {})}
+      {...backdrop}
       onCancel={(e) => {
         // Esc: let React state close it, so `open` stays the source of truth.
         e.preventDefault();

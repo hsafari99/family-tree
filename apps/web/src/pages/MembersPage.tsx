@@ -13,6 +13,41 @@ import type { Acted, Part } from './members/types';
 
 export function MembersPage() {
   const { treeId = '' } = useParams();
+  const { detail, error, body } = useMembers(treeId);
+  useHeaderTree(detail?.tree.id ?? null, detail?.tree.name ?? null);
+  return (
+    <Page
+      title="Members and invites"
+      wide
+      {...(detail
+        ? { back: <BackLink to={`/trees/${treeId}`} label={`Back to ${detail.tree.name}`} /> }
+        : {})}
+    >
+      {body ?? (
+        <>
+          <FormError>{error}</FormError>
+          {!error && <p>Loading…</p>}
+        </>
+      )}
+    </Page>
+  );
+}
+
+/** The tree's members, stewards and invites, as in a dialog over the tree (`?tab=members`). */
+export function MembersPanel({ treeId }: { treeId: string }) {
+  const { error, body } = useMembers(treeId);
+  return (
+    body ?? (
+      <>
+        <FormError>{error}</FormError>
+        {!error && <p>Loading…</p>}
+      </>
+    )
+  );
+}
+
+/** Loads everything the members sections show; `body` is null until the tree has loaded. */
+function useMembers(treeId: string) {
   const api = useTreesApi();
   const { user } = useAuth();
   const [detail, setDetail] = useState<TreeDetail | null>(null);
@@ -90,16 +125,7 @@ export function MembersPage() {
     };
   }, [api, treeId, reload]);
 
-  useHeaderTree(detail?.tree.id ?? null, detail?.tree.name ?? null);
-
-  if (!detail || !user || user === 'loading') {
-    return (
-      <Page title="Members and invites" wide>
-        <FormError>{error}</FormError>
-        {!error && <p>Loading…</p>}
-      </Page>
-    );
-  }
+  if (!detail || !user || user === 'loading') return { detail, error, body: null };
 
   const props = {
     treeId,
@@ -112,16 +138,16 @@ export function MembersPage() {
     acted,
     onActed,
   };
-  return (
-    <Page
-      title="Members and invites"
-      wide
-      back={<BackLink to={`/trees/${treeId}`} label={`Back to ${detail.tree.name}`} />}
-    >
-      <FormError>{error}</FormError>
-      <MembersSection {...props} />
-      <StewardsSection {...props} />
-      {detail.capabilities.invite && <InvitesSection {...props} invites={invites} />}
-    </Page>
-  );
+  return {
+    detail,
+    error,
+    body: (
+      <>
+        <FormError>{error}</FormError>
+        <MembersSection {...props} />
+        <StewardsSection {...props} />
+        {detail.capabilities.invite && <InvitesSection {...props} invites={invites} />}
+      </>
+    ),
+  };
 }

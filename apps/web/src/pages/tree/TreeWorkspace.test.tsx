@@ -122,7 +122,7 @@ describe('TreeWorkspace', () => {
       within(panel).getByRole('button', { name: /^Details/ }),
       within(panel).getByRole('button', { name: 'How are we related?' }),
       within(panel).getByRole('heading', { name: 'This tree' }),
-      within(panel).getByRole('link', { name: 'Members and invites' }),
+      within(panel).getByRole('button', { name: 'Members and invites' }),
     ];
     for (let i = 1; i < order.length; i++)
       expect(
@@ -360,16 +360,47 @@ describe('TreeWorkspace', () => {
       'href',
       `/trees/${owner.id}/people/new`,
     );
-    expect(screen.getByRole('link', { name: 'Trash' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Members and invites' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Trash' })).toHaveAttribute(
+      'aria-haspopup',
+      'dialog',
+    );
+    expect(screen.getByRole('button', { name: 'Members and invites' })).toHaveAttribute(
+      'aria-haspopup',
+      'dialog',
+    );
+  });
+
+  it('opens Members and invites and the Trash in dialogs over the tree', async () => {
+    const s = setup();
+    const r = renderAt(`/trees/${s.id}/people/david`, s);
+    const members = await screen.findByRole('button', { name: 'Members and invites' });
+    fireEvent.click(members);
+    const dialog = await screen.findByRole('dialog', { name: 'Members and invites' });
+    expect(r.where()).toBe(`/trees/${s.id}/people/david?tab=members`);
+    expect(await within(dialog).findByRole('heading', { name: 'Members' })).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(document.activeElement).toBe(members);
+
+    const trash = screen.getByRole('button', { name: 'Trash' });
+    fireEvent.click(trash);
+    const bin = await screen.findByRole('dialog', { name: 'Trash' });
+    expect(r.where()).toBe(`/trees/${s.id}/people/david?tab=trash`);
+    expect(await within(bin).findByText('The Trash is empty.')).toBeInTheDocument();
+    fireEvent.click(within(bin).getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(document.activeElement).toBe(trash);
   });
 
   it('hides Add a person and Trash from viewers', async () => {
     const s = setup({ role: 'viewer' });
-    renderAt(`/trees/${s.id}`, s);
-    await screen.findByRole('link', { name: 'Members and invites' });
+    const r = renderAt(`/trees/${s.id}?tab=trash`, s);
+    await screen.findByRole('button', { name: 'Members and invites' });
     expect(screen.queryByRole('link', { name: 'Add a person' })).toBeNull();
-    expect(screen.queryByRole('link', { name: 'Trash' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Trash' })).toBeNull();
+    // A Trash link is no use to them either.
+    expect(screen.queryByRole('dialog', { name: 'Trash' })).toBeNull();
+    void r;
   });
 
   it('refreshes the graph and disconnected list after a save in the panel', async () => {

@@ -23,10 +23,12 @@ export function PeopleList({
   const [params] = useSearchParams();
   const { pathname } = useLocation();
   const navigate = useNavigate();
-  // Centres the canvas on someone in the focus view; the panel (path) is left as it is, and the
-  // people dialog closes so the tree can be seen.
+  // Centres the canvas on someone in the focus view; the panel (path, tab) is left as it is, but
+  // the people dialog closes so the tree can be seen.
   const showOnTree = (id: string) => {
-    void navigate(`${pathname}${canvasSearch(params, { focus: id, view: null, tab: null })}`);
+    void navigate(
+      `${pathname}${canvasSearch(params, { focus: id, view: null, ...(inDialog ? { tab: null } : {}) })}`,
+    );
     document.querySelector('.canvas-area')?.scrollIntoView?.({ block: 'start' });
   };
   return (

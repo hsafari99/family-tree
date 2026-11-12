@@ -47,7 +47,8 @@ export function PhotoCropper({
   const pct = (v: number, of: number) => `${(v / of) * 100}%`;
 
   return (
-    <div className="cropper">
+    // A photo being cropped is a draft: a click outside its dialog doesn't throw it away.
+    <div className="cropper" data-unsaved="">
       <p>Choose the part to keep, or use the whole photo.</p>
       <div
         className="crop-view"

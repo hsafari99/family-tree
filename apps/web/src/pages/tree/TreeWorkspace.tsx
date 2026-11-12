@@ -25,7 +25,13 @@ import { SectionDialog } from '../../components/SectionDialog';
 import { CanvasSkeleton } from '../../components/Skeleton';
 import { RowContent } from '../../canvas/PanelRow';
 import { SearchBox } from '../../canvas/SearchBox';
-import { BranchStatus, DepthControl, TreeLinks, ViewLinks } from '../../canvas/TreeControls';
+import {
+  BranchStatus,
+  DepthControl,
+  type TreeDialog,
+  TreeLinks,
+  ViewLinks,
+} from '../../canvas/TreeControls';
 import type { CoupleChange } from '../../canvas/couples';
 import { FamilyCanvas } from '../../canvas/FamilyCanvas';
 import { FanChart } from '../../canvas/fan/FanChart';
@@ -47,6 +53,8 @@ import { personName, ROLE_LABEL } from '../../trees/format';
 import { useTreesApi } from '../../trees/TreesApiContext';
 import { AddPersonForm } from './AddPersonForm';
 import { readCollapsed, writeCollapsed } from './panel-state';
+import { MembersPanel } from '../MembersPage';
+import { TrashPanel } from '../TrashPage';
 import { PeopleList } from './PeopleList';
 import { PersonPanel } from './PersonPanel';
 import { RelationshipPanel } from './RelationshipPanel';
@@ -72,9 +80,16 @@ export function TreeWorkspace({
   const [params, setParams] = useSearchParams();
   // "How are we related?" opens in a dialog over the page (`?tab=related`).
   const relatedOpen = params.get('tab') === 'related';
-  const settingsOpen = settings !== null && params.get('tab') === 'settings';
-  // The list of everyone, in a dialog over the page (`?tab=people`).
-  const peopleOpen = params.get('tab') === 'people';
+  // The tree-wide dialogs of the panel's "This tree" rows (`?tab=`): Tree settings and the Trash
+  // only for whoever may manage the tree.
+  const tabParam = params.get('tab');
+  const treeDialog: TreeDialog | null =
+    tabParam === 'members' || tabParam === 'people'
+      ? tabParam
+      : (tabParam === 'settings' && settings !== null) ||
+          (tabParam === 'trash' && detail.capabilities.manageTree)
+        ? tabParam
+        : null;
   const { pathname, search } = useLocation();
   const navigate = useNavigate();
   const api = useTreesApi();
@@ -343,11 +358,15 @@ export function TreeWorkspace({
       ),
     [setParams, personId, detail.me.personId],
   );
-  const settingsRow = useRef<HTMLButtonElement>(null);
-  const peopleRow = useRef<HTMLButtonElement>(null);
+  const dialogRows = {
+    members: useRef<HTMLButtonElement>(null),
+    trash: useRef<HTMLButtonElement>(null),
+    people: useRef<HTMLButtonElement>(null),
+    settings: useRef<HTMLButtonElement>(null),
+  };
   /** Opens the tree-wide dialog `tab` (`?tab=`), or closes whichever is open. */
   const setTab = useCallback(
-    (tab: 'settings' | 'people' | null) =>
+    (tab: TreeDialog | null) =>
       setParams(
         (p) => {
           const next = new URLSearchParams(p);
@@ -362,8 +381,7 @@ export function TreeWorkspace({
   );
   // However a dialog closes, focus goes back to its row (unless something else has it).
   useReturnFocus(relatedOpen, relatedRow);
-  useReturnFocus(settingsOpen, settingsRow);
-  useReturnFocus(peopleOpen, peopleRow);
+  useReturnFocus(treeDialog, dialogRows);
   // A "How are we related?" path wins; otherwise the open person's direct line, only while the
   // panel shows them (Escape collapses it and so clears the dimming; the URL keeps the person).
   const linePerson = shown && personId !== undefined ? personId : null;
@@ -583,11 +601,8 @@ export function TreeWorkspace({
               detail={detail}
               disconnected={disconnected}
               hrefOf={hrefOf}
-              onPeople={() => setTab('people')}
-              peopleRef={peopleRow}
-              {...(settings
-                ? { onSettings: () => setTab('settings'), settingsRef: settingsRow }
-                : {})}
+              onDialog={setTab}
+              rowRefs={dialogRows}
             />
           </aside>
           {/* One toggle on the panel's edge (on the canvas's left edge when collapsed; a handle on
@@ -726,20 +741,24 @@ export function TreeWorkspace({
           <RelationshipPanel treeId={treeId} detail={detail} persons={persons} onShow={showPath} />
         </SectionDialog>
       )}
-      {settingsOpen && (
-        <SectionDialog title="Tree settings" onClose={() => setTab(null)}>
-          {settings}
-        </SectionDialog>
-      )}
-      {peopleOpen && (
-        <SectionDialog title={`All people (${persons.length})`} onClose={() => setTab(null)}>
-          <PeopleList
-            treeId={treeId}
-            persons={persons}
-            detail={detail}
-            selectedId={personId}
-            inDialog
-          />
+      {treeDialog && (
+        <SectionDialog
+          title={dialogTitle(treeDialog, persons.length)}
+          onClose={() => setTab(null)}
+          wide={treeDialog === 'members' || treeDialog === 'trash'}
+        >
+          {treeDialog === 'settings' && settings}
+          {treeDialog === 'members' && <MembersPanel treeId={treeId} />}
+          {treeDialog === 'trash' && <TrashPanel treeId={treeId} onChanged={changed} />}
+          {treeDialog === 'people' && (
+            <PeopleList
+              treeId={treeId}
+              persons={persons}
+              detail={detail}
+              selectedId={personId}
+              inDialog
+            />
+          )}
         </SectionDialog>
       )}
       {/* Opened when the layout timed out, so people stay reachable (decision 4). */}
@@ -760,16 +779,32 @@ const NO_IDS: ReadonlySet<string> = new Set();
 /** The `from`/`to` pair of "How are we related?", dropped when someone else is opened. */
 const NO_PAIR = { from: null, to: null } as const;
 
-/** When the dialog `open` tracks closes, focus goes back to `row` if it went nowhere else. */
-function useReturnFocus(open: boolean, row: RefObject<HTMLElement | null>) {
+function dialogTitle(tab: TreeDialog, people: number): string {
+  return {
+    members: 'Members and invites',
+    trash: 'Trash',
+    people: `All people (${people})`,
+    settings: 'Tree settings',
+  }[tab];
+}
+
+/**
+ * When the dialog `open` names closes (or another replaces it), focus goes back to its row in
+ * `rows` if it went nowhere else.
+ */
+function useReturnFocus<K extends string>(
+  open: K | boolean | null,
+  rows: RefObject<HTMLElement | null> | Record<K, RefObject<HTMLElement | null>>,
+) {
   const was = useRef(open);
   useEffect(() => {
     const prev = was.current;
     was.current = open;
-    if (!prev || open) return;
+    if (!prev || open === prev) return;
+    const row = 'current' in rows ? rows : typeof prev === 'string' ? rows[prev] : null;
     const active = document.activeElement;
-    if (!active || active === document.body || !active.isConnected) row.current?.focus();
-  }, [open, row]);
+    if (!active || active === document.body || !active.isConnected) row?.current?.focus();
+  }, [open, rows]);
 }
 
 function isPhone(): boolean {

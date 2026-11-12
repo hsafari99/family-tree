@@ -56,16 +56,16 @@ describe('TreePage', () => {
     expect(bobRow.querySelector('.row-meta')).toHaveTextContent('b. 1990');
     expect(within(bobRow).getByText('You')).toHaveClass('badge');
     expect(within(adaRow).queryByText('You')).toBeNull();
-    expect(screen.getByRole('link', { name: 'Members and invites' })).toHaveAttribute(
-      'href',
-      `/trees/${s.id}/members`,
+    expect(screen.getByRole('button', { name: 'Members and invites' })).toHaveAttribute(
+      'aria-haspopup',
+      'dialog',
     );
   });
 
   it('hides tree settings from viewers and editors', async () => {
     const s = setup({ role: 'viewer', detail: { capabilities: viewerCaps } });
     renderAt(`/trees/${s.id}?tab=settings`, s);
-    await screen.findByRole('link', { name: 'Members and invites' });
+    await screen.findByRole('button', { name: 'Members and invites' });
     expect(screen.queryByRole('button', { name: 'Tree settings' })).not.toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: 'Tree settings' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Tree name')).not.toBeInTheDocument();
@@ -218,16 +218,16 @@ describe('TreePage', () => {
       'href',
       `/trees/${owner.id}/people/new`,
     );
-    expect(screen.getByRole('link', { name: 'Trash' })).toHaveAttribute(
-      'href',
-      `/trees/${owner.id}/trash`,
+    expect(screen.getByRole('button', { name: 'Trash' })).toHaveAttribute(
+      'aria-haspopup',
+      'dialog',
     );
     unmount();
     const viewer = setup({ role: 'viewer', detail: { capabilities: viewerCaps } });
     renderAt(`/trees/${viewer.id}`, viewer);
-    await screen.findByRole('link', { name: 'Members and invites' });
+    await screen.findByRole('button', { name: 'Members and invites' });
     expect(screen.queryByRole('link', { name: 'Add a person' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Trash' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Trash' })).not.toBeInTheDocument();
   });
 
   it('refuses the add-person page to a viewer', async () => {
@@ -272,7 +272,7 @@ describe('TreePage', () => {
   it('has no Export for viewers and editors', async () => {
     const s = setup({ role: 'viewer', detail: { capabilities: viewerCaps } });
     renderAt(`/trees/${s.id}?tab=settings`, s);
-    await screen.findByRole('link', { name: 'Members and invites' });
+    await screen.findByRole('button', { name: 'Members and invites' });
     expect(screen.queryByRole('region', { name: 'Export' })).not.toBeInTheDocument();
   });
 });

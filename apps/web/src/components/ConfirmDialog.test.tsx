@@ -35,6 +35,32 @@ function open() {
 }
 
 describe('ConfirmDialog', () => {
+  it('cancels on a press and release on the backdrop, not on a drag that ends there', () => {
+    render(<Harness />);
+    const dialog = open();
+    const box = {
+      left: 100,
+      top: 100,
+      right: 500,
+      bottom: 400,
+      width: 400,
+      height: 300,
+      x: 100,
+      y: 100,
+    };
+    dialog.getBoundingClientRect = () => ({ ...box, toJSON: () => box }) as DOMRect;
+    fireEvent.pointerDown(screen.getByText('This can’t be undone.'), {
+      clientX: 200,
+      clientY: 200,
+    });
+    fireEvent.click(dialog, { clientX: 20, clientY: 20 });
+    expect(screen.getByRole('dialog', { name: 'Delete the thing?' })).toBeInTheDocument();
+    fireEvent.pointerDown(dialog, { clientX: 20, clientY: 20 });
+    fireEvent.click(dialog, { clientX: 20, clientY: 20 });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(opener());
+  });
+
   it('is closed until asked, then a named, described modal with focus on Cancel', () => {
     render(<Harness />);
     expect(screen.queryByRole('dialog')).toBeNull();

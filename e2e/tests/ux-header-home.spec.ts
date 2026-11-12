@@ -83,8 +83,15 @@ test('home: tree cards, recent activity, and the header inside a tree', async ({
   const area = (await page.locator('.canvas-area').boundingBox())!;
   expect(area.y + area.height).toBeLessThanOrEqual(page.viewportSize()!.height);
 
-  // Members: a back arrow to the tree, and the header still names it.
-  await page.getByRole('link', { name: 'Members and invites' }).click();
+  // Members, in a dialog from the panel, close on a click outside.
+  await page.getByRole('button', { name: 'Members and invites' }).click();
+  const members = page.getByRole('dialog', { name: 'Members and invites' });
+  await expect(members.getByRole('heading', { name: 'Members', exact: true })).toBeVisible();
+  await page.mouse.click(5, page.viewportSize()!.height - 5);
+  await expect(members).toHaveCount(0);
+
+  // The members page: a back arrow to the tree, and the header still names it.
+  await page.goto(`/trees/${treeId}/members`);
   await expect(page.getByRole('heading', { level: 1, name: 'Members and invites' })).toBeVisible();
   await expect(banner(page).getByRole('link', { name: treeName })).not.toHaveAttribute(
     'aria-current',
