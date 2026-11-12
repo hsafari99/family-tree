@@ -47,11 +47,15 @@ describe('TreePage', () => {
     expect(screen.getByText('You are the owner of this tree.')).toBeInTheDocument();
     expect(screen.getByText('Starting person: Ada Hale')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'People (2)' })).toBeInTheDocument();
-    const items = screen.getAllByRole('listitem');
-    expect(items.find((i) => i.textContent?.includes('Ada Hale'))).toHaveTextContent('1930–1998');
-    expect(items.find((i) => i.textContent?.includes('Bob Hale'))).toHaveTextContent(
-      'b. 1990 (you)',
-    );
+    const list = screen.getByRole('list', { name: 'People' });
+    expect(list).toHaveClass('row-list');
+    const items = within(list).getAllByRole('listitem');
+    const adaRow = items.find((i) => i.textContent?.includes('Ada Hale'))!;
+    const bobRow = items.find((i) => i.textContent?.includes('Bob Hale'))!;
+    expect(adaRow.querySelector('.row-meta')).toHaveTextContent('1930–1998');
+    expect(bobRow.querySelector('.row-meta')).toHaveTextContent('b. 1990');
+    expect(within(bobRow).getByText('You')).toHaveClass('badge');
+    expect(within(adaRow).queryByText('You')).toBeNull();
     expect(screen.getByRole('link', { name: 'Members and invites' })).toHaveAttribute(
       'href',
       `/trees/${s.id}/members`,
@@ -162,6 +166,19 @@ describe('TreePage', () => {
     expect(link).toHaveAttribute('href', `/trees/${s.id}/people/${bob.id}`);
     expect(link).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('link', { name: /Ada Hale/ })).not.toHaveAttribute('aria-current');
+  });
+
+  it('has one compact Show on tree button per person that focuses the canvas', async () => {
+    const s = setup();
+    const r = renderAt(`/trees/${s.id}/people/${bob.id}?view=full&tab=places`, s);
+    const list = await screen.findByRole('list', { name: 'People' });
+    const show = within(list).getByRole('button', { name: 'Show Ada Hale on tree' });
+    expect(show).toHaveClass('compact');
+    expect(show).toHaveTextContent('Show on tree');
+    expect(within(list).getAllByRole('button', { name: /on tree$/ })).toHaveLength(2);
+    fireEvent.click(show);
+    // The panel (path and tab) stays; the canvas switches to focus on Ada.
+    expect(r.where()).toBe(`/trees/${s.id}/people/${bob.id}?tab=places&focus=${ada.id}`);
   });
 
   it('shows Add a person to editors and Trash to the owner only', async () => {
