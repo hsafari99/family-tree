@@ -1,6 +1,6 @@
 import type { TreeGraph } from '@family-tree/shared';
 import { describe, expect, it } from 'vitest';
-import { applyElkLayout, placeUnionDots, toElkGraph } from './elk-graph';
+import { applyElkLayout, partnerHandles, placeUnionDots, toElkGraph } from './elk-graph';
 import { assignGenerations } from './generations';
 import { CARD_HEIGHT, CARD_WIDTH, graphToFlow, UNION_SIZE } from './graph-to-flow';
 import { gl, gp, gu, haleGraph, unknownParentsGraph } from './test-fixtures';
@@ -231,5 +231,91 @@ describe('placeUnionDots', () => {
     expect(mid(pos, 'u:c3')).toBe((card(pos, 'p:p3') + card(pos, 'p:hub')) / 2);
     expect(Math.abs(mid(pos, 'u:s1') - mid(pos, 'u:c3'))).toBeGreaterThanOrEqual(STEP);
     expect(Math.abs(mid(pos, 'u:s1') - card(pos, 'p:p1'))).toBeLessThan(CARD_WIDTH / 2);
+  });
+});
+
+describe('partner lines on the partner row (Task 6)', () => {
+  // ann + ben (adjacent) with kid; cat between dan and eve; fay alone with her child.
+  const g: TreeGraph = {
+    ...haleGraph(),
+    persons: ['ann', 'ben', 'dan', 'cat', 'eve', 'fay']
+      .map((id, i) => gp(id, id, 1950 + i))
+      .concat(
+        gp('kid', 'Kid', 1980, { hasParents: true }),
+        gp('fk', 'Fk', 1981, { hasParents: true }),
+      ),
+    unions: [
+      gu('ab', 'ann', 'ben', { childCount: 1 }),
+      gu('de', 'dan', 'eve'),
+      gu('f', 'fay', null, { childCount: 1 }),
+    ],
+    links: [gl('l1', 'ab', 'kid'), gl('l2', 'f', 'fk')],
+  };
+  const W = CARD_WIDTH + 32;
+  const at: Record<string, [number, number]> = {
+    'p:ann': [0, 0],
+    'p:ben': [W, 0],
+    'p:dan': [3 * W, 0],
+    'p:cat': [4 * W, 0],
+    'p:eve': [5 * W, 0],
+    'p:fay': [7 * W, 0],
+    'p:kid': [W / 2, 200],
+    'p:fk': [7 * W, 200],
+  };
+  const laidOut = () => {
+    const f = graphToFlow(g, { focusId: null, meId: null });
+    const laid = {
+      id: 'root',
+      children: f.nodes.map((n) => {
+        const [x, y] = at[n.id] ?? [0, 100];
+        return { id: n.id, x, y };
+      }),
+      edges: f.edges.map((e) => ({ id: e.id, sources: [e.source], targets: [e.target] })),
+    };
+    const nodes = applyElkLayout(f.nodes, laid);
+    return { f, nodes, byId: new Map(nodes.map((n) => [n.id, n.position])) };
+  };
+
+  it("puts an adjacent couple's dot on the vertical centre of their row, between the cards", () => {
+    const { byId } = laidOut();
+    const dot = byId.get('u:ab')!;
+    expect(dot.y + UNION_SIZE / 2).toBe(CARD_HEIGHT / 2);
+    expect(dot.x + UNION_SIZE / 2).toBe((CARD_WIDTH + W) / 2);
+  });
+
+  it('keeps a dot below the row when someone sits between the partners', () => {
+    const { byId } = laidOut();
+    expect(byId.get('u:de')!.y).toBe(100);
+  });
+
+  it('keeps a one-partner dot below its card', () => {
+    const { byId } = laidOut();
+    expect(byId.get('u:f')!.y).toBe(100);
+  });
+
+  it('attaches partner lines to the side facing the dot, others to the bottom', () => {
+    const { f, nodes } = laidOut();
+    const edges = partnerHandles(nodes, f.edges);
+    const e = (id: string) => edges.find((x) => x.id === id)!;
+    expect([e('partner:ab:ann').sourceHandle, e('partner:ab:ann').targetHandle]).toEqual([
+      'right',
+      'left',
+    ]);
+    expect([e('partner:ab:ben').sourceHandle, e('partner:ab:ben').targetHandle]).toEqual([
+      'left',
+      'right',
+    ]);
+    expect([e('partner:de:dan').sourceHandle, e('partner:de:dan').targetHandle]).toEqual([
+      'bottom',
+      'top',
+    ]);
+    expect([e('partner:f:fay').sourceHandle, e('partner:f:fay').targetHandle]).toEqual([
+      'bottom',
+      'top',
+    ]);
+    expect(e('child:l1').sourceHandle).toBe('bottom');
+    expect(e('child:l1').targetHandle).toBe('top');
+    // The input is not changed.
+    expect(f.edges.find((x) => x.id === 'partner:ab:ann')!.sourceHandle).toBeUndefined();
   });
 });

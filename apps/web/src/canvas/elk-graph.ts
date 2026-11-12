@@ -1,6 +1,7 @@
 import type { ElkNode } from 'elkjs/lib/elk-api.js';
 import { type Couple, seatCouples } from './couples';
-import { CARD_WIDTH, type CanvasNode, type Flow, UNION_SIZE } from './graph-to-flow';
+import type { Edge } from '@xyflow/react';
+import { CARD_HEIGHT, CARD_WIDTH, type CanvasNode, type Flow, UNION_SIZE } from './graph-to-flow';
 
 /** ELK layered, top to bottom, generations as partitions (decision 13). */
 export const ELK_LAYOUT_OPTIONS: Record<string, string> = {
@@ -76,6 +77,7 @@ export function applyElkLayout(
     dots.under(y);
   }
   dots.rest();
+  dotsOnPartnerRow(nodes, pos);
   return nodes
     .map((n) => {
       const p = pos.get(n.id);
@@ -85,6 +87,57 @@ export function applyElkLayout(
 }
 
 type Pos = { x: number; y: number };
+
+/**
+ * Genealogy style (Task 6): a couple seated side by side, with nobody between them, gets its dot on
+ * the vertical centre of their row, midway between the two cards, so straight partner lines join
+ * it from the sides. Any other dot stays below the row (elbow lines from the card's bottom).
+ */
+function dotsOnPartnerRow(nodes: readonly CanvasNode[], pos: Map<string, Pos>): void {
+  const people = [...pos].filter(([id]) => id.startsWith('p:'));
+  const onRow: Pos[] = [];
+  for (const n of nodes) {
+    if (n.type !== 'union') continue;
+    const ids = [n.data.union.partnerAId, n.data.union.partnerBId].map((id) =>
+      id === null ? undefined : pos.get(`p:${id}`),
+    );
+    const [a, b] = ids;
+    if (!a || !b || !pos.has(n.id) || Math.round(a.y) !== Math.round(b.y)) continue;
+    const [l, r] = a.x <= b.x ? [a, b] : [b, a];
+    if (r.x - (l.x + CARD_WIDTH) < UNION_SIZE) continue;
+    const between = people.some(
+      ([, p]) => Math.round(p.y) === Math.round(l.y) && p.x > l.x && p.x < r.x,
+    );
+    const x = (l.x + CARD_WIDTH + r.x) / 2 - UNION_SIZE / 2;
+    const y = l.y + CARD_HEIGHT / 2 - UNION_SIZE / 2;
+    if (between || onRow.some((q) => Math.abs(q.x - x) < UNION_SIZE && q.y === y)) continue;
+    const p = { x, y };
+    pos.set(n.id, p);
+    onRow.push(p);
+  }
+}
+
+/**
+ * Which handles each line uses, once positions exist: a partner line to a dot on the partner row
+ * leaves the side of the card facing the dot and enters the dot's other side; every other line
+ * runs from a bottom handle to a top one. Returns new edges.
+ */
+export function partnerHandles(nodes: readonly CanvasNode[], edges: readonly Edge[]): Edge[] {
+  const at = new Map(nodes.map((n) => [n.id, n.position]));
+  return edges.map((e) => {
+    const card = at.get(e.source);
+    const dot = at.get(e.target);
+    const side =
+      e.id.startsWith('partner:') &&
+      card !== undefined &&
+      dot !== undefined &&
+      dot.y + UNION_SIZE / 2 === card.y + CARD_HEIGHT / 2;
+    if (!side) return { ...e, sourceHandle: 'bottom', targetHandle: 'top' };
+    return card.x < dot.x
+      ? { ...e, sourceHandle: 'right', targetHandle: 'left' }
+      : { ...e, sourceHandle: 'left', targetHandle: 'right' };
+  });
+}
 const personRows = (pos: ReadonlyMap<string, Pos>) =>
   [...new Set([...pos].filter(([id]) => id.startsWith('p:')).map(([, p]) => Math.round(p.y)))].sort(
     (a, b) => a - b,

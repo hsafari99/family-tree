@@ -127,6 +127,8 @@ export function PersonCardView({
   );
 }
 
+const SIDE = { bottom: Position.Bottom, left: Position.Left, right: Position.Right } as const;
+
 const detailOf = (s: ReactFlowState) => cardDetail(s.transform[2]);
 
 /** The React Flow node: hidden handles for the edges, plus the card. */
@@ -137,7 +139,13 @@ export function PersonNode({ data }: NodeProps<PersonFlowNode>) {
   const selected = useIsSelected(useSelectionStore(), id);
   return (
     <>
-      <Handle type="target" position={Position.Top} isConnectable={false} className="card-handle" />
+      <Handle
+        type="target"
+        id="top"
+        position={Position.Top}
+        isConnectable={false}
+        className="card-handle"
+      />
       <PersonCardView
         person={data.person}
         detail={detail}
@@ -148,12 +156,17 @@ export function PersonNode({ data }: NodeProps<PersonFlowNode>) {
         onAdd={(as) => actions.addRelative(id, as)}
         onFocus={() => actions.reveal(id)}
       />
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        isConnectable={false}
-        className="card-handle"
-      />
+      {/* Bottom: children's and elbow partner lines; the sides: straight partner lines (Task 6). */}
+      {(['bottom', 'left', 'right'] as const).map((id) => (
+        <Handle
+          key={id}
+          type="source"
+          id={id}
+          position={SIDE[id]}
+          isConnectable={false}
+          className="card-handle"
+        />
+      ))}
     </>
   );
 }

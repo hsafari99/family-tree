@@ -4,6 +4,8 @@ import {
   Controls,
   type Connection,
   type Edge,
+  type EdgeTypes,
+  BackgroundVariant,
   MiniMap,
   type NodeChange,
   type NodeTypes,
@@ -25,11 +27,13 @@ import {
   type Family,
   personNodeId,
 } from './graph-to-flow';
+import { FamilyEdge } from './FamilyEdge';
 import { PersonNode } from './PersonCard';
 import { reparentFromReconnect } from './reparent';
 import { UnionNode } from './UnionNode';
 
 const NODE_TYPES = { person: PersonNode, union: UnionNode } satisfies NodeTypes;
+const EDGE_TYPES = { family: FamilyEdge } satisfies EdgeTypes;
 
 export interface FamilyCanvasProps {
   nodes: CanvasNode[];
@@ -201,6 +205,7 @@ function CanvasInner({
             nodes={shown}
             edges={edges}
             nodeTypes={NODE_TYPES}
+            edgeTypes={EDGE_TYPES}
             colorMode="system"
             onNodesChange={onNodesChange}
             onNodeDragStop={onNodeDragStop}
@@ -221,7 +226,7 @@ function CanvasInner({
             maxZoom={2}
             aria-label="Family tree"
           >
-            <Background />
+            <Background variant={BackgroundVariant.Dots} gap={22} size={1.2} />
             <Controls showInteractive={false} />
             {settings.showMiniMap && <MiniMap pannable zoomable ariaLabel="Overview of the tree" />}
           </ReactFlow>

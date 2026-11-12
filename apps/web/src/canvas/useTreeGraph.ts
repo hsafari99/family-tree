@@ -3,7 +3,7 @@ import type { Edge } from '@xyflow/react';
 import { useEffect, useState } from 'react';
 import { MESSAGES } from '../auth/api';
 import { useTreesApi } from '../trees/TreesApiContext';
-import { applyElkLayout, toElkGraph } from './elk-graph';
+import { applyElkLayout, partnerHandles, toElkGraph } from './elk-graph';
 import { assignGenerations } from './generations';
 import type { Couple } from './couples';
 import { type CanvasNode, type Family, graphToFlow } from './graph-to-flow';
@@ -51,12 +51,13 @@ export function useTreeGraph(
       try {
         const laid = await engine.layout(toElkGraph(flow, assignGenerations(flow)));
         if (!active) return;
+        const nodes = applyElkLayout(flow.nodes, laid, flow.couples, flow.blood);
         setState({
           status: 'ready',
           treeId,
           graph: res.data,
-          nodes: applyElkLayout(flow.nodes, laid, flow.couples, flow.blood),
-          edges: flow.edges,
+          nodes,
+          edges: partnerHandles(nodes, flow.edges),
           families: flow.families,
           couples: flow.couples,
         });
