@@ -53,11 +53,14 @@ describe('TreeWorkspace', () => {
     expect(document.activeElement).toBe(document.body);
   });
 
-  it('puts search beside Focus | Full above the canvas, outside the panel', async () => {
+  it('puts search before Focus | Full above the canvas, outside the panel', async () => {
     const s = setup();
     renderAt(`/trees/${s.id}`, s);
     await card(ROBERT);
     const search = screen.getByRole('searchbox', { name: 'Search' });
+    // No visible label: a placeholder and a magnifier; the name stays "Search".
+    expect(search).toHaveAttribute('placeholder', 'Search a person by name');
+    expect(screen.getByText('Search', { selector: '.sr-only' })).toBeInTheDocument();
     const bar = screen.getByRole('group', { name: 'View' }).parentElement!;
     expect(bar).toContainElement(search);
     expect(screen.getByRole('complementary', { name: 'Details' })).not.toContainElement(search);
@@ -142,27 +145,48 @@ describe('TreeWorkspace', () => {
     expect(focus).not.toHaveAttribute('aria-current');
     expect(focus).toHaveAttribute('href', `/trees/${s.id}`);
     await waitFor(() => expect(graphCalls(s.trees)).toContainEqual({ mode: 'full' }));
+    // The full view has no slider, and with no branch nothing at the top of the panel.
     expect(screen.queryByLabelText('Generations')).toBeNull();
-    const search = screen.getByLabelText('Show the branch of');
-    fireEvent.change(search, { target: { value: 'zzz' } });
-    expect(screen.queryByRole('button', { name: 'Robert Hale 1930–1998' })).toBeNull();
-    fireEvent.change(search, { target: { value: 'Rob' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Robert Hale 1930–1998' }));
+    expect(screen.queryByLabelText('Show the branch of')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Show whole tree' })).toBeNull();
+  });
+
+  it("shows only the selected person's branch from their row, and the × shows the whole tree", async () => {
+    const s = setup();
+    const r = renderAt(`/trees/${s.id}/people/robert`, s);
+    await screen.findByRole('heading', { level: 2, name: /Robert Hale/ });
+    const panel = screen.getByRole('complementary', { name: 'Details' });
+    const status = panel.querySelector('[aria-live="polite"]')!;
+    expect(status).toHaveTextContent('');
+    const row = within(panel).getByRole('link', { name: 'Show only this branch' });
+    expect(row).toHaveAttribute('href', `/trees/${s.id}/people/robert?view=full&branch=robert`);
+    fireEvent.click(row);
     await waitFor(() =>
       expect(graphCalls(s.trees)).toContainEqual({ mode: 'full', branch: 'robert' }),
     );
-    const clear = await screen.findByRole('button', { name: 'Show whole tree' });
-    expect(screen.getByText('Showing Robert Hale’s branch')).toHaveAttribute('aria-live', 'polite');
-    await waitFor(() => expect(clear).toHaveFocus());
-    fireEvent.click(clear);
+    expect(r.where()).toBe(`/trees/${s.id}/people/robert?view=full&branch=robert`);
+    expect(status).toHaveTextContent('Showing Robert Hale’s branch');
+    // It is this branch: the row gives way to the status line.
+    expect(within(panel).queryByRole('link', { name: 'Show only this branch' })).toBeNull();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Show whole tree' }));
+    await waitFor(() => expect(r.where()).toBe(`/trees/${s.id}/people/robert?view=full`));
+    expect(status).toHaveTextContent('');
+    expect(within(panel).queryByRole('button', { name: 'Show whole tree' })).toBeNull();
     await waitFor(() =>
-      expect(screen.queryByRole('button', { name: 'Show whole tree' })).toBeNull(),
+      expect(within(panel).getByRole('link', { name: 'Show only this branch' })).toHaveFocus(),
     );
-    expect(screen.getByLabelText('Show the branch of')).toHaveAttribute(
-      'placeholder',
-      'Search a person to show their branch',
+  });
+
+  it('keeps the branch while someone else is opened, offering theirs', async () => {
+    const s = setup();
+    renderAt(`/trees/${s.id}/people/david?view=full&branch=robert`, s);
+    const panel = await screen.findByRole('complementary', { name: 'Details' });
+    await within(panel).findByRole('heading', { level: 2, name: /David Hale/ });
+    expect(within(panel).getByText('Showing Robert Hale’s branch')).toBeInTheDocument();
+    expect(within(panel).getByRole('link', { name: 'Show only this branch' })).toHaveAttribute(
+      'href',
+      `/trees/${s.id}/people/david?view=full&branch=david`,
     );
-    await waitFor(() => expect(screen.getByLabelText('Show the branch of')).toHaveFocus());
   });
 
   it('changes the depth', async () => {
@@ -182,10 +206,10 @@ describe('TreeWorkspace', () => {
     renderAt(`/trees/${s.id}?view=full`, s);
     expect(
       await screen.findByText(
-        'This tree has 2,500 people, too many to draw at once. Choose a branch to show.',
+        'This tree has 2,500 people, too many to draw at once. Search for someone, then choose “Show only this branch”.',
       ),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText('Show the branch of')).toBeInTheDocument();
+    expect(screen.getByRole('searchbox', { name: 'Search' })).toBeInTheDocument();
     expect(screen.queryByRole('application', { name: 'Family tree' })).toBeNull();
   });
 

@@ -157,12 +157,14 @@ export function SearchBox({
     >
       <form role="search" aria-label="Search people" onSubmit={(e) => e.preventDefault()}>
         <label>
-          Search{' '}
+          {/* The name; on screen the placeholder and the magnifier say what the field is. */}
+          <span className="sr-only">Search</span>
           <span className="search-field">
             <SearchIcon />
             <input
               ref={searchInput}
               type="search"
+              placeholder="Search a person by name"
               value={q}
               autoComplete="off"
               onChange={(e) => setQ(e.target.value)}

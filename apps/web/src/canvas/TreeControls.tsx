@@ -1,9 +1,7 @@
 import { GRAPH_DEPTH_MAX, type PersonSummary, type TreeDetail } from '@family-tree/shared';
-import { type ReactNode, type Ref, useEffect, useRef } from 'react';
+import type { ReactNode, Ref } from 'react';
 import { XIcon } from '../components/SectionDialog';
-import { personName } from '../trees/format';
 import { Link, useLocation, useSearchParams } from 'react-router';
-import { PersonPicker } from '../components/PersonPicker';
 import { DisconnectedPeople } from './DisconnectedPeople';
 import { RowContent } from './PanelRow';
 import { type CanvasChange, type CanvasParams, canvasSearch } from './params';
@@ -47,19 +45,15 @@ export function ViewLinks({ params }: { params: CanvasParams }) {
   );
 }
 
-/** The Generations slider (focus view) or, in the full view, the branch to draw. */
+/** The focus view's Generations slider (the full view has none). */
 export function DepthControl({
-  persons,
   params,
   onChange,
 }: {
-  persons: PersonSummary[];
   params: CanvasParams;
   onChange: (change: CanvasChange) => void;
 }) {
-  if (params.mode === 'full') {
-    return <BranchControl persons={persons} branch={params.branch} onChange={onChange} />;
-  }
+  if (params.mode === 'full') return null;
   return (
     <div className="depth-control">
       <label htmlFor="tree-depth">Generations</label>
@@ -79,64 +73,31 @@ export function DepthControl({
 }
 
 /**
- * The full view's branch: a person search (named "Show the branch of"), or once someone is chosen
- * their name with an × back to the whole tree, and a status line saying whose branch is drawn.
+ * Whose branch the full view draws, with an × back to the whole tree. The live region is always
+ * there (empty, it takes no room), so a screen reader hears the change.
  */
-function BranchControl({
-  persons,
-  branch,
-  onChange,
+export function BranchStatus({
+  name,
+  onClear,
 }: {
-  persons: PersonSummary[];
-  branch: string | null;
-  onChange: (change: CanvasChange) => void;
+  /** The branch's person, or null when the whole tree (or the focus view) is shown. */
+  name: string | null;
+  onClear: () => void;
 }) {
-  const box = useRef<HTMLDivElement>(null);
-  // The control swaps its own elements: move focus to the one that replaced the one used.
-  const focusNext = useRef<'clear' | 'input' | null>(null);
-  useEffect(() => {
-    const target = focusNext.current;
-    focusNext.current = null;
-    if (target === 'clear') box.current?.querySelector<HTMLElement>('.branch-clear')?.focus();
-    if (target === 'input') box.current?.querySelector<HTMLElement>('input')?.focus();
-  }, [branch]);
-  const chosen = branch ? persons.find((p) => p.id === branch) : undefined;
-  const name = chosen ? personName(chosen) : 'someone';
   return (
-    <div className="depth-control branch-control" ref={box}>
-      {branch ? (
-        <p className="branch-chosen">
-          <span className="sr-only">Show the branch of: </span>
-          <strong>{name}</strong>
-          <button
-            type="button"
-            className="icon-button branch-clear"
-            aria-label="Show whole tree"
-            title="Show whole tree"
-            onClick={() => {
-              focusNext.current = 'input';
-              onChange({ branch: null });
-            }}
-          >
-            <XIcon />
-          </button>
-        </p>
-      ) : (
-        <PersonPicker
-          label="Show the branch of"
-          hideLabel
-          placeholder="Search a person to show their branch"
-          persons={persons}
-          value={null}
-          onChange={(id) => {
-            focusNext.current = 'clear';
-            onChange({ branch: id });
-          }}
-        />
+    <div className={name ? 'branch-status is-active' : 'branch-status'}>
+      <p aria-live="polite">{name ? `Showing ${name}’s branch` : ''}</p>
+      {name && (
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="Show whole tree"
+          title="Show whole tree"
+          onClick={onClear}
+        >
+          <XIcon />
+        </button>
       )}
-      <p className="hint branch-status" aria-live="polite">
-        {branch ? `Showing ${name}’s branch` : ''}
-      </p>
     </div>
   );
 }
@@ -275,8 +236,8 @@ function FocusIcon() {
   );
 }
 
-/** A small family tree: the whole tree. */
-function FullIcon() {
+/** A small family tree: the whole tree, or one person's branch. */
+export function FullIcon() {
   return (
     <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
       <g stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round">

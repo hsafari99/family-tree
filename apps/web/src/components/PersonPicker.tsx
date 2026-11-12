@@ -35,8 +35,6 @@ export function PersonPicker({
   onChange,
   clearLabel = 'Clear',
   clearAriaLabel,
-  hideLabel = false,
-  placeholder,
 }: {
   label: string;
   persons: PersonSummary[];
@@ -45,10 +43,6 @@ export function PersonPicker({
   clearLabel?: string;
   /** When two pickers share a clear label, a name that tells them apart. */
   clearAriaLabel?: string;
-  /** Shows the label as the placeholder instead of above the field (it stays the name). */
-  hideLabel?: boolean;
-  /** The placeholder when the label is hidden (the label itself by default). */
-  placeholder?: string;
 }) {
   const [text, setText] = useState('');
   // Where focus goes after the next render: the picker swaps its own controls, which would
@@ -109,14 +103,12 @@ export function PersonPicker({
   return (
     <div className="person-picker branch-picker">
       <label>
-        {/* With `hideLabel` the label is the placeholder on screen, and still the input's name. */}
-        {hideLabel ? <span className="sr-only">{label}</span> : <>{label} </>}
+        {label}{' '}
         <span className="search-field">
           <SearchIcon />
           <input
             ref={input}
             type="search"
-            placeholder={hideLabel ? (placeholder ?? label) : undefined}
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {

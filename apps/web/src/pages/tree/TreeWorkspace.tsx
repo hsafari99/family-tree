@@ -22,7 +22,13 @@ import { PhotoRefreshContext, useThrottled } from '../../components/PersonPhoto'
 import { ChevronIcon, SectionDialog } from '../../components/SectionDialog';
 import { RowContent } from '../../canvas/PanelRow';
 import { SearchBox } from '../../canvas/SearchBox';
-import { DepthControl, TreeLinks, ViewLinks } from '../../canvas/TreeControls';
+import {
+  BranchStatus,
+  DepthControl,
+  FullIcon,
+  TreeLinks,
+  ViewLinks,
+} from '../../canvas/TreeControls';
 import type { CoupleChange } from '../../canvas/couples';
 import { FamilyCanvas } from '../../canvas/FamilyCanvas';
 import {
@@ -33,7 +39,7 @@ import {
 } from '../../canvas/params';
 import { applyHighlight, type PathHighlight, pathHighlight } from '../../canvas/highlight';
 import { useTreeGraph } from '../../canvas/useTreeGraph';
-import { ROLE_LABEL } from '../../trees/format';
+import { personName, ROLE_LABEL } from '../../trees/format';
 import { useTreesApi } from '../../trees/TreesApiContext';
 import { AddPersonForm } from './AddPersonForm';
 import { readCollapsed, writeCollapsed } from './panel-state';
@@ -219,6 +225,24 @@ export function TreeWorkspace({
     [go, pathname],
   );
   const relatedRow = useRef<HTMLButtonElement>(null);
+  const branchRow = useRef<HTMLAnchorElement>(null);
+  const toggle = useRef<HTMLButtonElement>(null);
+  const nameOf = (id: string) => {
+    const p = persons.find((x) => x.id === id);
+    return p ? personName(p) : 'someone';
+  };
+  // The × goes back to the whole tree; focus moves to the branch row (back once its branch is no
+  // longer shown), or to the panel's toggle.
+  const refocus = useRef(false);
+  const clearBranch = useCallback(() => {
+    refocus.current = true;
+    go(pathname, { branch: null });
+  }, [go, pathname]);
+  useEffect(() => {
+    if (!refocus.current) return;
+    refocus.current = false;
+    (branchRow.current ?? toggle.current)?.focus();
+  }, [view.branch]);
   const setRelated = useCallback(
     (open: boolean) =>
       setParams(
@@ -344,8 +368,8 @@ export function TreeWorkspace({
       {/* Across the whole workspace, above the panel and the canvas (so search works on a phone
           without opening the sheet). */}
       <div className="canvas-bar">
-        <ViewLinks params={view} />
         <SearchBox treeId={treeId} persons={persons} meId={detail.me.personId} />
+        <ViewLinks params={view} />
       </div>
       <PhotoRefreshContext.Provider value={refreshPhotos}>
         <div className={shown ? 'tree-workspace has-panel' : 'tree-workspace is-collapsed'}>
@@ -357,7 +381,11 @@ export function TreeWorkspace({
             ref={panel}
             hidden={!shown}
           >
-            <DepthControl persons={persons} params={view} onChange={(c) => go(pathname, c)} />
+            <BranchStatus
+              name={view.mode === 'full' && view.branch ? nameOf(view.branch) : null}
+              onClear={clearBranch}
+            />
+            <DepthControl params={view} onChange={(c) => go(pathname, c)} />
             <div className="panel-selection" ref={selection}>
               {newPerson && canAdd ? (
                 <AddPersonForm
@@ -389,6 +417,19 @@ export function TreeWorkspace({
               )}
             </div>
             <ul className="section-list related-list">
+              {/* The selected person's branch, in the full view (a link, so it can be shared);
+                  left out while that branch is the one shown (the status line says so). */}
+              {personId && !(view.mode === 'full' && view.branch === personId) && (
+                <li>
+                  <Link
+                    className="section-row"
+                    ref={branchRow}
+                    to={`${pathname}${canvasSearch(params, { view: 'full', branch: personId, focus: null })}`}
+                  >
+                    <RowContent title="Show only this branch" icon={<FullIcon />} />
+                  </Link>
+                </li>
+              )}
               <li>
                 <button
                   type="button"
@@ -415,6 +456,7 @@ export function TreeWorkspace({
               the sheet's top edge on a phone). Between the panel and the canvas in Tab order. */}
           <button
             type="button"
+            ref={toggle}
             className="panel-toggle"
             aria-label={shown ? 'Collapse side panel' : 'Expand side panel'}
             title={shown ? 'Collapse side panel' : 'Expand side panel'}
@@ -465,7 +507,7 @@ export function TreeWorkspace({
               {ready?.graph.needsBranch && (
                 <p role="status">
                   This tree has {ready.graph.total.toLocaleString('en')} people, too many to draw at
-                  once. Choose a branch to show.
+                  once. Search for someone, then choose “Show only this branch”.
                 </p>
               )}
               {ready?.graph.truncated && (

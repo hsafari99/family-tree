@@ -24,14 +24,19 @@ test('the side panel and the bar above the canvas: search, generations, tags, di
   expect(res.ok()).toBe(true);
   await page.goto(`/trees/${treeId}`);
 
-  // Search sits beside Focus | Full above the canvas, on the same row.
+  // Search sits before Focus | Full above the canvas, on the same row, the group centred.
   const panel = page.getByRole('complementary', { name: 'Details' });
   const search = page.getByRole('searchbox', { name: 'Search' });
   await expect(search).toBeVisible();
   await expect(panel.getByRole('searchbox')).toHaveCount(0);
   const views = (await page.getByRole('group', { name: 'View' }).boundingBox())!;
   const box = (await search.boundingBox())!;
-  expect(box.x).toBeGreaterThan(views.x + views.width);
+  expect(views.x).toBeGreaterThan(box.x + box.width);
+  await expect(search).toHaveAttribute('placeholder', 'Search a person by name');
+  const bar = (await page.locator('.canvas-bar').boundingBox())!;
+  const left = (await page.locator('.canvas-bar .search-box').boundingBox())!.x - bar.x;
+  const right = bar.x + bar.width - (views.x + views.width);
+  expect(Math.abs(left - right)).toBeLessThan(4);
   expect(Math.abs(box.y + box.height / 2 - (views.y + views.height / 2))).toBeLessThan(8);
   expect(box.y + box.height).toBeLessThan((await page.locator('.canvas-area').boundingBox())!.y);
   // With nothing selected the panel still shows: Generations first, then a hint.
@@ -94,27 +99,36 @@ test('the side panel and the bar above the canvas: search, generations, tags, di
   await expect(page).toHaveURL(/[?&]view=full/);
   await expect(full).toHaveAttribute('aria-current', 'true');
   await expect(focus).not.toHaveAttribute('aria-current');
-  // In the full view the branch picker takes the slider's place.
+  // In the full view there is no slider and, with no branch, nothing in its place.
   await expect(panel.getByLabel('Generations')).toHaveCount(0);
-  await expect(panel.getByLabel('Show the branch of')).toBeVisible();
-  // Its matches overlay the panel: nothing below moves.
-  const row = panel.getByRole('button', { name: 'How are we related?' });
-  const before = (await row.boundingBox())!;
-  await panel.getByLabel('Show the branch of').fill('Si');
-  const matches = page.locator('.picker-matches');
-  await expect(matches.getByRole('button', { name: /^Sid Side/ })).toBeVisible();
-  expect(await matches.evaluate((el) => getComputedStyle(el).position)).toBe('fixed');
-  expect((await row.boundingBox())!.y).toBe(before.y);
-  await panel.getByLabel('Show the branch of').fill('');
-  await expect(matches).toHaveCount(0);
+  await expect(panel.getByLabel('Show the branch of')).toHaveCount(0);
+  await expect(panel.getByRole('button', { name: 'Show whole tree' })).toHaveCount(0);
+  // "Show only this branch" (a link) draws Kim's branch; the × goes back to the whole tree.
+  const branchRow = panel.getByRole('link', { name: 'Show only this branch' });
+  await expect(branchRow).toHaveAttribute('href', /view=full&branch=/);
+  await branchRow.click();
+  await expect(page).toHaveURL(/[?&]branch=/);
+  await expect(panel.getByText('Showing Kim Side’s branch')).toBeVisible();
+  await expect(branchRow).toHaveCount(0);
+  await panel.getByRole('button', { name: 'Show whole tree' }).click();
+  await expect(page).not.toHaveURL(/branch=/);
+  await expect(panel.getByText(/^Showing .* branch$/)).toHaveCount(0);
+  await expect(branchRow).toBeFocused();
   await focus.click();
   await expect(page).not.toHaveURL(/view=full/);
 
-  // A picker inside a dialog isn't clipped by it: its matches show whole, on top.
+  // A picker inside a dialog isn't clipped by it, and its matches overlay what is below them:
+  // nothing moves.
   await panel.getByRole('button', { name: 'How are we related?' }).click();
   const rel = page.getByRole('dialog', { name: 'How are we related?' });
   await rel.getByRole('button', { name: 'Change To' }).click();
+  const body = rel.locator('.section-dialog-body');
+  const height = await body.evaluate((el) => el.scrollHeight);
   await rel.getByLabel('To', { exact: true }).fill('Si');
+  const matches = rel.locator('.picker-matches');
+  await expect(matches.getByRole('button', { name: /^Sid Side/ })).toBeVisible();
+  expect(await matches.evaluate((el) => getComputedStyle(el).position)).toBe('fixed');
+  expect(await body.evaluate((el) => el.scrollHeight)).toBe(height);
   const relHit = rel.locator('.picker-matches').getByRole('button', { name: /^Sid Side/ });
   await expect(relHit).toBeVisible();
   const hb = (await relHit.boundingBox())!;

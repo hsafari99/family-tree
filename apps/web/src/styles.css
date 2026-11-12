@@ -590,10 +590,12 @@ img.card-photo {
   color: var(--accent);
   font-weight: 600;
 }
-/* Across the workspace: Focus | Full, then the search box, on one row (wrapping on a phone). */
+/* Across the workspace, centred: the search box, then Focus | Full (on a phone the search takes
+   the first line and the view links the next). */
 .canvas-bar {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   align-items: center;
   gap: 0.5rem 1rem;
   margin-bottom: 0.6rem;
@@ -601,8 +603,13 @@ img.card-photo {
   border-bottom: 1px solid var(--border);
 }
 .canvas-bar .search-box {
-  flex: 0 1 26rem;
+  flex: 0 1 28rem;
   min-width: 0;
+}
+@media (max-width: 720px) {
+  .canvas-bar .search-box {
+    flex-basis: 100%;
+  }
 }
 .canvas-bar form[role='search'] {
   display: flex;
@@ -629,15 +636,9 @@ img.card-photo {
 .canvas-bar .search-results,
 .canvas-bar .search-filters {
   z-index: 30;
-}
-/* The side panel's top: the depth control beside the collapse X. */
-.panel-top {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.5rem;
-}
-.panel-top .depth-control {
-  flex: 1;
+  /* Lined up with the (centred) search box, as wide as it. */
+  left: 0;
+  right: 0;
   min-width: 0;
 }
 /* Inside the panel these lists push the content down instead of floating over it. */
@@ -646,9 +647,6 @@ img.card-photo {
   min-width: 0;
   max-height: none;
   margin-top: 0.5rem;
-}
-.tree-panel .depth-control input:not([type='range']) {
-  padding: 0.4rem 0.6rem 0.4rem 2rem;
 }
 .tree-panel .person-summary .panel-photo {
   width: 56px;
@@ -663,7 +661,7 @@ img.card-photo {
   font-size: 0.9rem;
 }
 .depth-control input[type='range'] {
-  flex: 1;
+  flex: 1 1 6rem;
   width: auto;
   min-width: 6rem;
   padding: 0;
@@ -672,20 +670,7 @@ img.card-photo {
   min-width: 1ch;
   font-weight: 600;
 }
-.depth-control .person-picker,
-.depth-control > * {
-  flex: 1 1 100%;
-  margin: 0;
-}
-.depth-control > label,
-.depth-control > output,
-.depth-control > input {
-  flex: 0 1 auto;
-}
-.depth-control > input[type='range'] {
-  flex: 1 1 6rem;
-}
-.panel-selection {
+.depth-control + .panel-selection {
   margin-top: 0.75rem;
 }
 .panel-hint {
@@ -978,19 +963,22 @@ a.section-row:hover {
 .branch-picker {
   position: relative;
 }
-.branch-chosen {
+.branch-status {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
+}
+.branch-status p {
   margin: 0;
+}
+.branch-status.is-active {
+  margin-bottom: 0.5rem;
   padding: 0.2rem 0.2rem 0.2rem 0.6rem;
   border: 1px solid var(--border);
   border-radius: 0.4rem;
   background: Canvas;
-}
-.branch-status:empty {
-  display: none;
+  font-size: 0.9rem;
 }
 /* A search input with a decorative magnifier inside, on the left. */
 .search-field {
