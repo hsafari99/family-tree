@@ -245,3 +245,13 @@ describe('touch (Task 15)', () => {
     expect(css).toMatch(/\.tree-workspace\.sheet-full\s*\{\s*--sheet-h: 88dvh/);
   });
 });
+
+describe('photos', () => {
+  it("keeps a photo's caption row clear of the main photo's outline", () => {
+    // The outline is 3px with a 2px offset: the row below starts further down than that.
+    expect(css).toMatch(
+      /\.photo\.is-primary \.photo-thumb\s*\{[^}]*outline: 3px solid[^}]*outline-offset: 2px/,
+    );
+    expect(css).toMatch(/\.photo-meta\s*\{[^}]*margin: 0\.5rem 0 0/);
+  });
+});

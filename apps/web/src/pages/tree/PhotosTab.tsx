@@ -32,25 +32,32 @@ export function PhotosTab(props: TabProps) {
                   alt={`Photo ${i + 1} of ${name}${ph.isPrimary ? ', main photo' : ''} (opens full size)`}
                 />
               </a>
-              {ph.isPrimary && <span className="badge pill">Main photo</span>}
-              {canEdit && (
-                <p className="photo-actions">
-                  {!ph.isPrimary && (
+              {/* Under the picture (clear of the main photo's outline): the badge or a small
+                  Make main photo link, then Delete. */}
+              {(ph.isPrimary || canEdit) && (
+                <p className="photo-meta">
+                  {ph.isPrimary ? (
+                    <span className="badge pill">Main photo</span>
+                  ) : (
                     <button
                       type="button"
+                      className="link"
                       disabled={busy}
                       onClick={() => void photos.makeMain(ph.id)}
                     >
                       Make main photo
                     </button>
-                  )}{' '}
-                  <ConfirmButton
-                    label="Delete"
-                    confirmLabel="Delete photo"
-                    danger
-                    pending={busy}
-                    onConfirm={() => void photos.remove(ph.id)}
-                  />
+                  )}
+                  {canEdit && (
+                    <ConfirmButton
+                      label="Delete"
+                      confirmLabel="Delete photo"
+                      danger
+                      compact
+                      pending={busy}
+                      onConfirm={() => void photos.remove(ph.id)}
+                    />
+                  )}
                 </p>
               )}
             </li>

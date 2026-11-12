@@ -158,6 +158,19 @@ describe('PhotosTab', () => {
     expect(await screen.findByText(MESSAGES.photoQuota)).toBeInTheDocument();
   });
 
+  it('puts the Main photo badge and a small link-style Make main photo under each thumbnail', async () => {
+    const s = setup();
+    await seedPhotos(s, 2);
+    renderAt(at(s), s);
+    const make = await screen.findByRole('button', { name: 'Make main photo' });
+    expect(make).toHaveClass('link');
+    const badge = screen.getByText('Main photo');
+    // Below the picture, in its own row: never inside the thumbnail's link.
+    expect(badge.closest('a')).toBeNull();
+    expect(badge.parentElement).toHaveClass('photo-meta');
+    expect(make.parentElement).toHaveClass('photo-meta');
+  });
+
   it('makes a photo main and deletes with a two-step confirm', async () => {
     const s = setup();
     await seedPhotos(s, 2);

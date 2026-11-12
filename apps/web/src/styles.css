@@ -1915,11 +1915,14 @@ a.section-row:hover {
     border: 1px solid CanvasText;
   }
 }
-.photo-actions {
-  margin: 0.25rem 0 0;
+/* The row under a thumbnail: the Main photo badge or a Make main photo link, then Delete. */
+.photo-meta {
+  margin: 0.5rem 0 0;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.25rem;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  font-size: var(--text-s);
 }
 .cropper .crop-view {
   position: relative;
