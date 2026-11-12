@@ -31,6 +31,8 @@ import {
 } from './graph-to-flow';
 import { CanvasToolbar, motionMs, useMiniMapShown } from './CanvasToolbar';
 import { FamilyEdge } from './FamilyEdge';
+import type { Band } from './generation-labels';
+import { GenerationBands } from './GenerationBands';
 import { type NavDirection, neighbour } from './keyboard-nav';
 import { PersonNode } from './PersonCard';
 import { reparentFromReconnect } from './reparent';
@@ -55,6 +57,8 @@ export interface FamilyCanvasProps {
   /** Centred after each layout in focus view; null in full view. */
   focusId: string | null;
   actions: Omit<CanvasActions, 'reveal' | 'flyTo' | 'move'>; // keep it referentially stable
+  /** Generation rows to shade and name (Task 14); none when the rows aren't consistent. */
+  bands?: readonly Band[];
   /** An element that may float over the canvas's bottom (a phone's sheet): cards are kept above it. */
   coverRef?: RefObject<HTMLElement | null>;
   /** The viewer's own person, for "Centre on me"; null when they have none in the tree. */
@@ -82,6 +86,7 @@ export function FamilyCanvas(props: FamilyCanvasProps) {
 /** Room kept on the right for the toolbar's column. */
 const TOOLBAR_SPACE = 64;
 const MIN_ZOOM = 0.05;
+const NO_BANDS: readonly Band[] = [];
 
 /** How much of the pane's bottom `sheet` covers: a phone's sheet over it, not a panel beside it. */
 function sheetOver(pane: DOMRect, sheet: HTMLElement | null | undefined): number {
@@ -109,6 +114,7 @@ function CanvasInner({
   meId = null,
   flyRequest = null,
   coverRef,
+  bands = NO_BANDS,
 }: FamilyCanvasProps) {
   const flow = useReactFlow<CanvasNode>();
   const pane = useRef<HTMLDivElement>(null);
@@ -389,6 +395,7 @@ function CanvasInner({
             aria-label="Family tree. Use arrow keys to move between relatives, Enter to open."
           >
             <Background variant={BackgroundVariant.Dots} gap={22} size={1.2} />
+            <GenerationBands bands={bands} />
             <Panel position="bottom-right">
               <CanvasToolbar
                 canCentreMe={meId !== null && nodes.some((n) => n.id === personNodeId(meId))}

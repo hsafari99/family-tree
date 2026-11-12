@@ -100,5 +100,8 @@ describe('useTreeGraph', () => {
     expect(s.trees.callsTo('getGraph')).toHaveLength(1);
     const st = s.out.current;
     expect(st?.status === 'ready' && st.hiddenBy.get('leo')).toEqual(['david']);
+    // The rows of the drawing: Robert's generation on top, then David's.
+    expect(st?.status === 'ready' && st.generations?.get('david')).toBe(1);
+    expect(st?.status === 'ready' && st.rows.map((r) => r.generation)).toEqual([0, 1, 2]);
   });
 });

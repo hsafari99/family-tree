@@ -35,6 +35,7 @@ import {
 } from '../../canvas/params';
 import { applyHighlight, type PathHighlight, pathHighlight } from '../../canvas/highlight';
 import { applyLineage, lineage } from '../../canvas/lineage';
+import { bandRows } from '../../canvas/generation-labels';
 import { useHiddenBranches } from '../../canvas/useHiddenBranches';
 import { useTreeGraph } from '../../canvas/useTreeGraph';
 import { personName, ROLE_LABEL } from '../../trees/format';
@@ -330,6 +331,14 @@ export function TreeWorkspace({
     }
     return ready;
   }, [ready, highlight, linePerson]);
+  // Generation names (Task 14): relative to the focus person, or to you in Full view.
+  const bandAnchor = view.mode === 'focus' ? focusId : meId;
+  const bands = useMemo(() => {
+    if (!ready) return [];
+    const who = ready.graph.persons.find((p) => p.id === bandAnchor);
+    const self = !who || who.id === meId ? 'You' : who.givenName || personName(who);
+    return bandRows(ready.rows, ready.generations, who ? who.id : null, self);
+  }, [ready, bandAnchor, meId]);
   const offView =
     highlight !== null &&
     ready !== null &&
@@ -597,6 +606,7 @@ export function TreeWorkspace({
                   meId={detail.me.personId}
                   flyRequest={flyRequest}
                   coverRef={panel}
+                  bands={bands}
                   onReorder={(u, ids) => void onReorder(u, ids)}
                   onReparent={(l, u) => void onReparent(l, u)}
                   couples={drawn.couples}

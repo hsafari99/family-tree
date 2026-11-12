@@ -5,6 +5,7 @@ import { MESSAGES } from '../auth/api';
 import { useTreesApi } from '../trees/TreesApiContext';
 import { applyElkLayout, partnerHandles, toElkGraph } from './elk-graph';
 import { collapseGraph } from './collapse';
+import { type RowTop, rowTops } from './generation-labels';
 import { assignGenerations } from './generations';
 import type { Couple } from './couples';
 import { type CanvasNode, type Family, type Flow, graphToFlow } from './graph-to-flow';
@@ -27,6 +28,9 @@ export type TreeGraphState =
       layoutKey: number;
       /** Per hidden person: the collapsed people hiding them (Task 13). */
       hiddenBy: Map<string, string[]>;
+      /** Each person's generation row (null when no consistent rows exist), and each row's top. */
+      generations: Map<string, number> | null;
+      rows: RowTop[];
     };
 
 const NONE: ReadonlySet<string> = new Set();
@@ -77,7 +81,8 @@ export function useTreeGraph(
       markBranches(flow, shut, cut.hiddenCount);
       if (!active) return;
       try {
-        const laid = await engine.layout(toElkGraph(flow, assignGenerations(flow)));
+        const generations = assignGenerations(flow);
+        const laid = await engine.layout(toElkGraph(flow, generations));
         if (!active) return;
         const nodes = applyElkLayout(flow.nodes, laid, flow.couples, flow.blood);
         setState({
@@ -90,6 +95,8 @@ export function useTreeGraph(
           couples: flow.couples,
           layoutKey: ++layouts.current,
           hiddenBy: cut.hiddenBy,
+          generations,
+          rows: rowTops(nodes, generations),
         });
       } catch (err) {
         if (!active) return;

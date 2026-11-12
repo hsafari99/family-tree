@@ -827,6 +827,43 @@ img.card-avatar {
     transition: opacity var(--dur) var(--ease);
   }
 }
+/* Generation bands (Task 14): faint alternating rows behind the cards, in the viewport (z-index -1
+   puts them under the lines and cards), and their names pinned to the pane's left edge. */
+.generation-bands {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+.generation-band {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+.generation-band.is-shaded {
+  background: color-mix(in srgb, var(--surface-2) 60%, transparent);
+}
+.generation-labels {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  overflow: hidden;
+  pointer-events: none;
+}
+.generation-label {
+  position: absolute;
+  left: 8px;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  color: var(--ink-2);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
 /* The canvas toolbar: a vertical pill in the bottom right (Task 10). The minimap sits to its left,
    smaller on a phone (where it starts hidden). */
 .canvas-toolbar {
