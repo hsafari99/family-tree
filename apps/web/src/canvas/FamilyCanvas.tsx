@@ -5,6 +5,8 @@ import {
   type Edge,
   type EdgeTypes,
   BackgroundVariant,
+  getNodesBounds,
+  getViewportForBounds,
   MiniMap,
   type NodeChange,
   type NodeTypes,
@@ -14,11 +16,11 @@ import {
   useReactFlow,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type CanvasActions, CanvasActionsProvider, SelectionProvider } from './CanvasActions';
 import { type Couple, type CoupleChange, coupleChangeAfterDrop } from './couples';
 import { createSelectionStore } from './selection';
-import { canvasSettings, isNodeVisible, reorderAfterDrop } from './canvas-settings';
+import { canvasSettings, reorderAfterDrop } from './canvas-settings';
 import {
   CARD_HEIGHT,
   CARD_WIDTH,
@@ -34,7 +36,7 @@ import { PersonNode } from './PersonCard';
 import { reparentFromReconnect } from './reparent';
 import { UnionNode } from './UnionNode';
 import { useAnimatedNodes } from './useAnimatedNodes';
-import { onScreen, pinnedAt } from './view-math';
+import { centredOn, isClear, onScreen, pinnedAt } from './view-math';
 
 const NODE_TYPES = { person: PersonNode, union: UnionNode } satisfies NodeTypes;
 const EDGE_TYPES = { family: FamilyEdge } satisfies EdgeTypes;
@@ -53,6 +55,8 @@ export interface FamilyCanvasProps {
   /** Centred after each layout in focus view; null in full view. */
   focusId: string | null;
   actions: Omit<CanvasActions, 'reveal' | 'flyTo' | 'move'>; // keep it referentially stable
+  /** An element that may float over the canvas's bottom (a phone's sheet): cards are kept above it. */
+  coverRef?: RefObject<HTMLElement | null>;
   /** The viewer's own person, for "Centre on me"; null when they have none in the tree. */
   meId?: string | null;
   /** A search pick to fly to; a new `seq` flies again (after the next layout if not shown yet). */
@@ -75,6 +79,19 @@ export function FamilyCanvas(props: FamilyCanvasProps) {
   );
 }
 
+/** Room kept on the right for the toolbar's column. */
+const TOOLBAR_SPACE = 64;
+const MIN_ZOOM = 0.05;
+
+/** How much of the pane's bottom `sheet` covers: a phone's sheet over it, not a panel beside it. */
+function sheetOver(pane: DOMRect, sheet: HTMLElement | null | undefined): number {
+  if (!sheet || sheet.hidden) return 0;
+  const r = sheet.getBoundingClientRect();
+  const beside = r.right <= pane.left || r.left >= pane.right || r.top <= pane.top;
+  if (r.width === 0 || beside || r.top >= pane.bottom) return 0;
+  return pane.bottom - r.top;
+}
+
 const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 
 function CanvasInner({
@@ -91,6 +108,7 @@ function CanvasInner({
   layoutKey,
   meId = null,
   flyRequest = null,
+  coverRef,
 }: FamilyCanvasProps) {
   const flow = useReactFlow<CanvasNode>();
   const pane = useRef<HTMLDivElement>(null);
@@ -108,41 +126,78 @@ function CanvasInner({
   // Read through a ref, so a class-only change of `nodes` doesn't make a new `fit` (and a refit).
   const latest = useRef({ nodes, focusId, mapShown });
   latest.current = { nodes, focusId, mapShown };
+  /** The pane's size and what floats over it: the toolbar's column, the minimap, a phone's sheet. */
+  const coverOf = useCallback(() => {
+    const el = pane.current;
+    const size = { width: el?.clientWidth ?? 0, height: el?.clientHeight ?? 0 };
+    if (!el) return { size, cover: { right: TOOLBAR_SPACE, bottom: 0, boxes: [] } };
+    const at = el.getBoundingClientRect();
+    const boxes = [...el.querySelectorAll('.canvas-toolbar, .react-flow__minimap')].map((b) => {
+      const r = b.getBoundingClientRect();
+      return { x: r.left - at.left, y: r.top - at.top, width: r.width, height: r.height };
+    });
+    return {
+      size,
+      cover: { right: TOOLBAR_SPACE, bottom: sheetOver(at, coverRef?.current), boxes },
+    };
+  }, [coverRef]);
+  // Whether a fit has run yet: the first one jumps, later ones glide (unless motion is reduced).
+  const fitted = useRef(false);
   /** Fit the drawing, then (focus view) centre on the focus person. */
   const fit = useCallback(async () => {
     const { nodes, focusId, mapShown } = latest.current;
-    // Keep the drawing clear of the toolbar (right edge) and of the minimap above its bottom
-    // corner, so no card sits under them.
+    const { size, cover } = coverOf();
+    // Keep the drawing clear of the toolbar (right edge), of the minimap above its bottom corner
+    // and of a phone's sheet, so no card sits under them.
+    const bottom = Math.max(mapShown ? 176 : 0, cover.bottom);
     const padding = {
       top: 0.1,
       left: 0.1,
-      right: '64px' as const,
-      bottom: mapShown ? ('176px' as const) : 0.1,
+      right: `${TOOLBAR_SPACE}px` as const,
+      bottom: bottom > 0 ? (`${bottom}px` as const) : 0.1,
     };
-    await flow.fitView({ padding, maxZoom: 1.1, duration: 0 });
+    const duration = fitted.current ? motionMs(300) : 0;
+    fitted.current = true;
+    userMoved.current = false;
+    if (size.width === 0 || size.height === 0) {
+      // Not laid out (a test's DOM): let React Flow measure what it can.
+      await flow.fitView({ padding, maxZoom: 1.1, duration: 0 });
+      return;
+    }
+    let vp = getViewportForBounds(
+      getNodesBounds(nodes),
+      size.width,
+      size.height,
+      MIN_ZOOM,
+      1.1,
+      padding,
+    );
     const focus = focusId ? nodes.find((n) => n.id === personNodeId(focusId)) : undefined;
     if (focus) {
-      await flow.setCenter(focus.position.x + CARD_WIDTH / 2, focus.position.y + CARD_HEIGHT / 2, {
-        zoom: flow.getViewport().zoom,
-        duration: 0,
-      });
+      const [x, y] = [focus.position.x + CARD_WIDTH / 2, focus.position.y + CARD_HEIGHT / 2];
+      vp = centredOn(x, y, vp.zoom, size, cover);
     }
-    userMoved.current = false;
-  }, [flow]);
+    await flow.setViewport(vp, { duration });
+  }, [flow, coverOf]);
 
-  /** Pans and zooms (to at least 0.9) so the person's card is in the middle (Task 10). */
+  /** Pans and zooms (to at least 0.9) so the person's card is in the middle (Task 10), clear of
+   *  the toolbar, the minimap and a phone's sheet. */
   const flyTo = useCallback(
     (personId: string): boolean => {
       const node = flow.getNode(personNodeId(personId));
       if (!node) return false;
       userMoved.current = true; // a resize keeps them in the middle rather than refitting
-      void flow.setCenter(node.position.x + CARD_WIDTH / 2, node.position.y + CARD_HEIGHT / 2, {
-        zoom: Math.max(flow.getViewport().zoom, 0.9),
-        duration: motionMs(450),
-      });
+      const { size, cover } = coverOf();
+      const zoom = Math.max(flow.getViewport().zoom, 0.9);
+      const [x, y] = [node.position.x + CARD_WIDTH / 2, node.position.y + CARD_HEIGHT / 2];
+      if (size.width === 0) {
+        void flow.setCenter(x, y, { zoom, duration: 0 });
+        return true;
+      }
+      void flow.setViewport(centredOn(x, y, zoom, size, cover), { duration: motionMs(450) });
       return true;
     },
-    [flow],
+    [flow, coverOf],
   );
   // A collapse or expand keeps its card where it was on screen instead of refitting (Task 13).
   const pinned = useRef<{ personId: string; screen: { x: number; y: number } } | null>(null);
@@ -256,23 +311,20 @@ function CanvasInner({
     [],
   );
 
+  /** Pans (same zoom) to centre the card when any of it is off screen or under something. */
   const reveal = useCallback(
     (personId: string) => {
       const node = flow.getNode(personNodeId(personId));
-      const el = pane.current;
-      if (!node || !el) return;
+      if (!node) return;
       const vp = flow.getViewport();
-      const size = { width: CARD_WIDTH, height: CARD_HEIGHT };
-      if (
-        !isNodeVisible(node.position, size, vp, { width: el.clientWidth, height: el.clientHeight })
-      ) {
-        void flow.setCenter(node.position.x + CARD_WIDTH / 2, node.position.y + CARD_HEIGHT / 2, {
-          zoom: vp.zoom,
-          duration: 150,
-        });
-      }
+      const { size, cover } = coverOf();
+      if (size.width === 0 || size.height === 0) return;
+      const box = { ...node.position, width: CARD_WIDTH, height: CARD_HEIGHT };
+      if (isClear(onScreen(box, vp), size, cover)) return;
+      const [x, y] = [node.position.x + CARD_WIDTH / 2, node.position.y + CARD_HEIGHT / 2];
+      void flow.setViewport(centredOn(x, y, vp.zoom, size, cover), { duration: motionMs(200) });
     },
-    [flow],
+    [flow, coverOf],
   );
   const [selection] = useState(() => createSelectionStore(selectedId));
   useEffect(() => selection.set(selectedId), [selection, selectedId]);
@@ -332,7 +384,7 @@ function CanvasInner({
             nodesFocusable={false}
             edgesFocusable={false}
             onlyRenderVisibleElements={settings.onlyRenderVisibleElements}
-            minZoom={0.05}
+            minZoom={MIN_ZOOM}
             maxZoom={2}
             aria-label="Family tree. Use arrow keys to move between relatives, Enter to open."
           >

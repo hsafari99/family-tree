@@ -596,6 +596,7 @@ export function TreeWorkspace({
                   selectedId={personId ?? null}
                   meId={detail.me.personId}
                   flyRequest={flyRequest}
+                  coverRef={panel}
                   onReorder={(u, ids) => void onReorder(u, ids)}
                   onReparent={(l, u) => void onReparent(l, u)}
                   couples={drawn.couples}
