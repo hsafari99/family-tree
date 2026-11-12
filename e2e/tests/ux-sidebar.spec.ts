@@ -39,10 +39,13 @@ test('the side panel and the bar above the canvas: search, generations, tags, di
   expect(Math.abs(left - right)).toBeLessThan(4);
   expect(Math.abs(box.y + box.height / 2 - (views.y + views.height / 2))).toBeLessThan(8);
   expect(box.y + box.height).toBeLessThan((await page.locator('.canvas-area').boundingBox())!.y);
-  // With nothing selected the panel still shows: Generations first, then a hint.
+  // Opening the tree selects your own person (else the root), keeping the URL's view: Generations
+  // first, then that person, never an empty panel.
   const depth = panel.getByLabel('Generations');
   await expect(depth).toBeVisible();
-  await expect(panel.getByText('Select someone on the tree.')).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/trees/${treeId}/people/${root}$`));
+  await expect(panel.getByRole('heading', { level: 2, name: /^Sid Side/ })).toBeVisible();
+  await expect(panel.getByText('Select someone on the tree.')).toHaveCount(0);
   await expect(page.getByText('You are the owner of this tree.')).toHaveCount(0);
   await expect(page.getByText(/^Starting person:/)).toHaveCount(0);
   // No sideways scroll, and the canvas ends inside the window.

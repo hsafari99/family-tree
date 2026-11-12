@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { MESSAGES, toAuthError } from '../../auth/api';
 import { LayoutTimeoutError } from '../../canvas/layout-engine';
@@ -32,6 +32,12 @@ function setup(opts: { role?: 'owner' | 'viewer'; graph?: Partial<typeof hale> }
   t.graph = { ...hale, mode: 'focus', focusId: 'robert', ...opts.graph };
   return { auth, trees, id, t };
 }
+/** A tree with neither your person nor a root: opening it selects no one. */
+function unselected(s: ReturnType<typeof setup>) {
+  s.t.detail.me.personId = null;
+  s.t.detail.tree.rootPersonId = null;
+  return s;
+}
 const card = (name: string) => screen.findByRole('button', { name, hidden: true });
 const ROBERT = 'Robert Hale, 1930–1998, deceased';
 const DL = 'Relationship of David Hale and Laura Chen (Married)';
@@ -39,18 +45,53 @@ const graphCalls = (trees: FakeTreesApi) =>
   trees.callsTo('getGraph').map((c) => (c as { query: unknown }).query);
 
 describe('TreeWorkspace', () => {
-  it('loads the focus view around the root, with the side panel showing a hint', async () => {
+  it('opening a tree selects your own person, keeping the view', async () => {
     const s = setup();
-    renderAt(`/trees/${s.id}`, s);
-    await card(ROBERT);
-    expect(graphCalls(s.trees)[0]).toEqual({ mode: 'focus', focus: 'robert', depth: 1 });
+    s.t.detail.me.personId = 'david';
+    const r = renderAt(`/trees/${s.id}?view=full`, s);
+    await waitFor(() => expect(r.where()).toBe(`/trees/${s.id}/people/david?view=full`));
+    const panel = screen.getByRole('complementary', { name: 'Details' });
+    expect(
+      await within(panel).findByRole('heading', { level: 2, name: /David Hale/ }),
+    ).toBeInTheDocument();
+    expect(within(panel).queryByText('Select someone on the tree.')).toBeNull();
+    // An automatic choice moves no focus: the page's own Tab order starts at the header.
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it('opening a tree without a person of your own selects the root', async () => {
+    const s = setup();
+    s.t.detail.me.personId = null;
+    s.t.detail.tree.rootPersonId = 'robert';
+    const r = renderAt(`/trees/${s.id}`, s);
+    await waitFor(() => expect(r.where()).toBe(`/trees/${s.id}/people/robert`));
+    expect(await screen.findByRole('heading', { level: 2, name: /Robert Hale/ })).toBeVisible();
+    expect(graphCalls(s.trees).at(-1)).toEqual({ mode: 'focus', focus: 'robert', depth: 1 });
+  });
+
+  it('shows the hint when the tree has neither your person nor a root', async () => {
+    const s = setup();
+    s.t.detail.me.personId = null;
+    s.t.detail.tree.rootPersonId = null;
+    const r = renderAt(`/trees/${s.id}`, s);
+    const panel = await screen.findByRole('complementary', { name: 'Details' });
+    expect(await within(panel).findByText('Select someone on the tree.')).toBeInTheDocument();
     expect(
       screen.getByText('Select someone on the tree to see their details.'),
     ).toBeInTheDocument();
-    const panel = screen.getByRole('complementary', { name: 'Details' });
-    expect(within(panel).getByText('Select someone on the tree.')).toBeInTheDocument();
-    // Nothing selected: focus stays where the page put it.
+    expect(r.where()).toBe(`/trees/${s.id}`);
     expect(document.activeElement).toBe(document.body);
+  });
+
+  it('does not select again after the selection is cleared in the session', async () => {
+    const s = setup();
+    s.t.detail.tree.rootPersonId = 'robert';
+    const r = renderAt(`/trees/${s.id}`, s);
+    await waitFor(() => expect(r.where()).toBe(`/trees/${s.id}/people/robert`));
+    act(() => void r.navigate(`/trees/${s.id}`));
+    const panel = screen.getByRole('complementary', { name: 'Details' });
+    expect(await within(panel).findByText('Select someone on the tree.')).toBeInTheDocument();
+    expect(r.where()).toBe(`/trees/${s.id}`);
   });
 
   it('puts search before Focus | Full above the canvas, outside the panel', async () => {
@@ -117,7 +158,7 @@ describe('TreeWorkspace', () => {
   });
 
   it('opens a person, re-centres, and closes the panel', async () => {
-    const s = setup();
+    const s = unselected(setup());
     renderAt(`/trees/${s.id}`, s);
     fireEvent.click(await card('David Hale, b. 1956'));
     expect(await screen.findByRole('complementary', { name: 'Details' })).toBeInTheDocument();
@@ -449,6 +490,15 @@ describe('TreeWorkspace relationships', () => {
     expect(row).toHaveFocus();
   });
 
+  it('leaves To empty when the selected person is you', async () => {
+    const s = relSetup();
+    const r = renderAt(`/trees/${s.id}/people/leo`, s);
+    fireEvent.click(await related());
+    const dialog = await screen.findByRole('dialog', { name: 'How are we related?' });
+    expect(r.where()).toBe(`/trees/${s.id}/people/leo?tab=related`);
+    expect(within(dialog).getByLabelText('To', { exact: true })).toHaveValue('');
+  });
+
   it('opens with nothing selected too', async () => {
     const s = relSetup();
     renderAt(`/trees/${s.id}`, s);
@@ -535,7 +585,7 @@ describe('TreeWorkspace collapsible panel (brief #15)', () => {
   });
 
   it('collapses and expands with nothing selected; expanding focuses its first control', async () => {
-    const s = setup();
+    const s = unselected(setup());
     const r = renderAt(`/trees/${s.id}`, s);
     await card(ROBERT);
     fireEvent.click(screen.getByRole('button', { name: 'Collapse side panel' }));
@@ -546,7 +596,7 @@ describe('TreeWorkspace collapsible panel (brief #15)', () => {
   });
 
   it('Escape does not collapse it when nothing is selected', async () => {
-    const s = setup();
+    const s = unselected(setup());
     renderAt(`/trees/${s.id}`, s);
     await card(ROBERT);
     fireEvent.keyDown(document.body, { key: 'Escape' });

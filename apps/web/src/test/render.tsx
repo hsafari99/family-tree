@@ -58,7 +58,8 @@ export function renderAt(
     api: auth,
     trees,
     layout,
-    navigate: (to: number) => nav.current?.(to),
+    navigate: (to: number | string) =>
+      typeof to === 'number' ? nav.current?.(to) : nav.current?.(to),
     /** The router's current path and query. */
     where: () => nav.where,
   };

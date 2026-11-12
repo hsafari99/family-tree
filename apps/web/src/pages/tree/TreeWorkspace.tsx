@@ -64,7 +64,7 @@ export function TreeWorkspace({
   // "How are we related?" opens in a dialog over the page (`?tab=related`).
   const relatedOpen = params.get('tab') === 'related';
   const settingsOpen = settings !== null && params.get('tab') === 'settings';
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const navigate = useNavigate();
   const api = useTreesApi();
   const hrefOf = usePersonHref(treeId);
@@ -246,7 +246,8 @@ export function TreeWorkspace({
           next.delete('add');
           if (open) {
             next.set('tab', 'related');
-            if (personId) next.set('to', personId);
+            // Asking how you are related to yourself means nothing: then To starts empty.
+            if (personId && personId !== detail.me.personId) next.set('to', personId);
           } else {
             next.delete('tab');
             next.delete('from');
@@ -256,7 +257,7 @@ export function TreeWorkspace({
         },
         { replace: true },
       ),
-    [setParams, personId],
+    [setParams, personId, detail.me.personId],
   );
   const settingsRow = useRef<HTMLButtonElement>(null);
   const setSettings = useCallback(
@@ -295,11 +296,30 @@ export function TreeWorkspace({
   // first render, so a remembered collapse survives a reload (a ref of the last key, not a
   // first-run flag, so StrictMode's double effects don't count as a change).
   const lastKey = useRef(panelKey);
+  // The key of the automatic first selection (below), which expands nothing.
+  const autoKey = useRef<string | null>(null);
   useEffect(() => {
     if (lastKey.current === panelKey) return;
     lastKey.current = panelKey;
+    if (panelKey === autoKey.current) return void (autoKey.current = null);
     setCollapsed(false);
   }, [panelKey, setCollapsed]);
+
+  // Opening a tree with nothing selected selects your own person, else the root, so the panel
+  // shows someone's options. Once per tree while the page is open: a selection cleared later (after
+  // a delete, or "Back to the tree") stays cleared. It neither expands the panel (a phone keeps the
+  // sheet down on arrival) nor moves focus.
+  const defaultId = detail.me.personId ?? detail.tree.rootPersonId;
+  const autoFor = useRef<string | null>(null);
+  const autoSelected = useRef(false);
+  useEffect(() => {
+    if (autoFor.current === treeId) return;
+    autoFor.current = treeId;
+    if (newPerson || personId !== undefined || unionId !== undefined || !defaultId) return;
+    autoSelected.current = true;
+    autoKey.current = `false/${defaultId}/undefined`;
+    void navigate(`${base}/people/${defaultId}${search}`, { replace: true });
+  }, [treeId, newPerson, personId, unionId, defaultId, navigate, base, search]);
 
   // Opening the panel on someone moves focus to their heading, once it has rendered one; expanding
   // it with nothing selected focuses its first control. (Not on a first visit with nothing selected:
@@ -313,6 +333,7 @@ export function TreeWorkspace({
       return;
     }
     focusSearch.current = false;
+    if (autoSelected.current) return void (autoSelected.current = false);
     const focusHeading = () => {
       // A section dialog opened by a deep link (?tab=) keeps the focus it took.
       if (document.querySelector('dialog[open]')) return true;

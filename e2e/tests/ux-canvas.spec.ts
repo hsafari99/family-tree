@@ -141,8 +141,13 @@ test('the panel is on the left, collapses to a thin line with an edge toggle, an
   // Escape gives focus back to the person's card.
   await expect(toggle).toHaveAccessibleName('Expand side panel');
   await expect(card(page, 'Lee Left')).toBeFocused();
-  // The canvas hint sits above the drawing: it never covers a card or React Flow's controls.
-  await page.goto(page.url().replace(/\/people\/.*$/, ''));
+  // The canvas hint sits above the drawing: it never covers a card or React Flow's controls. It
+  // shows only with nothing selected: opening a tree selects you, so clear the selection in the
+  // page (a client-side navigation, as after a delete) rather than reloading.
+  await page.evaluate(() => {
+    history.pushState(null, '', location.pathname.replace(/\/people\/.*$/, ''));
+    dispatchEvent(new PopStateEvent('popstate'));
+  });
   const hint = page.locator('.canvas-hint');
   await expect(hint).toBeVisible();
   const h = (await hint.boundingBox())!;

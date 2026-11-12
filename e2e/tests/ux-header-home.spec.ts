@@ -70,11 +70,13 @@ test('home: tree cards, recent activity, and the header inside a tree', async ({
   const treeId = await startTreeViaUi(page, me, { given: 'Hana', surname: 'Home' });
   await expect(card(page, 'Hana Home')).toBeVisible();
 
-  // Inside a tree the header names it; on the tree page that link is the current page.
+  // Inside a tree the header names it. Opening the tree selects your own person, so the page is
+  // that person's (the people list marks them as current), not the bare tree link.
   const treeName = 'Home family';
   const name = banner(page).getByRole('link', { name: treeName });
   await expect(name).toHaveAttribute('href', `/trees/${treeId}`);
-  await expect(name).toHaveAttribute('aria-current', 'page');
+  await expect(page).toHaveURL(new RegExp(`/trees/${treeId}/people/`));
+  await expect(name).not.toHaveAttribute('aria-current');
   // The page title is for screen readers only: the header shows it.
   await expect(page.getByRole('heading', { level: 1, name: treeName })).toHaveClass(/sr-only/);
   // The canvas still fits the window under the header.
@@ -88,7 +90,8 @@ test('home: tree cards, recent activity, and the header inside a tree', async ({
     'aria-current',
   );
   await page.getByRole('link', { name: `Back to ${treeName}` }).click();
-  await expect(page).toHaveURL(new RegExp(`/trees/${treeId}$`));
+  // Back on the tree, your own person is selected again.
+  await expect(page).toHaveURL(new RegExp(`/trees/${treeId}/people/[^/?]+$`));
 
   // A change, then home: the card and the activity show it.
   const base = `/api/v1/trees/${treeId}`;
