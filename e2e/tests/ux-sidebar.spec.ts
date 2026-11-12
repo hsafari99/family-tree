@@ -4,10 +4,10 @@ import { card, openTreeSettings, signUpViaUi, startTreeViaUi } from '../support/
 
 test.skip(PROD_LOCAL, 'dev stack only');
 
-// The side panel holds the tree tools (search, generations, the person, tree rows); the view
-// switch above the canvas is a pair of links. Its own account and tree.
+// Above the canvas: the Focus | Full links and the search box, on one row. The side panel holds
+// the generations slider, the person and the tree rows. Its own account and tree.
 
-test('the side panel: search on top, generations below, tags, dialogs and view links', async ({
+test('the side panel and the bar above the canvas: search, generations, tags, dialogs, views', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
@@ -24,13 +24,20 @@ test('the side panel: search on top, generations below, tags, dialogs and view l
   expect(res.ok()).toBe(true);
   await page.goto(`/trees/${treeId}`);
 
-  // With nothing selected the panel still shows: search first, then Generations, then a hint.
+  // Search sits beside Focus | Full above the canvas, on the same row.
   const panel = page.getByRole('complementary', { name: 'Details' });
-  const search = panel.getByRole('searchbox', { name: 'Search' });
-  const depth = panel.getByLabel('Generations');
+  const search = page.getByRole('searchbox', { name: 'Search' });
   await expect(search).toBeVisible();
+  await expect(panel.getByRole('searchbox')).toHaveCount(0);
+  const views = (await page.getByRole('group', { name: 'View' }).boundingBox())!;
+  const box = (await search.boundingBox())!;
+  expect(box.x).toBeGreaterThan(views.x + views.width);
+  expect(Math.abs(box.y + box.height / 2 - (views.y + views.height / 2))).toBeLessThan(8);
+  expect(box.y + box.height).toBeLessThan((await page.locator('.canvas-area').boundingBox())!.y);
+  // With nothing selected the panel still shows: Generations first, then a hint.
+  const depth = panel.getByLabel('Generations');
+  await expect(depth).toBeVisible();
   await expect(panel.getByText('Select someone on the tree.')).toBeVisible();
-  expect((await search.boundingBox())!.y).toBeLessThan((await depth.boundingBox())!.y);
   await expect(page.getByText('You are the owner of this tree.')).toHaveCount(0);
   await expect(page.getByText(/^Starting person:/)).toHaveCount(0);
   // No sideways scroll, and the canvas ends inside the window.
@@ -38,12 +45,20 @@ test('the side panel: search on top, generations below, tags, dialogs and view l
   const area = (await page.locator('.canvas-area').boundingBox())!;
   expect(area.y + area.height).toBeLessThanOrEqual(720);
 
-  // Search opens the person; their heading carries the role and starting-person tags.
+  // Search opens the person; its results float over the canvas, not clipped by it. Their heading
+  // carries the role and starting-person tags.
   await search.fill('Sid');
-  await page
-    .getByRole('list', { name: 'Search results' })
-    .getByRole('button', { name: /Sid Side/ })
-    .click();
+  const results = page.getByRole('list', { name: 'Search results' });
+  const hit = results.getByRole('button', { name: /Sid Side/ });
+  await expect(hit).toBeVisible();
+  const at = (await hit.boundingBox())!;
+  expect(
+    await page.evaluate(
+      ([x, y]) => !!document.elementFromPoint(x!, y!)?.closest('.search-results'),
+      [at.x + at.width / 2, at.y + at.height / 2],
+    ),
+  ).toBe(true);
+  await hit.click();
   const heading = panel.getByRole('heading', { level: 2, name: /^Sid Side/ });
   await expect(heading).toHaveAccessibleName(/^Sid Side.* \(Owner\) \(Starting person\)$/);
   const tags = heading.locator('.name-tag');
@@ -98,7 +113,7 @@ test('the side panel: search on top, generations below, tags, dialogs and view l
   await expect(page.getByRole('dialog', { name: 'How are we related?' })).toBeVisible();
 });
 
-test('on a phone the panel is a sheet behind a handle, with search and generations inside', async ({
+test('on a phone search is above the canvas and the panel is a sheet behind a handle', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -108,8 +123,14 @@ test('on a phone the panel is a sheet behind a handle, with search and generatio
   await expect(card(page, 'Pho Ne')).toBeVisible();
   const panel = page.getByRole('complementary', { name: 'Details' });
   await expect(panel).toBeHidden();
+  // Search works without opening the sheet.
+  await page.getByRole('searchbox', { name: 'Search' }).fill('Pho');
+  await expect(
+    page.getByRole('list', { name: 'Search results' }).getByRole('button', { name: /Pho Ne/ }),
+  ).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Show details' }).click();
-  await expect(panel.getByRole('searchbox', { name: 'Search' })).toBeVisible();
   await expect(panel.getByLabel('Generations')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });

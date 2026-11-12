@@ -180,7 +180,8 @@ export function TreeWorkspace({
     setCollapsed(true);
   }, [personId, setCollapsed]);
   const shown = !collapsed;
-  // Expanding with nothing selected puts focus in the search box (there is no heading to go to).
+  // Expanding with nothing selected puts focus on the panel's first control (there is no heading
+  // to go to).
   const focusSearch = useRef(false);
   const expand = useCallback(() => {
     focusSearch.current = true;
@@ -283,7 +284,7 @@ export function TreeWorkspace({
   }, [panelKey, setCollapsed]);
 
   // Opening the panel on someone moves focus to their heading, once it has rendered one; expanding
-  // it with nothing selected focuses the search box. (Not on a first visit with nothing selected:
+  // it with nothing selected focuses its first control. (Not on a first visit with nothing selected:
   // the page's own Tab order starts at the header.)
   useEffect(() => {
     const el = selection.current;
@@ -352,7 +353,7 @@ export function TreeWorkspace({
             hidden={!shown}
           >
             <div className="panel-top">
-              <SearchBox treeId={treeId} persons={persons} meId={detail.me.personId} />
+              <DepthControl persons={persons} params={view} onChange={(c) => go(pathname, c)} />
               <button
                 type="button"
                 className="icon-button"
@@ -365,7 +366,6 @@ export function TreeWorkspace({
                 <XIcon />
               </button>
             </div>
-            <DepthControl persons={persons} params={view} onChange={(c) => go(pathname, c)} />
             <div className="panel-selection" ref={selection}>
               {newPerson && canAdd ? (
                 <AddPersonForm
@@ -441,7 +441,11 @@ export function TreeWorkspace({
             </div>
           )}
           <div className="canvas-column">
-            <ViewLinks params={view} />
+            {/* Above the canvas, so search works on a phone without opening the sheet. */}
+            <div className="canvas-bar">
+              <ViewLinks params={view} />
+              <SearchBox treeId={treeId} persons={persons} meId={detail.me.personId} />
+            </div>
             {notice && (
               <p role="status" className="notice">
                 {notice}

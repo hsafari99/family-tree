@@ -53,13 +53,26 @@ describe('TreeWorkspace', () => {
     expect(document.activeElement).toBe(document.body);
   });
 
-  it('orders the side panel: search, generations, the person, sections, then the tree', async () => {
+  it('puts search beside Focus | Full above the canvas, outside the panel', async () => {
+    const s = setup();
+    renderAt(`/trees/${s.id}`, s);
+    await card(ROBERT);
+    const search = screen.getByRole('searchbox', { name: 'Search' });
+    const bar = screen.getByRole('group', { name: 'View' }).parentElement!;
+    expect(bar).toContainElement(search);
+    expect(screen.getByRole('complementary', { name: 'Details' })).not.toContainElement(search);
+    expect(
+      bar.compareDocumentPosition(screen.getByRole('region', { name: 'Family tree view' })) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('orders the side panel: generations, the person, sections, then the tree', async () => {
     const s = setup();
     renderAt(`/trees/${s.id}/people/david`, s);
     const panel = await screen.findByRole('complementary', { name: 'Details' });
     const heading = await within(panel).findByRole('heading', { level: 2, name: /David Hale/ });
     const order = [
-      within(panel).getByRole('searchbox', { name: 'Search' }),
       within(panel).getByLabelText('Generations'),
       heading,
       within(panel).getByRole('button', { name: /^Details/ }),
@@ -494,7 +507,7 @@ describe('TreeWorkspace collapsible panel (brief #15)', () => {
     expect(screen.queryByRole('button', { name: /Expand panel/ })).toBeNull();
   });
 
-  it('collapses and expands with nothing selected; expanding focuses the search box', async () => {
+  it('collapses and expands with nothing selected; expanding focuses its first control', async () => {
     const s = setup();
     const r = renderAt(`/trees/${s.id}`, s);
     await card(ROBERT);
@@ -503,9 +516,7 @@ describe('TreeWorkspace collapsible panel (brief #15)', () => {
     const expand = screen.getByRole('button', { name: /Expand panel/ });
     expect(expand).not.toHaveTextContent(/[A-Z]{2}/);
     fireEvent.click(expand);
-    await waitFor(() =>
-      expect(document.activeElement).toBe(screen.getByRole('searchbox', { name: 'Search' })),
-    );
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText('Generations')));
     expect(r.where()).toBe(`/trees/${s.id}`);
   });
 
