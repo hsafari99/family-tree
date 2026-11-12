@@ -66,6 +66,22 @@ describe('password toggle', () => {
 });
 
 describe('global header', () => {
+  it('stays at the top, glassy where the browser can blur, solid where it cannot', () => {
+    const rule = css.match(/\.app-header\s*\{([^}]*)\}/)![1]!;
+    expect(rule).toMatch(/position: sticky/);
+    expect(rule).toMatch(/top: 0/);
+    expect(rule).toMatch(/backdrop-filter: saturate\(1\.4\) blur\(10px\)/);
+    expect(css).toMatch(
+      /@supports not \(backdrop-filter: blur\(1px\)\)\s*\{\s*\.app-header\s*\{\s*background: var\(--surface\)/,
+    );
+  });
+  it('animates toasts and skeletons only when motion is allowed', () => {
+    const outside = css.replace(
+      /@media \(prefers-reduced-motion: no-preference\)\s*\{(?:[^{}]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\})*[^{}]*\}/g,
+      '',
+    );
+    expect(outside).not.toMatch(/animation:/);
+  });
   it('hides the skip link off screen until it has focus', () => {
     expect(css).toMatch(
       /\.skip-link\s*\{[^}]*position: absolute[^}]*transform: translateY\(-200%\)/,

@@ -2,8 +2,10 @@ import type { ActivityEntry, HomeSummary, HomeTree } from '@family-tree/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
+import { EmptyState, PeopleArt } from '../components/EmptyState';
 import { FormError } from '../components/forms';
 import { Page } from '../components/Page';
+import { TreeCardsSkeleton } from '../components/Skeleton';
 import { HealthStatus } from '../HealthStatus';
 import { ACTION_LABEL, countPeople, ROLE_LABEL, timeAgo } from '../trees/format';
 import { useTreesApi } from '../trees/TreesApiContext';
@@ -61,7 +63,10 @@ export function HomePage() {
           </button>
         </>
       ) : !summary ? (
-        <p>Loading…</p>
+        <div className="loading-region">
+          <p className="sr-only">Loading…</p>
+          <TreeCardsSkeleton />
+        </div>
       ) : firstTime ? (
         <GettingStarted />
       ) : (
@@ -75,7 +80,10 @@ export function HomePage() {
               </Link>
             </div>
             {summary.trees.length === 0 ? (
-              <p>You have no trees open right now. Restore one below or start a new one.</p>
+              <EmptyState
+                title="No trees open right now"
+                body="You have no trees open right now. Restore one below or start a new one."
+              />
             ) : (
               <ul className="tree-cards">
                 {summary.trees.map((t) => (
@@ -204,6 +212,9 @@ function DeletedTrees({
 function GettingStarted() {
   return (
     <section aria-labelledby="home-start" className="getting-started">
+      <div className="getting-started-art">
+        <PeopleArt />
+      </div>
       <h2 id="home-start">Getting started</h2>
       <p>Build your family tree together with your relatives, privately.</p>
       <ol className="steps">

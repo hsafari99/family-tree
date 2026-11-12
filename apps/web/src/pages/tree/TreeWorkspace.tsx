@@ -21,6 +21,7 @@ import { FormError } from '../../components/forms';
 import { PhotoRefreshContext, useThrottled } from '../../components/PersonPhoto';
 import { ChevronIcon, LinkPathIcon } from '../../components/icons';
 import { SectionDialog } from '../../components/SectionDialog';
+import { CanvasSkeleton } from '../../components/Skeleton';
 import { RowContent } from '../../canvas/PanelRow';
 import { SearchBox } from '../../canvas/SearchBox';
 import { BranchStatus, DepthControl, TreeLinks, ViewLinks } from '../../canvas/TreeControls';
@@ -476,7 +477,14 @@ export function TreeWorkspace({
                   </span>
                 </p>
               )}
-              {graph.status === 'loading' && <p role="status">Drawing the tree…</p>}
+              {graph.status === 'loading' && (
+                <>
+                  <p role="status" className="sr-only">
+                    Drawing the tree…
+                  </p>
+                  <CanvasSkeleton />
+                </>
+              )}
               {graph.status === 'error' && (
                 <>
                   <FormError>{graph.message}</FormError>

@@ -1,6 +1,7 @@
 import type { PersonSummary, TreeDetail } from '@family-tree/shared';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
 import { canvasSearch, usePersonHref } from '../../canvas/params';
+import { EmptyState } from '../../components/EmptyState';
 import { personName, personYears } from '../../trees/format';
 
 export function PeopleList({
@@ -27,6 +28,9 @@ export function PeopleList({
   return (
     <section className="people-list">
       <h2>People ({persons.length})</h2>
+      {persons.length === 0 && (
+        <EmptyState title="No people yet" body="Add the first person to start the tree." />
+      )}
       <ul className="row-list" aria-label="People">
         {persons.map((p) => {
           const name = personName(p);

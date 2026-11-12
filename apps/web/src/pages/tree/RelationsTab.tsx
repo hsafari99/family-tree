@@ -11,6 +11,7 @@ import { Link, useSearchParams } from 'react-router';
 import { ConfirmButton } from '../../components/ConfirmButton';
 import { FormError, Success } from '../../components/forms';
 import { type MenuItem, MenuButton } from '../../components/MenuButton';
+import { useToast } from '../../components/Toast';
 import {
   CHILD_KIND_LABEL,
   formatFuzzyDate,
@@ -26,6 +27,14 @@ import { UnionForm } from './UnionForm';
 import type { TabProps } from './usePersonSave';
 
 type Union = PersonView['relations']['unions'][number];
+
+/** The toast after a quick add from a card, whose dialog closes as it finishes. */
+const ADDED: Record<RelativeRole, string> = {
+  parent: 'Parent added',
+  partner: 'Partner added',
+  sibling: 'Sibling added',
+  child: 'Child added',
+};
 
 const ROLE_ITEM: Record<RelativeRole, string> = {
   parent: 'Parent',
@@ -58,6 +67,7 @@ export function RelationsTab({
     };
   }, []);
   const [params, setParams] = useSearchParams();
+  const toast = useToast();
   const requested = RELATIVE_ROLES.find((r) => r === params.get('add')) ?? null;
   const [adding, setAdding] = useState<RelativeRole | null>(requested);
   // A card's "+" button arrives as ?add=<role>.
@@ -437,6 +447,8 @@ export function RelationsTab({
               persons={persons}
               onCancel={stopAdding}
               onDone={() => {
+                // From a card the dialog closes with the form, taking any inline message with it.
+                if (params.has('add')) toast.show(ADDED[adding]);
                 stopAdding();
                 void reload();
                 onChanged();

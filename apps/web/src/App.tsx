@@ -5,6 +5,7 @@ import { type AuthApi, createAuthApi } from './auth/api';
 import { browserLayoutEngine } from './canvas/layout-engine';
 import { LayoutEngineProvider } from './canvas/LayoutEngineContext';
 import { AuthProvider } from './auth/AuthContext';
+import { ToastProvider } from './components/Toast';
 import { AppRoutes } from './routes';
 import { createTreesApi, type TreesApi } from './trees/api';
 import { TreesApiProvider } from './trees/TreesApiContext';
@@ -25,7 +26,9 @@ export function App({
       <TreesApiProvider api={trees}>
         <BrowserRouter>
           <LayoutEngineProvider engine={browserLayoutEngine}>
-            <AppRoutes />
+            <ToastProvider>
+              <AppRoutes />
+            </ToastProvider>
           </LayoutEngineProvider>
         </BrowserRouter>
       </TreesApiProvider>

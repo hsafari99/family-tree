@@ -2,6 +2,8 @@ import type { TrashBatch, TrashBatchDetail, TreeDetail } from '@family-tree/shar
 import { useEffect, useId, useRef, useState } from 'react';
 import { useParams } from 'react-router';
 import { ConfirmButton } from '../components/ConfirmButton';
+import { EmptyState } from '../components/EmptyState';
+import { TrashIcon } from '../components/icons';
 import { FormError, Success } from '../components/forms';
 import { useHeaderTree } from '../components/AppHeader';
 import { BackLink, Page } from '../components/Page';
@@ -101,7 +103,11 @@ export function TrashPage() {
       </p>
       {notice && <Success>{notice}</Success>}
       {batches.length === 0 ? (
-        <p>The Trash is empty.</p>
+        <EmptyState
+          icon={<TrashIcon />}
+          title="The Trash is empty."
+          body="When someone is deleted from the tree, they wait here so you can bring them back."
+        />
       ) : (
         <ul className="row-list trash-rows">
           {batches.map((b) => (

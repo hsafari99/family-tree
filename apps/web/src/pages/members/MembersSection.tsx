@@ -9,6 +9,8 @@ import { personName, ROLE_LABEL } from '../../trees/format';
 import { useTreesApi } from '../../trees/TreesApiContext';
 import { CopyLink } from './CopyLink';
 import { actionMessage, type SectionProps } from './types';
+import { EmptyState } from '../../components/EmptyState';
+import { UsersIcon } from '../../components/icons';
 
 const COLUMNS = ['Name', 'Role', 'Branch / steward scope', 'Joined', 'Actions'] as const;
 
@@ -183,6 +185,17 @@ export function MembersSection({
           </tbody>
         </table>
       </div>
+      {members.length === 1 && (
+        <EmptyState
+          icon={<UsersIcon />}
+          title="It’s just you so far"
+          body={
+            detail.capabilities.invite
+              ? 'Invite relatives below so they can see the tree or help fill it in.'
+              : 'Other members of this tree will show up here.'
+          }
+        />
+      )}
       {link && (
         <CopyLink label="Reset link" url={link.url}>
           Send this link to {link.name} yourself. It works once, for 24 hours.
