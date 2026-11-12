@@ -2,6 +2,7 @@ import {
   compareSiblings,
   type GraphPerson,
   type GraphUnionView,
+  sortYear,
   type TreeGraph,
 } from '@family-tree/shared';
 import type { Edge, Node } from '@xyflow/react';
@@ -146,6 +147,7 @@ export function graphToFlow(
         b: personNodeId(u.partnerBId!),
         aOrder: u.partnerAOrder,
         bOrder: u.partnerBOrder,
+        since: u.startDate ? sortYear(u.startDate) : null,
       });
     }
     for (const l of children) blood.add(personNodeId(l.childId));

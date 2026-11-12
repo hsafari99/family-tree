@@ -77,6 +77,20 @@ describe('seatCouples', () => {
     expect(order(c)).toEqual(['laura', 'david', 'anna']);
   });
 
+  it('falls back to the start year when the hub has no saved order', () => {
+    const pos = row({ laura: 0, anna: 216, david: 432 });
+    seatCouples(
+      pos,
+      [
+        { ...couple('z1', 'david', 'anna'), since: 1970 },
+        { ...couple('a2', 'david', 'laura'), since: 1980 },
+      ],
+      new Set(['p:david']),
+      GAP,
+    );
+    expect(order(pos)).toEqual(['anna', 'david', 'laura']);
+  });
+
   it('returns the shift of every person it moved, and only those', () => {
     const pos = row({ ann: 0, ben: 216, xan: 432 });
     const moved = seatCouples(pos, [couple('U', 'ben', 'xan')], BLOOD, GAP);

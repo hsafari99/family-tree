@@ -109,6 +109,26 @@ function CanvasInner({
     };
   }, [flow, nodes, focusId]);
 
+  // The panel opening or closing beside the canvas changes its width: keep what was in the middle
+  // in the middle, instead of sliding the drawing sideways under the panel.
+  useEffect(() => {
+    const el = pane.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    let width = el.clientWidth;
+    const observer = new ResizeObserver(() => {
+      const next = el.clientWidth;
+      if (next === width || width === 0 || next === 0) {
+        width = next;
+        return;
+      }
+      const vp = flow.getViewport();
+      void flow.setViewport({ ...vp, x: vp.x + (next - width) / 2 });
+      width = next;
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [flow]);
+
   const onNodeDragStop = useCallback(
     (_: unknown, node: CanvasNode) => {
       // Read the dragged positions first; setShown applies on the next render.

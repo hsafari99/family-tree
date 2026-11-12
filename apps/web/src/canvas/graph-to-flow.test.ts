@@ -135,6 +135,7 @@ describe('graphToFlow', () => {
       b: 'p:laura',
       aOrder: null,
       bOrder: null,
+      since: null,
     });
   });
 
