@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { MoreIcon } from './icons';
 
 export interface MenuItem {
   label: string;
@@ -52,7 +53,7 @@ export function placeMenu(
 export function MenuButton({
   label,
   items,
-  text = '⋯',
+  text = <MoreIcon />,
   className = 'secondary compact',
 }: {
   /** The accessible name of the trigger and the menu. */

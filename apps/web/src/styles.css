@@ -2205,3 +2205,25 @@ a.button-link:hover {
   gap: 0.75rem;
   padding-left: 1.5rem;
 }
+
+/* One icon set (icons.tsx): sizes per place. */
+.section-row-lead {
+  display: inline-flex;
+  flex: none;
+  color: var(--accent);
+}
+.section-row-lead .icon,
+a.section-row > .icon,
+button.section-row > .icon,
+.view-link .icon,
+.icon-button .icon {
+  width: 16px;
+  height: 16px;
+}
+.password-toggle .icon {
+  width: 20px;
+  height: 20px;
+}
+.menu-trigger .icon {
+  display: block;
+}

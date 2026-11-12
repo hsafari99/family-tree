@@ -1,6 +1,16 @@
 import { GRAPH_DEPTH_MAX, type PersonSummary, type TreeDetail } from '@family-tree/shared';
 import type { ReactNode, Ref } from 'react';
-import { XIcon } from '../components/SectionDialog';
+import {
+  ArrowIcon,
+  FocusIcon,
+  FullIcon,
+  ListIcon,
+  PlusIcon,
+  SettingsIcon,
+  TrashIcon,
+  UsersIcon,
+  XIcon,
+} from '../components/icons';
 import { Link, useLocation, useSearchParams } from 'react-router';
 import { DisconnectedPeople } from './DisconnectedPeople';
 import { RowContent } from './PanelRow';
@@ -136,7 +146,8 @@ export function TreeLinks({
             <RowLink
               to={`/trees/${treeId}/people/new${search.size ? `?${search}` : ''}`}
               title="Add a person"
-              icon={<PlusIcon />}
+              icon={<ArrowIcon />}
+              lead={<PlusIcon />}
             />
           </li>
         )}
@@ -150,11 +161,17 @@ export function TreeLinks({
             to={`/trees/${treeId}/members`}
             title="Members and invites"
             icon={<ArrowIcon />}
+            lead={<UsersIcon />}
           />
         </li>
         {capabilities.manageTree && (
           <li>
-            <RowLink to={`/trees/${treeId}/trash`} title="Trash" icon={<ArrowIcon />} />
+            <RowLink
+              to={`/trees/${treeId}/trash`}
+              title="Trash"
+              icon={<ArrowIcon />}
+              lead={<TrashIcon />}
+            />
           </li>
         )}
         <li>
@@ -166,7 +183,11 @@ export function TreeLinks({
               if (d instanceof HTMLDetailsElement) d.open = true;
             }}
           >
-            <RowContent title="List of all people" icon={<ArrowIcon direction="down" />} />
+            <RowContent
+              title="List of all people"
+              icon={<ArrowIcon direction="down" />}
+              lead={<ListIcon />}
+            />
           </a>
         </li>
         {onSettings && (
@@ -178,7 +199,7 @@ export function TreeLinks({
               ref={settingsRef}
               onClick={onSettings}
             >
-              <RowContent title="Tree settings" />
+              <RowContent title="Tree settings" lead={<SettingsIcon />} />
             </button>
           </li>
         )}
@@ -187,65 +208,20 @@ export function TreeLinks({
   );
 }
 
-function RowLink({ to, title, icon }: { to: string; title: string; icon: ReactNode }) {
+function RowLink({
+  to,
+  title,
+  icon,
+  lead,
+}: {
+  to: string;
+  title: string;
+  icon: ReactNode;
+  lead?: ReactNode;
+}) {
   return (
     <Link to={to} className="section-row">
-      <RowContent title={title} icon={icon} />
+      <RowContent title={title} icon={icon} lead={lead} />
     </Link>
-  );
-}
-
-/** "Goes to another page" (or, pointing down, further down this one). */
-function ArrowIcon({ direction = 'right' }: { direction?: 'right' | 'down' }) {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      width="16"
-      height="16"
-      aria-hidden="true"
-      focusable="false"
-      style={direction === 'down' ? { transform: 'rotate(90deg)' } : undefined}
-    >
-      <path
-        d="M2.5 8h10M8.5 4l4 4-4 4"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        fill="none"
-      />
-    </svg>
-  );
-}
-
-function PlusIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
-      <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-/** A centre dot in rings: the view around one person. */
-function FocusIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
-      <circle cx="8" cy="8" r="2.2" fill="currentColor" />
-      <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.5" fill="none" />
-    </svg>
-  );
-}
-
-/** A small family tree: the whole tree. */
-function FullIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
-      <g stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round">
-        <rect x="6" y="1.5" width="4" height="3.5" rx="0.8" />
-        <rect x="1.5" y="11" width="4" height="3.5" rx="0.8" />
-        <rect x="10.5" y="11" width="4" height="3.5" rx="0.8" />
-        <path d="M8 5v3M3.5 11V8h9v3" />
-      </g>
-    </svg>
   );
 }

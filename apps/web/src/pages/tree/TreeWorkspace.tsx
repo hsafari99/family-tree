@@ -19,7 +19,8 @@ import {
 import { Link, useLocation, useMatch, useNavigate, useParams, useSearchParams } from 'react-router';
 import { FormError } from '../../components/forms';
 import { PhotoRefreshContext, useThrottled } from '../../components/PersonPhoto';
-import { ChevronIcon, SectionDialog } from '../../components/SectionDialog';
+import { ChevronIcon, LinkPathIcon } from '../../components/icons';
+import { SectionDialog } from '../../components/SectionDialog';
 import { RowContent } from '../../canvas/PanelRow';
 import { SearchBox } from '../../canvas/SearchBox';
 import { BranchStatus, DepthControl, TreeLinks, ViewLinks } from '../../canvas/TreeControls';
@@ -418,7 +419,7 @@ export function TreeWorkspace({
                   ref={relatedRow}
                   onClick={() => setRelated(true)}
                 >
-                  <RowContent title="How are we related?" />
+                  <RowContent title="How are we related?" lead={<LinkPathIcon />} />
                 </button>
               </li>
             </ul>
