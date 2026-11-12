@@ -267,3 +267,20 @@ test.describe('on a phone', () => {
     expect(await noSideways()).toBe(true);
   });
 });
+
+test('a click outside a section dialog closes it; one inside, or on its menu, does not', async ({
+  page,
+}) => {
+  const { treeId } = await newTree(page, 'Out', 'Side');
+  await page.goto(`/trees/${treeId}`);
+  await card(page, 'Out Side').click();
+  const dialog = await openSection(page, 'Relations');
+  await dialog.getByRole('heading', { name: 'Parents' }).click();
+  await dialog.getByRole('button', { name: 'Add relative' }).click();
+  await page.getByRole('menuitem', { name: 'Partner' }).click();
+  await expect(dialog).toBeVisible();
+  // The backdrop: the top-left corner of the page, well outside the centred dialog.
+  await page.mouse.click(5, 5);
+  await expect(dialog).toBeHidden();
+  await expect(page).not.toHaveURL(/tab=/);
+});

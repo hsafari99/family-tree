@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useId, useRef } from 'react';
+import { type MouseEvent, type ReactNode, useEffect, useId, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
 /**
@@ -9,6 +9,10 @@ import { createPortal } from 'react-dom';
  *
  * A dialog opened from inside this one (ConfirmDialog, say) handles its own Esc: React passes its
  * `cancel` up the component tree, so only a cancel aimed at this dialog closes it.
+ *
+ * A click on the backdrop (outside the dialog's box) closes it too, but only when the press also
+ * started there: a text selection dragged out of the dialog doesn't. A menu drawn past the edge is
+ * a descendant, so a click on it never targets the dialog itself.
  */
 export function SectionDialog({
   title,
@@ -23,6 +27,7 @@ export function SectionDialog({
   const closeRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const latest = useRef(onClose);
+  const pressedOutside = useRef(false);
   useEffect(() => {
     latest.current = onClose;
   });
@@ -50,6 +55,14 @@ export function SectionDialog({
       ref={ref}
       className="section-dialog"
       aria-labelledby={titleId}
+      onMouseDown={(e) => {
+        pressedOutside.current = isBackdrop(e);
+      }}
+      onClick={(e) => {
+        const outside = pressedOutside.current && isBackdrop(e);
+        pressedOutside.current = false;
+        if (outside) onClose();
+      }}
       onCancel={(e) => {
         if (e.target !== e.currentTarget) return;
         e.preventDefault();
@@ -76,6 +89,13 @@ export function SectionDialog({
     </dialog>,
     document.body,
   );
+}
+
+/** Whether a pointer event hit the backdrop: aimed at the <dialog> itself, outside its box. */
+function isBackdrop(e: MouseEvent<HTMLDialogElement>) {
+  if (e.target !== e.currentTarget) return false;
+  const r = e.currentTarget.getBoundingClientRect();
+  return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
 }
 
 export function XIcon() {
