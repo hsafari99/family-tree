@@ -12,6 +12,7 @@ import { Link, useLocation, useMatch, useNavigate, useParams, useSearchParams } 
 import { FormError } from '../../components/forms';
 import { PhotoRefreshContext, useThrottled } from '../../components/PersonPhoto';
 import { CanvasToolbar } from '../../canvas/CanvasToolbar';
+import type { CoupleChange } from '../../canvas/couples';
 import { FamilyCanvas } from '../../canvas/FamilyCanvas';
 import {
   type CanvasChange,
@@ -129,6 +130,17 @@ export function TreeWorkspace({
     async (linkId: string, unionId: string) => {
       const res = await api.reparentLink(treeId, linkId, unionId);
       setNotice(res.ok ? 'Parents changed.' : res.error.message);
+      changed();
+    },
+    [api, treeId, changed],
+  );
+  const onCoupleChange = useCallback(
+    async (change: CoupleChange) => {
+      const res =
+        change.kind === 'swap'
+          ? await api.swapPartners(treeId, change.unionId)
+          : await api.reorderUnions(treeId, change.personId, change.unionIds);
+      setNotice(res.ok ? null : res.error.message);
       changed();
     },
     [api, treeId, changed],
@@ -326,8 +338,12 @@ export function TreeWorkspace({
               <p className="hint canvas-hint">
                 <span>Select someone on the tree to see their details.</span>{' '}
                 <span>
-                  With a mouse, drag the dot end of a child’s line onto other parents to move them;
-                  Relations → Change parents… does the same from the keyboard.
+                  You can reorder siblings, swap a couple’s sides, and order someone’s partners.
+                  Everything else is placed automatically.
+                </span>{' '}
+                <span>
+                  With a mouse, drag the cards, or drag the dot end of a child’s line onto other
+                  parents to move them; the Relations tab does the same from the keyboard.
                 </span>
               </p>
             )}
@@ -369,6 +385,8 @@ export function TreeWorkspace({
                 selectedId={personId ?? null}
                 onReorder={(u, ids) => void onReorder(u, ids)}
                 onReparent={(l, u) => void onReparent(l, u)}
+                couples={drawn.couples}
+                onCoupleChange={(c) => void onCoupleChange(c)}
               />
             )}
           </section>

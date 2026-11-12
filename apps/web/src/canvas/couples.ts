@@ -11,6 +11,13 @@ export interface Couple {
 }
 type Pos = { x: number; y: number };
 
+/** One person's couples in *their own* saved order (their slot's column), then by union id. */
+const byOwnOrder = (p: string) => (m: Couple, n: Couple) => {
+  const own = (c: Couple) => (c.a === p ? c.aOrder : c.bOrder) ?? Infinity;
+  return own(m) - own(n) || (m.unionId < n.unionId ? -1 : m.unionId > n.unionId ? 1 : 0);
+};
+const other = (c: Couple, p: string) => (c.a === p ? c.b : c.a);
+
 /**
  * Re-seats each row so partners sit side by side (brief #14). ELK gives the rows and rough x; this
  * keeps each couple chain together, orders chains by their leftmost blood member (so sibling order
@@ -31,15 +38,7 @@ export function seatCouples(
     if (!pos.has(c.a) || !pos.has(c.b) || rowOf(c.a) !== rowOf(c.b)) continue;
     for (const p of [c.a, c.b]) partners.set(p, [...(partners.get(p) ?? []), c]);
   }
-  // Each person's unions in *their own* saved order (their slot's column), then by id.
-  const orderFor = (c: Couple, p: string) => (c.a === p ? c.aOrder : c.bOrder) ?? Infinity;
-  for (const [p, list] of partners)
-    list.sort(
-      (m, n) =>
-        orderFor(m, p) - orderFor(n, p) ||
-        (m.unionId < n.unionId ? -1 : m.unionId > n.unionId ? 1 : 0),
-    );
-  const other = (c: Couple, p: string) => (c.a === p ? c.b : c.a);
+  for (const [p, list] of partners) list.sort(byOwnOrder(p));
 
   const rows = new Map<number, string[]>();
   for (const id of pos.keys())
@@ -114,4 +113,42 @@ export function seatCouples(
     }
     return out;
   }
+}
+
+export type CoupleChange =
+  { kind: 'swap'; unionId: string } | { kind: 'unionOrder'; personId: string; unionIds: string[] };
+
+/**
+ * What dropping a dragged card means (brief #16). `x`: each card's left edge, the dragged one where
+ * it was dropped. Past its only partner, a couple swaps sides. An end of a chain dropped past the
+ * hub (a partner with several couples) changes the hub's own order: the dragged couple trades
+ * places with the nearest one on the other side. `unionIds` lists only the hub's couples given here
+ * (those on screen); the API keeps the others where they are. Anything else: null (snap back).
+ */
+export function coupleChangeAfterDrop(
+  couples: readonly Couple[],
+  nodeId: string,
+  x: ReadonlyMap<string, number>,
+): CoupleChange | null {
+  const of = (p: string) => couples.filter((c) => (c.a === p || c.b === p) && x.has(other(c, p)));
+  const mine = of(nodeId);
+  const at = x.get(nodeId);
+  if (mine.length !== 1 || at === undefined) return null;
+  const c = mine[0]!;
+  const mate = other(c, nodeId);
+  const mateX = x.get(mate)!;
+  const hubs = of(mate).sort(byOwnOrder(mate));
+  if (hubs.length === 1) {
+    // A pair sits [a, b].
+    const crossed = c.a === nodeId ? at > mateX : at < mateX;
+    return crossed ? { kind: 'swap', unionId: c.unionId } : null;
+  }
+  // The hub seats its first couple left, second right, third left, …
+  const i = hubs.indexOf(c);
+  const left = i % 2 === 0;
+  if (left ? at <= mateX : at >= mateX) return null;
+  const j = left ? (i + 1 < hubs.length ? i + 1 : i - 1) : i - 1;
+  const ids = hubs.map((h) => h.unionId);
+  [ids[i], ids[j]] = [ids[j]!, ids[i]!];
+  return { kind: 'unionOrder', personId: mate.slice(2), unionIds: ids };
 }

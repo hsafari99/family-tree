@@ -19,6 +19,8 @@ export type PersonNodeData = {
   isMe: boolean;
   /** The union whose children this card can be dragged among (Task 17); null when fixed. */
   reorderUnionId: string | null;
+  /** In an editable couple on screen: dragging past a partner swaps or reorders (brief #16). */
+  coupleDrag: boolean;
 };
 export type PersonFlowNode = Node<PersonNodeData, 'person'>;
 export type UnionNodeData = { union: GraphUnionView; ended: boolean; label: string };
@@ -64,11 +66,13 @@ export function graphToFlow(
       isFocus: person.id === focusId,
       isMe: person.id === meId,
       reorderUnionId: null,
+      coupleDrag: false,
     },
   }));
   const edges: Edge[] = [];
   const families: Family[] = [];
   const couples: Couple[] = [];
+  const coupleIds = new Set<string>(); // people in an editable couple on screen
   const blood = new Set<string>();
   for (const u of graph.unions) {
     const partnerIds = [u.partnerAId, u.partnerBId].filter(
@@ -134,7 +138,8 @@ export function graphToFlow(
       });
     }
     families.push({ id: u.id, partnerIds, childIds: children.map((l) => l.childId) });
-    if (partnerIds.length === 2)
+    if (partnerIds.length === 2) {
+      if (u.canEdit) for (const p of partnerIds) coupleIds.add(p);
       couples.push({
         unionId: u.id,
         a: personNodeId(u.partnerAId!),
@@ -142,6 +147,7 @@ export function graphToFlow(
         aOrder: u.partnerAOrder,
         bOrder: u.partnerBOrder,
       });
+    }
     for (const l of children) blood.add(personNodeId(l.childId));
   }
   const reorderable = new Map<string, string>(); // child id -> the union they can be dragged in
@@ -154,8 +160,10 @@ export function graphToFlow(
     if (n.type !== 'person') continue;
     const unionId = reorderable.get(n.data.person.id) ?? null;
     n.data.reorderUnionId = unionId;
-    n.draggable = unionId !== null;
-    if (unionId) n.className = 'is-reorderable';
+    // Sibling drag wins: it is the established gesture (brief #16).
+    n.data.coupleDrag = unionId === null && coupleIds.has(n.data.person.id);
+    n.draggable = unionId !== null || n.data.coupleDrag;
+    if (n.draggable) n.className = 'is-reorderable';
   }
   return {
     nodes,

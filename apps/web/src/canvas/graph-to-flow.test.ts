@@ -90,7 +90,7 @@ describe('graphToFlow', () => {
       Object.fromEntries(
         graphToFlow(g, ctx)
           .nodes.filter((n) => n.type === 'person')
-          .map((n) => [n.id.slice(2), n.draggable === true]),
+          .map((n) => [n.id.slice(2), n.type === 'person' && n.data.reorderUnionId !== null]),
       );
     const d = drag(haleGraph());
     for (const id of ['leo', 'mia', 'david', 'susan']) expect(d[id]).toBe(true);
@@ -109,6 +109,33 @@ describe('graphToFlow', () => {
     expect([drag(more).leo, drag(more).mia]).toEqual([false, false]);
     const leo = graphToFlow(g, ctx).nodes.find((n) => n.id === 'p:leo');
     expect(leo!.type === 'person' && leo!.data.reorderUnionId).toBe('u-dl');
+  });
+
+  it('lets partners in an editable couple be dragged, when sibling drag does not apply (brief #16)', () => {
+    const g = haleGraph();
+    const d = graphToFlow(g, ctx).nodes.filter((n) => n.type === 'person');
+    const by = (id: string) => d.find((n) => n.id === `p:${id}`)!;
+    for (const id of ['robert', 'margaret', 'anna', 'laura']) {
+      const n = by(id);
+      expect(n.type === 'person' && n.data.coupleDrag, id).toBe(true);
+      expect(n.draggable, id).toBe(true);
+    }
+    // David is sibling-draggable (Robert and Margaret's child): that gesture wins.
+    const david = by('david');
+    expect(david.type === 'person' && david.data.coupleDrag).toBe(false);
+    for (const id of ['emma', 'noah']) expect(by(id).draggable, id).toBe(false);
+    const r = graphToFlow(
+      { ...g, unions: g.unions.map((u) => (u.id === 'u-rm' ? { ...u, canEdit: false } : u)) },
+      ctx,
+    ).nodes.find((n) => n.id === 'p:robert')!;
+    expect(r.draggable).toBe(false);
+    expect(graphToFlow(g, ctx).couples).toContainEqual({
+      unionId: 'u-dl',
+      a: 'p:david',
+      b: 'p:laura',
+      aOrder: null,
+      bOrder: null,
+    });
   });
 
   it('gives edges meaningful labels, not the defaults', () => {

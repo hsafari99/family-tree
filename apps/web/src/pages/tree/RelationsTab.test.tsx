@@ -135,3 +135,56 @@ describe('RelationsTab (brief #12, #13)', () => {
     expect(screen.getByRole('heading', { name: 'Parents' })).toBeInTheDocument();
   });
 });
+
+describe('RelationsTab partner order (brief #16)', () => {
+  const sam = fakePerson({ givenName: 'Sam', surname: 'Ray' });
+  function twoPartners() {
+    const s = setup();
+    s.trees.trees.get(s.id)!.persons.push({ ...sam });
+    const first = s.view.relations.unions[0]!;
+    s.view.relations.unions.push({ ...first, id: crypto.randomUUID(), partner: sam, children: [] });
+    return { ...s, first: first.id, second: s.view.relations.unions[1]!.id };
+  }
+  const menu = (name: string) =>
+    screen.findByRole('button', { name: `More actions for the relationship with ${name}` });
+  const items = () => screen.getAllByRole('menuitem').map((m) => m.textContent);
+
+  it('offers Move later on the first, Move earlier on the last, and Swap sides', async () => {
+    const s = twoPartners();
+    open(s);
+    fireEvent.click(await menu('Pat Moss'));
+    expect(items()).toContain('Move later');
+    expect(items()).not.toContain('Move earlier');
+    expect(items()).toContain('Swap sides on the tree');
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+    fireEvent.click(await menu('Sam Ray'));
+    expect(items()).toContain('Move earlier');
+    expect(items()).not.toContain('Move later');
+  });
+
+  it('saves the new order and swaps sides through the API', async () => {
+    const s = twoPartners();
+    open(s);
+    fireEvent.click(await menu('Pat Moss'));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Move later' }));
+    await waitFor(() => expect(s.trees.callsTo('reorderUnions')).toHaveLength(1));
+    expect(s.trees.callsTo('reorderUnions')[0]).toMatchObject({
+      personId: ada.id,
+      unionIds: [s.second, s.first],
+    });
+    expect(await screen.findByText('Order saved.')).toBeInTheDocument();
+    fireEvent.click(await menu('Sam Ray'));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Swap sides on the tree' }));
+    await waitFor(() => expect(s.trees.callsTo('swapPartners')).toHaveLength(1));
+    expect(s.trees.callsTo('swapPartners')[0]).toMatchObject({ unionId: s.second });
+    expect(await screen.findByText('Sides swapped.')).toBeInTheDocument();
+  });
+
+  it('has no Move items with one partner', async () => {
+    const s = setup();
+    open(s);
+    fireEvent.click(await menu('Pat Moss'));
+    expect(items()).not.toContain('Move later');
+    expect(items()).toContain('Swap sides on the tree');
+  });
+});

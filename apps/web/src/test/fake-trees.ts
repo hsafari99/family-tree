@@ -1130,6 +1130,61 @@ export class FakeTreesApi implements TreesApi {
     );
   }
 
+  async swapPartners(treeId: string, unionId: string) {
+    const forced = await this.enter('swapPartners', { treeId, unionId });
+    if (forced) return { ok: false as const, error: forced };
+    const t = this.find(treeId);
+    if (!t) return notFound();
+    const g = t.graph?.unions.find((u) => u.id === unionId);
+    if (!g && !this.findUnion(t, unionId)) return notFound();
+    if (!this.mayEdit(t)) return forbidden();
+    if (g) {
+      if (g.partnerAId === null || g.partnerBId === null) return this.invalid();
+      Object.assign(g, {
+        partnerAId: g.partnerBId,
+        partnerBId: g.partnerAId,
+        partnerAOrder: g.partnerBOrder,
+        partnerBOrder: g.partnerAOrder,
+      });
+    } else if (!this.findUnion(t, unionId)!.partner) return this.invalid();
+    return ok(undefined);
+  }
+
+  /** As the API: the listed unions trade places among the positions they hold; 1..n saved. */
+  async reorderUnions(treeId: string, personId: string, unionIds: string[]) {
+    const forced = await this.enter('reorderUnions', { treeId, personId, unionIds });
+    if (forced) return { ok: false as const, error: forced };
+    const t = this.find(treeId);
+    if (!t) return notFound();
+    const view = this.viewOf(t, personId);
+    const graphOwn = (t.graph?.unions ?? []).filter(
+      (u) => u.partnerAId === personId || u.partnerBId === personId,
+    );
+    if (!view && graphOwn.length === 0) return this.personNotFound();
+    if (!this.mayEdit(t)) return forbidden();
+    if (unionIds.length < 2 || new Set(unionIds).size !== unionIds.length) return this.invalid();
+    const before = view
+      ? view.relations.unions.map((u) => u.id)
+      : [...graphOwn]
+          .sort((x, y) => {
+            const own = (u: typeof x) =>
+              (u.partnerAId === personId ? u.partnerAOrder : u.partnerBOrder) ?? Infinity;
+            return own(x) - own(y) || 0;
+          })
+          .map((u) => u.id);
+    if (!unionIds.every((id) => before.includes(id))) return fail('CONFLICT', MESSAGES.itemChanged);
+    const picked = new Set(unionIds);
+    let k = 0;
+    const after = before.map((id) => (picked.has(id) ? unionIds[k++]! : id));
+    if (view) view.relations.unions = sortBy(view.relations.unions, (u) => u.id, after);
+    for (const u of graphOwn) {
+      const ord = after.indexOf(u.id) + 1;
+      if (u.partnerAId === personId) u.partnerAOrder = ord;
+      else u.partnerBOrder = ord;
+    }
+    return ok(undefined);
+  }
+
   async reorderChildren(treeId: string, unionId: string, childIds: string[]) {
     const forced = await this.enter('reorderChildren', { treeId, unionId, childIds });
     if (forced) return { ok: false as const, error: forced };

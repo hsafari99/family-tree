@@ -5,6 +5,7 @@ import { MESSAGES } from '../auth/api';
 import { useTreesApi } from '../trees/TreesApiContext';
 import { applyElkLayout, toElkGraph } from './elk-graph';
 import { assignGenerations } from './generations';
+import type { Couple } from './couples';
 import { type CanvasNode, type Family, graphToFlow } from './graph-to-flow';
 import { useLayoutEngine } from './LayoutEngineContext';
 import { LayoutTimeoutError } from './layout-engine';
@@ -19,6 +20,7 @@ export type TreeGraphState =
       nodes: CanvasNode[];
       edges: Edge[];
       families: Family[];
+      couples: Couple[];
     };
 
 /** Fetches the graph, maps it, lays it out. Stale responses are dropped. */
@@ -56,6 +58,7 @@ export function useTreeGraph(
           nodes: applyElkLayout(flow.nodes, laid, flow.couples, flow.blood),
           edges: flow.edges,
           families: flow.families,
+          couples: flow.couples,
         });
       } catch (err) {
         if (!active) return;

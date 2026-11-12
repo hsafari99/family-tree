@@ -271,8 +271,15 @@ export function RelationsTab({
 
       <h3>Partners and children</h3>
       {rel.unions.length === 0 && <p>No partners recorded.</p>}
-      {rel.unions.map((u) => {
+      {rel.unions.map((u, ui) => {
         const key = `union:${u.id}`;
+        const unionIds = rel.unions.map((x) => x.id);
+        const moveUnion = (by: -1 | 1) =>
+          void run(
+            () => api.reorderUnions(treeId, view.person.id, moved(unionIds, ui, by)),
+            'Order saved.',
+          ).then((ok) => ok && refocus(key));
+        const showUnionMove = caps.edit && rel.unions.length >= 2;
         const partnerName = u.partner ? personName(u.partner) : 'an unknown partner';
         const mode = modeOf(key);
         return (
@@ -307,6 +314,21 @@ export function RelationsTab({
                       label: 'Edit relationship',
                       onSelect: () => setRow({ key, mode: 'edit' }),
                     },
+                    showUnionMove &&
+                      ui > 0 && { label: 'Move earlier', onSelect: () => moveUnion(-1) },
+                    showUnionMove &&
+                      ui < rel.unions.length - 1 && {
+                        label: 'Move later',
+                        onSelect: () => moveUnion(1),
+                      },
+                    caps.edit &&
+                      u.partner !== null && {
+                        label: 'Swap sides on the tree',
+                        onSelect: () =>
+                          void run(() => api.swapPartners(treeId, u.id), 'Sides swapped.').then(
+                            (ok) => ok && refocus(key),
+                          ),
+                      },
                     caps.delete && {
                       label: 'Remove relationship',
                       danger: true,

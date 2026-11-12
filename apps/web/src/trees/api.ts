@@ -101,6 +101,10 @@ export interface TreesApi {
   deleteParentChild(treeId: string, linkId: string): Promise<Result<{ batchId: string }>>;
   /** Moves a child's link to other parents (brief #13). */
   reparentLink(treeId: string, linkId: string, unionId: string): Promise<Result<void>>;
+  /** Swaps a couple's left and right on the tree (brief #16). */
+  swapPartners(treeId: string, unionId: string): Promise<Result<void>>;
+  /** Orders some or all of a person's unions; the rest keep their places (brief #16). */
+  reorderUnions(treeId: string, personId: string, unionIds: string[]): Promise<Result<void>>;
   addResidence(
     treeId: string,
     personId: string,
@@ -166,6 +170,8 @@ export const TREES_API_METHODS = Object.keys({
   updateParentChild: true,
   deleteParentChild: true,
   reparentLink: true,
+  swapPartners: true,
+  reorderUnions: true,
   addResidence: true,
   updateResidence: true,
   deleteResidence: true,
@@ -401,6 +407,22 @@ export function createTreesApi({ baseUrl }: { baseUrl: string }): TreesApi {
       map(
         request('GET', `${t(id)}/persons/similar${qs(query)}`, undefined, personListSchema),
         (d) => d.persons,
+      ),
+    swapPartners: (id, u) =>
+      request('POST', `${t(id)}/unions/${enc(u)}/swap-partners`, {}, undefined, 'session', {
+        CONFLICT: MESSAGES.itemChanged,
+        NOT_FOUND: MESSAGES.itemGone,
+      }),
+    reorderUnions: (id, p, unionIds) =>
+      request(
+        'POST',
+        `${t(id)}/persons/${enc(p)}/union-order`,
+        { unionIds },
+        undefined,
+        'session',
+        {
+          CONFLICT: MESSAGES.itemChanged,
+        },
       ),
     reorderChildren: (id, u, childIds) =>
       request('POST', `${t(id)}/unions/${enc(u)}/child-order`, { childIds }, undefined, 'session', {

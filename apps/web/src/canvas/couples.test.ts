@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type Couple, seatCouples } from './couples';
+import { coupleChangeAfterDrop, type Couple, seatCouples } from './couples';
 import { CARD_WIDTH } from './graph-to-flow';
 
 const GAP = 32;
@@ -114,5 +114,77 @@ describe('seatCouples', () => {
     const moved = seatCouples(pos, [couple('U', 'ben', 'xan')], BLOOD, GAP);
     expect(moved.size).toBe(0);
     expect(x(pos, 'xan')).toBe(1000);
+  });
+});
+
+describe('coupleChangeAfterDrop (brief #16)', () => {
+  it('a dragged partner past the other one swaps the couple', () => {
+    const couples = [couple('U', 'ben', 'xan')];
+    const at = (ben: number) =>
+      new Map([
+        ['p:ben', ben],
+        ['p:xan', 216],
+      ]);
+    expect(coupleChangeAfterDrop(couples, 'p:ben', at(400))).toEqual({
+      kind: 'swap',
+      unionId: 'U',
+    });
+    expect(coupleChangeAfterDrop(couples, 'p:ben', at(100))).toBeNull();
+    // Partner b starts on the right: dragging it left past a swaps.
+    expect(
+      coupleChangeAfterDrop(
+        couples,
+        'p:xan',
+        new Map([
+          ['p:ben', 0],
+          ['p:xan', -50],
+        ]),
+      ),
+    ).toEqual({
+      kind: 'swap',
+      unionId: 'U',
+    });
+  });
+
+  it("an end of a three-chain dragged past the hub reverses the hub's order", () => {
+    const couples = [
+      couple('da', 'david', 'anna', 1, null),
+      couple('dl', 'david', 'laura', 2, null),
+    ];
+    const x = (anna: number) =>
+      new Map([
+        ['p:anna', anna],
+        ['p:david', 216],
+        ['p:laura', 432],
+      ]);
+    expect(coupleChangeAfterDrop(couples, 'p:anna', x(700))).toEqual({
+      kind: 'unionOrder',
+      personId: 'david',
+      unionIds: ['dl', 'da'],
+    });
+    expect(coupleChangeAfterDrop(couples, 'p:anna', x(100))).toBeNull();
+    const laura = new Map([
+      ['p:anna', 0],
+      ['p:david', 216],
+      ['p:laura', 10],
+    ]);
+    expect(coupleChangeAfterDrop(couples, 'p:laura', laura)).toEqual({
+      kind: 'unionOrder',
+      personId: 'david',
+      unionIds: ['dl', 'da'],
+    });
+  });
+
+  it('snaps back for the hub itself, a single person, or a partner not on screen', () => {
+    const couples = [couple('da', 'david', 'anna'), couple('dl', 'david', 'laura')];
+    const x = new Map([
+      ['p:anna', 0],
+      ['p:david', 900],
+      ['p:laura', 432],
+    ]);
+    expect(coupleChangeAfterDrop(couples, 'p:david', x)).toBeNull();
+    expect(coupleChangeAfterDrop(couples, 'p:zed', x)).toBeNull();
+    const alone = new Map([['p:ben', 900]]);
+    expect(coupleChangeAfterDrop([couple('U', 'ben', 'xan')], 'p:ben', alone)).toBeNull();
   });
 });

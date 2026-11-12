@@ -14,6 +14,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type CanvasActions, CanvasActionsProvider, SelectionProvider } from './CanvasActions';
+import { type Couple, type CoupleChange, coupleChangeAfterDrop } from './couples';
 import { createSelectionStore } from './selection';
 import { canvasSettings, isNodeVisible, reorderAfterDrop } from './canvas-settings';
 import {
@@ -34,6 +35,8 @@ export interface FamilyCanvasProps {
   nodes: CanvasNode[];
   edges: Edge[];
   families: Family[];
+  /** Shown couples, for swapping sides and ordering partners by drag (brief #16). */
+  couples?: Couple[];
   /** Centred after each layout in focus view; null in full view. */
   focusId: string | null;
   actions: Omit<CanvasActions, 'reveal'>; // keep it referentially stable
@@ -43,6 +46,8 @@ export interface FamilyCanvasProps {
   onReorder?: (unionId: string, childIds: string[]) => void;
   /** A child's line dropped on another union dot (brief #13). */
   onReparent?: (linkId: string, unionId: string) => void;
+  /** A partner dragged past the other one, or an end of a chain past the hub (brief #16). */
+  onCoupleChange?: (change: CoupleChange) => void;
 }
 
 export function FamilyCanvas(props: FamilyCanvasProps) {
@@ -64,6 +69,8 @@ function CanvasInner({
   selectedId,
   onReorder,
   onReparent,
+  couples,
+  onCoupleChange,
 }: FamilyCanvasProps) {
   const flow = useReactFlow<CanvasNode>();
   const pane = useRef<HTMLDivElement>(null);
@@ -112,11 +119,17 @@ function CanvasInner({
           .map((n) => [n.data.person.id, n.position.x]),
       );
       setShown(nodes); // snap back; the next layout puts the card in its new place
-      if (node.type !== 'person' || !node.data.reorderUnionId || !onReorder) return;
-      const next = reorderAfterDrop(families, node.data.reorderUnionId, x);
-      if (next) onReorder(node.data.reorderUnionId, next);
+      if (node.type !== 'person') return;
+      if (node.data.reorderUnionId) {
+        const next = onReorder && reorderAfterDrop(families, node.data.reorderUnionId, x);
+        if (next) onReorder(node.data.reorderUnionId, next);
+      } else if (node.data.coupleDrag && couples && onCoupleChange) {
+        const at = new Map([...x].map(([id, px]) => [personNodeId(id), px]));
+        const change = coupleChangeAfterDrop(couples, node.id, at);
+        if (change) onCoupleChange(change);
+      }
     },
-    [flow, families, nodes, onReorder],
+    [flow, families, nodes, onReorder, couples, onCoupleChange],
   );
 
   // No local edge update: the reload after the API call redraws them.
