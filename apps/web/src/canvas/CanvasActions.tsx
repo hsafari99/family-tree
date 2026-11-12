@@ -9,6 +9,8 @@ export interface CanvasActions extends CardMenuActions {
   openPerson(personId: string): void;
   addRelative(personId: string, as: RelativeRole): void;
   openUnion(unionId: string): void;
+  /** Hides or shows the person's descendants (Task 13). */
+  toggleBranch(personId: string): void;
   /** Pans so the card is on screen (keyboard focus). */
   reveal(personId: string): void;
   /** Pans and zooms so the card is in the middle (search, "Centre on me"). */

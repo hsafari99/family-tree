@@ -200,4 +200,23 @@ describe('PersonCardView', () => {
       }
     });
   });
+
+  it('a parent’s chevron hides their descendants; a collapsed card shows +N to bring them back', () => {
+    const onToggleBranch = vi.fn();
+    const { unmount } = view({ branch: { collapsed: false }, onToggleBranch });
+    fireEvent.click(screen.getByRole('button', { name: 'Hide descendants of Robert Hale' }));
+    expect(onToggleBranch).toHaveBeenCalledTimes(1);
+    unmount();
+    view({ branch: { collapsed: true, hidden: 4 }, onToggleBranch });
+    const show = screen.getByRole('button', { name: 'Show 4 hidden descendants of Robert Hale' });
+    expect(show).toHaveTextContent('+4');
+    fireEvent.click(show);
+    expect(onToggleBranch).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('button', { name: /^Hide descendants/ })).toBeNull();
+  });
+
+  it('has no chevron without children shown', () => {
+    view({ onToggleBranch: vi.fn() });
+    expect(screen.queryByRole('button', { name: /descendants/ })).toBeNull();
+  });
 });

@@ -1,5 +1,6 @@
 import type { GraphPerson, RelativeRole } from '@family-tree/shared';
 import { Handle, type NodeProps, Position, type ReactFlowState, useStore } from '@xyflow/react';
+import { ChevronIcon } from '../components/icons';
 import { PersonPhoto } from '../components/PersonPhoto';
 import { initials, personName, personYears } from '../trees/format';
 import { useRef } from 'react';
@@ -10,7 +11,7 @@ import { type CardDetail, cardDetail } from './canvas-settings';
 import { useCanvasActions, useSelectionStore } from './CanvasActions';
 import { useIsSelected } from './selection';
 import { usePointerCoarse } from './use-pointer';
-import type { PersonFlowNode } from './graph-to-flow';
+import type { PersonFlowNode, PersonNodeData } from './graph-to-flow';
 import type { NavDirection } from './keyboard-nav';
 
 const ARROWS: Record<string, NavDirection> = {
@@ -39,6 +40,8 @@ export function PersonCardView({
   onFocus,
   menu,
   onNavigate,
+  branch = null,
+  onToggleBranch,
 }: {
   person: GraphPerson;
   detail: CardDetail;
@@ -54,6 +57,9 @@ export function PersonCardView({
   menu?: MenuItem[];
   /** An arrow key on the card: move to a relative (Task 12). */
   onNavigate?: (dir: NavDirection) => void;
+  /** Collapse state (Task 13): a chevron hides the descendants, "+N" shows them again. */
+  branch?: PersonNodeData['branch'];
+  onToggleBranch?: () => void;
 }) {
   const openButton = useRef<HTMLButtonElement>(null);
   const cardMenu = useCardMenu(() => openButton.current);
@@ -157,6 +163,32 @@ export function PersonCardView({
             +
           </button>
         ))}
+      {branch && onToggleBranch && detail !== 'dot' && branch.collapsed && (
+        <button
+          type="button"
+          className="card-branch is-collapsed nodrag"
+          aria-label={`Show ${branch.hidden} hidden descendants of ${name}`}
+          data-tip="Show descendants"
+          onClick={onToggleBranch}
+        >
+          +{branch.hidden}
+        </button>
+      )}
+      {branch &&
+        onToggleBranch &&
+        detail === 'full' &&
+        !branch.collapsed &&
+        (!isCoarse || isSelected) && (
+          <button
+            type="button"
+            className="card-branch nodrag"
+            aria-label={`Hide descendants of ${name}`}
+            data-tip="Hide descendants"
+            onClick={onToggleBranch}
+          >
+            <ChevronIcon direction="up" />
+          </button>
+        )}
       {menu && cardMenu.at && (
         <CardMenu
           label={`Actions for ${name}`}
@@ -204,6 +236,8 @@ export function PersonNode({ data }: NodeProps<PersonFlowNode>) {
         onFocus={() => actions.reveal(id)}
         menu={cardMenuItems(data.person, actions)}
         onNavigate={(dir) => actions.move(id, dir)}
+        branch={data.branch}
+        onToggleBranch={() => actions.toggleBranch(id)}
       />
       {/* Bottom: children's and elbow partner lines; the sides: straight partner lines (Task 6). */}
       {(['bottom', 'left', 'right'] as const).map((id) => (

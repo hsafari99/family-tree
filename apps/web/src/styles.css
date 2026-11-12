@@ -775,6 +775,58 @@ img.card-avatar {
   right: -12px;
   top: 4px;
 }
+/* Collapse a branch (Task 13): a chevron on the bottom edge, left of the children's line (the "+"
+   is on its right), shown like the "+" buttons; a collapsed card's "+N" pill always shows. */
+.person-card .card-branch {
+  position: absolute;
+  bottom: -12px;
+  left: calc(50% - 38px);
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-1);
+  opacity: 0;
+}
+.person-card .card-branch .icon {
+  width: 14px;
+  height: 14px;
+}
+.person-card:hover .card-branch,
+.person-card:focus-within .card-branch,
+.person-card.is-selected .card-branch,
+.person-card .card-branch.is-collapsed {
+  opacity: 1;
+}
+.person-card .card-branch.is-collapsed {
+  left: auto;
+  right: calc(50% + 10px);
+  width: auto;
+  min-width: 32px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--text-xs);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.person-card .card-branch:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: var(--shadow-2);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .person-card .card-branch {
+    transition: opacity var(--dur) var(--ease);
+  }
+}
 /* The canvas toolbar: a vertical pill in the bottom right (Task 10). The minimap sits to its left,
    smaller on a phone (where it starts hidden). */
 .canvas-toolbar {
@@ -918,6 +970,7 @@ button.union-dot:hover {
    person, or anyone outside a sibling group); the buttons inside must still take clicks. */
 .person-card .card-open,
 .person-card .card-add,
+.person-card .card-branch,
 .union-dot {
   pointer-events: auto;
 }
@@ -2650,6 +2703,7 @@ button.section-row > .icon,
 /* Small round and icon-only buttons keep their own size, not the text buttons' minimum height. */
 button.icon-button,
 .person-card button.card-add,
+.person-card button.card-branch,
 button.canvas-tool,
 button.search-result,
 button.menu-item,

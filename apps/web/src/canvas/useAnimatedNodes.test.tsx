@@ -14,6 +14,7 @@ const node = (id: string, x: number, className?: string): CanvasNode => ({
     isMe: false,
     reorderUnionId: null,
     coupleDrag: false,
+    branch: null,
   },
   ...(className ? { className } : {}),
 });

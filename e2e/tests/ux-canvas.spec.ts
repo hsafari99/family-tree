@@ -308,6 +308,26 @@ test('arrow keys move focus between relatives', async ({ page }) => {
   expect(page.url()).toBe(url);
 });
 
+test('collapsing a branch hides the descendants, and expanding brings them back', async ({
+  page,
+}) => {
+  await inLawTree(page);
+  const paul = card(page, 'Paul Pine');
+  await paul.hover();
+  await page.getByRole('button', { name: 'Hide descendants of Paul Pine' }).click();
+  await expect(card(page, 'Ben Pine')).toHaveCount(0);
+  await expect(card(page, 'Xan Other')).toHaveCount(0);
+  await expect(card(page, 'Mary Pine')).toBeVisible();
+  // Remembered across a reload.
+  await page.reload();
+  const show = page.getByRole('button', { name: 'Show 4 hidden descendants of Paul Pine' });
+  await expect(show).toHaveText('+4');
+  await expect(card(page, 'Ann Pine')).toHaveCount(0);
+  await show.click();
+  await expect(card(page, 'Ben Pine')).toBeVisible();
+  await expect(card(page, 'Xan Other')).toBeVisible();
+});
+
 test.describe('on a phone', () => {
   test.use({ viewport: { width: 390, height: 844 } });
 

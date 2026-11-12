@@ -35,6 +35,7 @@ import {
 } from '../../canvas/params';
 import { applyHighlight, type PathHighlight, pathHighlight } from '../../canvas/highlight';
 import { applyLineage, lineage } from '../../canvas/lineage';
+import { useHiddenBranches } from '../../canvas/useHiddenBranches';
 import { useTreeGraph } from '../../canvas/useTreeGraph';
 import { personName, ROLE_LABEL } from '../../trees/format';
 import { useTreesApi } from '../../trees/TreesApiContext';
@@ -80,10 +81,17 @@ export function TreeWorkspace({
     view.mode === 'full'
       ? { mode: 'full', ...(view.branch ? { branch: view.branch } : {}) }
       : { mode: 'focus', ...(focusId ? { focus: focusId } : {}), depth: view.depth };
+  // Collapsed branches (Task 13), remembered per tree; hiding keeps whoever links to the root.
+  const branches = useHiddenBranches(treeId);
   const graph = useTreeGraph(
     treeId,
     query,
-    { focusId: view.mode === 'focus' ? focusId : null, meId: detail.me.personId },
+    {
+      focusId: view.mode === 'focus' ? focusId : null,
+      meId: detail.me.personId,
+      hidden: branches.hidden,
+      anchorId: detail.tree.rootPersonId ?? detail.me.personId,
+    },
     refreshKey,
   );
 
@@ -126,6 +134,7 @@ export function TreeWorkspace({
     setCollapsedState(v);
     writeCollapsed(v);
   }, []);
+  const toggleBranchOf = branches.toggle;
   // Opening something from the canvas always shows it.
   const actions = useMemo(
     () => ({
@@ -152,6 +161,7 @@ export function TreeWorkspace({
           to: id === latest.current.meId ? null : id,
         });
       },
+      toggleBranch: toggleBranchOf,
       openUnion: (id: string) => {
         setCollapsed(false);
         go(`${base}/unions/${id}`, {
@@ -162,7 +172,7 @@ export function TreeWorkspace({
         });
       },
     }),
-    [go, base, setCollapsed],
+    [go, base, setCollapsed, toggleBranchOf],
   );
   const [notice, setNotice] = useState<string | null>(null);
   const onReorder = useCallback(
@@ -194,9 +204,17 @@ export function TreeWorkspace({
   );
   // A search pick: the canvas flies to the card (a new seq each time, even for the same person).
   const [flyRequest, setFlyRequest] = useState<{ personId: string; seq: number } | null>(null);
+  const hiddenBy = useRef<ReadonlyMap<string, string[]>>(new Map());
+  hiddenBy.current = graph.status === 'ready' ? graph.hiddenBy : new Map();
+  const showBranches = branches.show;
   const flyToChosen = useCallback(
-    (personId: string) => setFlyRequest((r) => ({ personId, seq: (r?.seq ?? 0) + 1 })),
-    [],
+    (personId: string) => {
+      // Inside a collapsed branch: expand it, and fly once the new layout is drawn.
+      const by = hiddenBy.current.get(personId);
+      if (by) showBranches(by);
+      setFlyRequest((r) => ({ personId, seq: (r?.seq ?? 0) + 1 }));
+    },
+    [showBranches],
   );
   const returnFocusTo = useRef<{ id: string | null } | null>(null);
   // Escape collapses the panel and gives focus back to the card (the URL keeps the selection, so

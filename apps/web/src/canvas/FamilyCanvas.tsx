@@ -34,6 +34,7 @@ import { PersonNode } from './PersonCard';
 import { reparentFromReconnect } from './reparent';
 import { UnionNode } from './UnionNode';
 import { useAnimatedNodes } from './useAnimatedNodes';
+import { onScreen, pinnedAt } from './view-math';
 
 const NODE_TYPES = { person: PersonNode, union: UnionNode } satisfies NodeTypes;
 const EDGE_TYPES = { family: FamilyEdge } satisfies EdgeTypes;
@@ -143,6 +144,22 @@ function CanvasInner({
     },
     [flow],
   );
+  // A collapse or expand keeps its card where it was on screen instead of refitting (Task 13).
+  const pinned = useRef<{ personId: string; screen: { x: number; y: number } } | null>(null);
+  const toggleBranch = useCallback(
+    (personId: string) => {
+      const node = flow.getNode(personNodeId(personId));
+      if (node) {
+        const vp = flow.getViewport();
+        pinned.current = {
+          personId,
+          screen: onScreen({ ...node.position, width: 0, height: 0 }, vp),
+        };
+      }
+      actions.toggleBranch(personId);
+    },
+    [flow, actions],
+  );
   const pendingFly = useRef<string | null>(null);
   const flySeq = flyRequest?.seq;
   const flyId = flyRequest?.personId;
@@ -159,6 +176,16 @@ function CanvasInner({
   useEffect(() => {
     if (latest.current.nodes.length === 0) return;
     let cancelled = false;
+    // A collapse: glide the view along with the cards, so the toggled card stays put.
+    const pin = pinned.current;
+    pinned.current = null;
+    const pinTo = pin && latest.current.nodes.find((n) => n.id === personNodeId(pin.personId));
+    if (pin && pinTo) {
+      void flow.setViewport(pinnedAt(pin.screen, pinTo.position, flow.getViewport().zoom), {
+        duration: motionMs(320),
+      });
+      userMoved.current = true;
+    }
     // Let React Flow take the new nodes and its new size, and measure them, first (two frames):
     // fitting earlier used the previous bounds and could crop the drawing.
     const refit = async () => {
@@ -173,7 +200,7 @@ function CanvasInner({
       pendingFly.current = null;
       if (pending) flyTo(pending);
     };
-    void refit();
+    if (!pinTo) void refit();
     const el = pane.current;
     if (!el || typeof ResizeObserver === 'undefined') return () => void (cancelled = true);
     let width = el.clientWidth;
@@ -275,8 +302,8 @@ function CanvasInner({
     [reveal],
   );
   const ctx = useMemo(
-    () => ({ ...actions, reveal, flyTo: flyToPerson, move }),
-    [actions, reveal, flyToPerson, move],
+    () => ({ ...actions, reveal, flyTo: flyToPerson, move, toggleBranch }),
+    [actions, reveal, flyToPerson, move, toggleBranch],
   );
   const settings = canvasSettings(nodes.length);
 

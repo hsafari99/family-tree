@@ -22,6 +22,8 @@ export type PersonNodeData = {
   reorderUnionId: string | null;
   /** In an editable couple on screen: dragging past a partner swaps or reorders (brief #16). */
   coupleDrag: boolean;
+  /** Collapse state (Task 13): open when they have children shown, collapsed with a count. */
+  branch: { collapsed: false } | { collapsed: true; hidden: number } | null;
 };
 export type PersonFlowNode = Node<PersonNodeData, 'person'>;
 export type UnionNodeData = { union: GraphUnionView; ended: boolean; label: string };
@@ -70,6 +72,7 @@ export function graphToFlow(
       isMe: person.id === meId,
       reorderUnionId: null,
       coupleDrag: false,
+      branch: null,
     },
   }));
   const edges: Edge[] = [];

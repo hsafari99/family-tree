@@ -7,6 +7,7 @@ import { FakeLayoutEngine } from '../test/fake-layout';
 import { FakeTreesApi, fakePerson } from '../test/fake-trees';
 import { TreesApiProvider } from '../trees/TreesApiContext';
 import { LayoutEngineProvider } from './LayoutEngineContext';
+import { haleGraph } from './test-fixtures';
 import { type TreeGraphState, useTreeGraph } from './useTreeGraph';
 
 function Probe({
@@ -67,5 +68,37 @@ describe('useTreeGraph', () => {
     await waitFor(() => expect(s.out.current?.status).toBe('loading'));
     await act(async () => s.trees.release());
     await waitFor(() => expect(s.out.current?.status).toBe('ready'));
+  });
+
+  it('hides collapsed branches without fetching again, and marks the cards', async () => {
+    const s = setup();
+    s.trees.trees.get(s.a)!.graph = haleGraph();
+    let hidden: ReadonlySet<string> = new Set();
+    function Collapsing() {
+      s.out.current = useTreeGraph(
+        s.a,
+        { mode: 'full' },
+        { focusId: null, meId: null, hidden, anchorId: 'robert' },
+        0,
+      );
+      return null;
+    }
+    const { rerender } = render(s.wrap(<Collapsing />));
+    await waitFor(() => expect(s.out.current?.status).toBe('ready'));
+    const card = (id: string) => {
+      const st = s.out.current;
+      if (st?.status !== 'ready') return undefined;
+      const n = st.nodes.find((x) => x.id === `p:${id}`);
+      return n?.type === 'person' ? n : undefined;
+    };
+    expect(card('david')?.data.branch).toEqual({ collapsed: false });
+    expect(card('emma')?.data.branch).toBeNull();
+    hidden = new Set(['david']);
+    rerender(s.wrap(<Collapsing />));
+    await waitFor(() => expect(card('emma')).toBeUndefined());
+    expect(card('david')?.data.branch).toEqual({ collapsed: true, hidden: 3 });
+    expect(s.trees.callsTo('getGraph')).toHaveLength(1);
+    const st = s.out.current;
+    expect(st?.status === 'ready' && st.hiddenBy.get('leo')).toEqual(['david']);
   });
 });

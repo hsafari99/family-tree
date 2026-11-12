@@ -30,6 +30,7 @@ const actions = () => ({
   openPerson: vi.fn(),
   addRelative: vi.fn(),
   openUnion: vi.fn(),
+  toggleBranch: vi.fn(),
   focusPerson: vi.fn(),
   howRelated: vi.fn(),
 });
