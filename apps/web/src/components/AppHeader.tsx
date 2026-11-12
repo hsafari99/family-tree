@@ -8,6 +8,7 @@ import {
 } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
+import logoUrl from '../assets/logo.png';
 import { Avatar } from './Avatar';
 import { MenuButton } from './MenuButton';
 
@@ -87,7 +88,9 @@ export function AppHeader() {
       <div className="app-header-bar">
         <div className="app-header-place">
           <Link to="/" className="app-name">
-            {APP_NAME}
+            {/* Decorative: the link is named by the app name beside it. */}
+            <img className="app-logo" src={logoUrl} alt="" width={57} height={36} />
+            <span className="app-name-text">{APP_NAME}</span>
           </Link>
           {tree && (
             <>

@@ -22,7 +22,12 @@ describe('AppHeader', () => {
     renderAt('/sign-in');
     await screen.findByRole('heading', { name: 'Sign in' });
     const header = banner();
-    expect(within(header).getByRole('link', { name: 'Family Tree' })).toHaveAttribute('href', '/');
+    const home = within(header).getByRole('link', { name: 'Family Tree' });
+    expect(home).toHaveAttribute('href', '/');
+    // The logo is part of the home link, and decorative (the name beside it labels the link).
+    const logo = home.querySelector('img.app-logo');
+    expect(logo).not.toBeNull();
+    expect(logo).toHaveAttribute('alt', '');
     expect(within(header).queryByRole('navigation')).toBeNull();
     expect(within(header).queryByRole('button', { name: 'Account menu' })).toBeNull();
     const skip = screen.getByRole('link', { name: 'Skip to main content' });
