@@ -1329,11 +1329,15 @@ button.section-row:hover {
   display: inline-block;
 }
 .menu-list {
-  position: absolute;
-  right: 0;
+  /* Fixed and placed by MenuButton's placeMenu, so dialogs and scroll areas can't clip it. */
+  position: fixed;
   z-index: 30;
   min-width: 12rem;
-  margin: 0.25rem 0 0;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  box-sizing: border-box;
+  margin: 0;
   padding: 0.25rem;
   list-style: none;
   background: Canvas;

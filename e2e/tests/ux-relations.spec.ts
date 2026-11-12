@@ -140,3 +140,24 @@ test('Add person: Related to … as Partner or spouse draws a union', async ({ p
     dot(page, /^Relationship of (Rae Root and Sam Spouse|Sam Spouse and Rae Root)/),
   ).toHaveCount(1);
 });
+
+test('the Add relative menu in the Relations dialog opens fully on screen', async ({ page }) => {
+  await newTree(page);
+  const dialog = await openPanel(page, ROOT, 'Relations');
+  await dialog.getByRole('button', { name: 'Add relative' }).click();
+  const menu = page.getByRole('menu', { name: 'Add relative' });
+  await expect(menu).toBeInViewport({ ratio: 1 });
+  const items = menu.getByRole('menuitem');
+  expect(await items.count()).toBeGreaterThan(0);
+  for (const item of await items.all()) await expect(item).toBeInViewport({ ratio: 1 });
+  // The menu is drawn above the dialog, not hidden behind or clipped by it.
+  const first = items.first();
+  const box = (await first.boundingBox())!;
+  const hit = await page.evaluate(
+    ([x, y]) => document.elementFromPoint(x!, y!)?.closest('[role="menuitem"]')?.textContent,
+    [box.x + box.width / 2, box.y + box.height / 2],
+  );
+  expect(hit).toBe(await first.textContent());
+  await first.click();
+  await expect(menu).toHaveCount(0);
+});
