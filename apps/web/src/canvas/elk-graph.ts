@@ -66,8 +66,16 @@ export function applyElkLayout(
 ): CanvasNode[] {
   const pos = new Map((laidOut.children ?? []).map((c) => [c.id, { x: c.x ?? 0, y: c.y ?? 0 }]));
   const gap = Number(ELK_LAYOUT_OPTIONS['elk.spacing.nodeNode']);
-  seatCouples(pos, couples, new Set(blood), gap);
-  placeUnionDots(nodes, laidOut, pos, gap);
+  // Row by row from the top: seat the row (each family under its parents' dot, now that the row
+  // above is final), then put down the dots that hang from it.
+  const dots = dotPlacer(nodes, laidOut, pos, gap);
+  const bloodSet = new Set(blood);
+  for (const y of personRows(pos)) {
+    seatCouples(pos, couples, bloodSet, gap, { row: y, anchor: dots.anchor });
+    dots.unknownOver(y);
+    dots.under(y);
+  }
+  dots.rest();
   return nodes
     .map((n) => {
       const p = pos.get(n.id);
@@ -77,6 +85,11 @@ export function applyElkLayout(
 }
 
 type Pos = { x: number; y: number };
+const personRows = (pos: ReadonlyMap<string, Pos>) =>
+  [...new Set([...pos].filter(([id]) => id.startsWith('p:')).map(([, p]) => Math.round(p.y)))].sort(
+    (a, b) => a - b,
+  );
+
 /**
  * Places every union dot once seatCouples has moved the people (brief #11, #14). A couple's dot goes
  * midway between them; a one-partner dot under its partner's card (several fan out side by side); a
@@ -89,9 +102,24 @@ export function placeUnionDots(
   pos: Map<string, Pos>,
   gap: number,
 ): void {
+  const dots = dotPlacer(nodes, laidOut, pos, gap);
+  for (const y of personRows(pos)) dots.under(y);
+  for (const y of personRows(pos)) dots.unknownOver(y);
+  dots.rest();
+}
+
+/** The dot pass, a row at a time (see placeUnionDots), and where each child's parents' dot is. */
+function dotPlacer(
+  nodes: readonly CanvasNode[],
+  laidOut: ElkNode,
+  pos: Map<string, Pos>,
+  gap: number,
+) {
   const centre = (id: string) => pos.get(id)!.x + CARD_WIDTH / 2;
+  const rowOf = (id: string) => Math.round(pos.get(id)!.y);
   const step = UNION_SIZE + gap / 2;
   const placed: Pos[] = [];
+  const done = new Set<string>();
   const clashes = (x: number, y: number) =>
     placed.some((q) => Math.abs(q.y - y) < UNION_SIZE && Math.abs(q.x - x) < step);
   const put = (id: string, want: number) => {
@@ -103,13 +131,16 @@ export function placeUnionDots(
     const p = { x, y };
     pos.set(id, p);
     placed.push(p);
+    done.add(id);
   };
   const shown = (id: string | null) => (id !== null && pos.has(`p:${id}`) ? `p:${id}` : null);
   const kidsOf = new Map<string, string[]>(); // union node id -> its shown children's node ids
+  const parentsOf = new Map<string, string>(); // child node id -> their (first) parents' dot
   for (const e of laidOut.edges ?? []) {
     const [from, to] = [e.sources[0]!, e.targets[0]!];
-    if (e.id.startsWith('child:') && pos.has(to))
-      kidsOf.set(from, [...(kidsOf.get(from) ?? []), to]);
+    if (!e.id.startsWith('child:') || !pos.has(to)) continue;
+    kidsOf.set(from, [...(kidsOf.get(from) ?? []), to]);
+    if (!parentsOf.has(to)) parentsOf.set(to, from);
   }
   const couples: [string, string, string][] = [];
   const singles = new Map<string, string[]>(); // partner node id -> their one-partner dots
@@ -123,18 +154,34 @@ export function placeUnionDots(
     else if (ps.length === 1) singles.set(ps[0]!, [...(singles.get(ps[0]!) ?? []), n.id]);
     else unknown.push(n.id);
   }
-  for (const [id, a, b] of couples) put(id, (centre(a) + centre(b)) / 2);
-  // A card's centre is at least (CARD_WIDTH + gap) / 2 from any couple dot of its row, so up to five
-  // dots fan out under one card before the nudge has anything to do.
-  for (const [p, dots] of singles)
-    dots.forEach((id, i) => put(id, centre(p) + (i - (dots.length - 1) / 2) * step));
-  for (const id of unknown) {
-    const kids = kidsOf.get(id) ?? [];
-    put(
-      id,
-      kids.length > 0
-        ? kids.reduce((sum, k) => sum + centre(k), 0) / kids.length
-        : pos.get(id)!.x + UNION_SIZE / 2,
-    );
-  }
+  return {
+    /** Where a person's parents' dot is (its centre x), once it has been placed. */
+    anchor: (personId: string) => {
+      const dot = parentsOf.get(personId);
+      return dot !== undefined && done.has(dot) ? pos.get(dot)!.x + UNION_SIZE / 2 : undefined;
+    },
+    /** The couple and one-partner dots of the people in row y. */
+    under(y: number) {
+      for (const [id, a, b] of couples)
+        if (!done.has(id) && rowOf(a) === y) put(id, (centre(a) + centre(b)) / 2);
+      // A card's centre is at least (CARD_WIDTH + gap) / 2 from any couple dot of its row, so up to
+      // five dots fan out under one card before the nudge has anything to do.
+      for (const [p, list] of singles) {
+        if (rowOf(p) !== y) continue;
+        list.forEach((id, i) => put(id, centre(p) + (i - (list.length - 1) / 2) * step));
+      }
+    },
+    /** The parents-unknown dots over children in row y. */
+    unknownOver(y: number) {
+      for (const id of unknown) {
+        const kids = kidsOf.get(id) ?? [];
+        if (done.has(id) || kids.length === 0 || rowOf(kids[0]!) !== y) continue;
+        put(id, kids.reduce((sum, k) => sum + centre(k), 0) / kids.length);
+      }
+    },
+    /** Any dot left (a parents-unknown dot with no shown child) stays where ELK put it. */
+    rest() {
+      for (const id of unknown) if (!done.has(id)) put(id, pos.get(id)!.x + UNION_SIZE / 2);
+    },
+  };
 }

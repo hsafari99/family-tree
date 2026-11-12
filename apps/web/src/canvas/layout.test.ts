@@ -135,6 +135,23 @@ describe('couples in the layout (brief #14)', () => {
     }
   });
 
+  it("puts an only child (or the child and their partner) under their parents' dot", async () => {
+    const near = async (g: TreeGraph, child: string, dot: string, partner?: string) => {
+      const pos = await layout(g);
+      const c = (id: string) => pos.get(id)!.x + CARD_WIDTH / 2;
+      const d = pos.get(dot)!.x + UNION_SIZE / 2;
+      if (partner) {
+        const [l, r] = [c(child), c(partner)].sort((m, n) => m - n);
+        expect(d, `${child} and ${partner} under ${dot}`).toBeGreaterThanOrEqual(l!);
+        expect(d, `${child} and ${partner} under ${dot}`).toBeLessThanOrEqual(r!);
+      } else expect(Math.abs(c(child) - d), `${child} under ${dot}`).toBeLessThan(CARD_WIDTH / 2);
+    };
+    await near(inLawGraph(), 'kid', 'u-bx');
+    await near(unknownParentsFamilyGraph(), 'kid', 'u-bx', 'sue');
+    await near(unknownParentsFamilyGraph(), 'ali', 'u-a');
+    await near(haleGraph(), 'emma', 'u-da');
+  });
+
   it('puts a one-partner dot under its partner and a parents-unknown dot over its children', async () => {
     const pos = await layout(unknownParentsFamilyGraph());
     const card = (id: string) => pos.get(id)!.x + CARD_WIDTH / 2;

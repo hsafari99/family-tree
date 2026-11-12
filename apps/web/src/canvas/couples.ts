@@ -14,6 +14,12 @@ export interface Couple {
   rank?: number;
 }
 type Pos = { x: number; y: number };
+export interface SeatOptions {
+  /** Seat only this row (its y, rounded). */
+  row?: number;
+  /** The centre x of a person's parents' dot, once placed: their family is centred under it. */
+  anchor?: (personNodeId: string) => number | undefined;
+}
 
 /**
  * One person's couples in *their own* saved order (their slot's column), then by start year, then
@@ -44,6 +50,7 @@ export function seatCouples(
   couples: readonly Couple[],
   blood: ReadonlySet<string>,
   gap: number,
+  opts: SeatOptions = {},
 ): Map<string, number> {
   const moved = new Map<string, number>();
   const rowOf = (id: string) => Math.round(pos.get(id)!.y);
@@ -58,7 +65,8 @@ export function seatCouples(
   for (const id of pos.keys())
     if (id.startsWith('p:')) rows.set(rowOf(id), [...(rows.get(rowOf(id)) ?? []), id]);
 
-  for (const ids of rows.values()) {
+  for (const [y, ids] of rows) {
+    if (opts.row !== undefined && y !== opts.row) continue;
     ids.sort((m, n) => pos.get(m)!.x - pos.get(n)!.x);
     const seen = new Set<string>();
     const groups: string[][] = [];
@@ -81,11 +89,27 @@ export function seatCouples(
     };
     const keys = new Map(groups.map((g) => [g, key(g)]));
     groups.sort((g, h) => keys.get(g)! - keys.get(h)!);
-    let cursor = -Infinity;
+    // Neighbouring groups under the same parents' dot form a block, centred under that dot.
+    const dotOf = (g: string[]) => {
+      for (const p of g) {
+        const a = blood.has(p) ? opts.anchor?.(p) : undefined;
+        if (a !== undefined) return a;
+      }
+      return undefined;
+    };
+    const blocks: { members: string[]; dot: number | undefined }[] = [];
     for (const g of groups) {
-      const width = g.length * CARD_WIDTH + (g.length - 1) * gap;
-      const left = Math.max(meanX(g) - (width - CARD_WIDTH) / 2, cursor);
-      g.forEach((p, i) => {
+      const dot = dotOf(g);
+      const last = blocks.at(-1);
+      if (last && dot !== undefined && last.dot === dot) last.members.push(...g);
+      else blocks.push({ members: [...g], dot });
+    }
+    let cursor = -Infinity;
+    for (const { members, dot } of blocks) {
+      const width = members.length * CARD_WIDTH + (members.length - 1) * gap;
+      const want = dot !== undefined ? dot - width / 2 : meanX(members) - (width - CARD_WIDTH) / 2;
+      const left = Math.max(want, cursor);
+      members.forEach((p, i) => {
         const x = left + i * (CARD_WIDTH + gap);
         const dx = x - pos.get(p)!.x;
         if (dx !== 0) moved.set(p, dx);

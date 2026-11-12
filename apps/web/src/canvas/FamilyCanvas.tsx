@@ -81,53 +81,58 @@ function CanvasInner({
     [],
   );
 
-  // After every new layout: fit, then (focus view) centre on the focus person.
+  // Whether the person moved or zoomed the view since the last fit (then a resize keeps their place).
+  const userMoved = useRef(false);
+  /** Fit the drawing, then (focus view) centre on the focus person. */
+  const fit = useCallback(async () => {
+    // With the minimap shown, keep the drawing clear of it (bottom right) and of the zoom
+    // controls (bottom left), so no card sits under them.
+    const padding = canvasSettings(nodes.length).showMiniMap
+      ? { top: 0.1, right: 0.1, left: '64px' as const, bottom: '176px' as const }
+      : 0.2;
+    await flow.fitView({ padding, maxZoom: 1.1, duration: 0 });
+    const focus = focusId ? nodes.find((n) => n.id === personNodeId(focusId)) : undefined;
+    if (focus) {
+      await flow.setCenter(focus.position.x + CARD_WIDTH / 2, focus.position.y + CARD_HEIGHT / 2, {
+        zoom: flow.getViewport().zoom,
+        duration: 0,
+      });
+    }
+    userMoved.current = false;
+  }, [flow, nodes, focusId]);
+
+  // After every new layout, and when the canvas changes width (the panel opening or closing beside
+  // it): fit again, unless the person has moved the view since, in which case keep what was in the
+  // middle in the middle.
   useEffect(() => {
     if (nodes.length === 0) return;
     let cancelled = false;
-    void (async () => {
-      // Let React Flow take the new nodes and measure them first (two frames): fitting earlier
-      // used the previous layout's bounds and could crop the top row.
+    // Let React Flow take the new nodes and its new size, and measure them, first (two frames):
+    // fitting earlier used the previous bounds and could crop the drawing.
+    const refit = async () => {
       await nextFrame();
       await nextFrame();
-      if (cancelled) return;
-      await flow.fitView({ padding: 0.2, maxZoom: 1.1, duration: 0 });
-      const focus = focusId ? nodes.find((n) => n.id === personNodeId(focusId)) : undefined;
-      if (focus) {
-        await flow.setCenter(
-          focus.position.x + CARD_WIDTH / 2,
-          focus.position.y + CARD_HEIGHT / 2,
-          {
-            zoom: flow.getViewport().zoom,
-            duration: 0,
-          },
-        );
-      }
-    })();
-    return () => {
-      cancelled = true;
+      if (!cancelled) await fit();
     };
-  }, [flow, nodes, focusId]);
-
-  // The panel opening or closing beside the canvas changes its width: keep what was in the middle
-  // in the middle, instead of sliding the drawing sideways under the panel.
-  useEffect(() => {
+    void refit();
     const el = pane.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
+    if (!el || typeof ResizeObserver === 'undefined') return () => void (cancelled = true);
     let width = el.clientWidth;
     const observer = new ResizeObserver(() => {
       const next = el.clientWidth;
-      if (next === width || width === 0 || next === 0) {
-        width = next;
-        return;
-      }
-      const vp = flow.getViewport();
-      void flow.setViewport({ ...vp, x: vp.x + (next - width) / 2 });
+      const before = width;
       width = next;
+      if (next === before || before === 0 || next === 0) return;
+      if (!userMoved.current) return void refit();
+      const vp = flow.getViewport();
+      void flow.setViewport({ ...vp, x: vp.x + (next - before) / 2 });
     });
     observer.observe(el);
-    return () => observer.disconnect();
-  }, [flow]);
+    return () => {
+      cancelled = true;
+      observer.disconnect();
+    };
+  }, [flow, nodes, fit]);
 
   const onNodeDragStop = useCallback(
     (_: unknown, node: CanvasNode) => {
@@ -199,6 +204,10 @@ function CanvasInner({
             colorMode="system"
             onNodesChange={onNodesChange}
             onNodeDragStop={onNodeDragStop}
+            onMoveStart={(e) => {
+              // Only a person's pan or zoom has an event; our own fitView has none.
+              if (e) userMoved.current = true;
+            }}
             edgesReconnectable={false}
             onReconnect={onReparent ? onReconnect : undefined}
             isValidConnection={isValidConnection}
