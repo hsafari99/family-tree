@@ -235,7 +235,7 @@ describe('TreeWorkspace', () => {
       ),
     ).toBeInTheDocument();
     expect(screen.getByRole('searchbox', { name: 'Search' })).toBeInTheDocument();
-    expect(screen.queryByRole('application', { name: 'Family tree' })).toBeNull();
+    expect(screen.queryByRole('application', { name: /^Family tree\./ })).toBeNull();
   });
 
   it('says when only part of the tree is shown', async () => {

@@ -71,13 +71,39 @@ describe('FamilyCanvas', () => {
     expect(card).toHaveAttribute('type', 'button');
     card.focus();
     expect(document.activeElement).toBe(card);
-    expect(document.querySelector('[aria-label="Family tree"]')).not.toBeNull();
+    expect(
+      document.querySelector(
+        '[aria-label="Family tree. Use arrow keys to move between relatives, Enter to open."]',
+      ),
+    ).not.toBeNull();
     // Our own toolbar replaced React Flow's controls (Task 10).
     for (const n of ['Zoom in', 'Zoom out', 'Fit tree', 'Centre on me']) {
       expect(screen.getByRole('button', { name: n, hidden: true })).toBeInTheDocument();
     }
     expect(screen.getByRole('button', { name: 'Centre on me', hidden: true })).toBeDisabled();
     expect(document.querySelector('.react-flow__controls')).toBeNull();
+  });
+
+  it('arrow keys move focus between relatives without opening anyone', async () => {
+    const flow = await laidOut();
+    const a = actions();
+    render(<FamilyCanvas {...flow} focusId={null} actions={a} selectedId={null} />);
+    await screen.findByRole('button', DAVID);
+    const at = () => document.activeElement?.getAttribute('data-person-id');
+    const leo = document.querySelector<HTMLElement>('[data-person-id="leo"]')!;
+    leo.focus();
+    fireEvent.keyDown(leo, { key: 'ArrowUp' });
+    const parent = at();
+    expect(['david', 'laura']).toContain(parent);
+    // Across the couple to the other partner, whichever side the layout put them on.
+    const x = (id: string) => flow.nodes.find((n) => n.id === `p:${id}`)!.position.x;
+    const other = parent === 'david' ? 'laura' : 'david';
+    const key = x(other) > x(parent!) ? 'ArrowRight' : 'ArrowLeft';
+    fireEvent.keyDown(document.activeElement!, { key });
+    expect(at()).toBe(other);
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
+    expect(['leo', 'mia']).toContain(at());
+    expect(a.openPerson).not.toHaveBeenCalled();
   });
 
   it('enables Centre on me when the viewer is on the canvas', async () => {

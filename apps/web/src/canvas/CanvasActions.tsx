@@ -1,9 +1,10 @@
 import type { RelativeRole } from '@family-tree/shared';
 import { createContext, useContext } from 'react';
 import type { CardMenuActions } from './CardMenu';
+import type { NavDirection } from './keyboard-nav';
 import type { SelectionStore } from './selection';
 
-/** What a card or dot can do; the canvas supplies `reveal` and `flyTo`, the page the rest. */
+/** What a card or dot can do; the canvas supplies `reveal`, `flyTo` and `move`, the page the rest. */
 export interface CanvasActions extends CardMenuActions {
   openPerson(personId: string): void;
   addRelative(personId: string, as: RelativeRole): void;
@@ -12,6 +13,8 @@ export interface CanvasActions extends CardMenuActions {
   reveal(personId: string): void;
   /** Pans and zooms so the card is in the middle (search, "Centre on me"). */
   flyTo(personId: string): void;
+  /** Moves keyboard focus to a relative's card (arrow keys). */
+  move(personId: string, dir: NavDirection): void;
 }
 const Ctx = createContext<CanvasActions | null>(null);
 const SelectionCtx = createContext<SelectionStore | null>(null);

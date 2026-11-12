@@ -68,6 +68,24 @@ describe('PersonCardView', () => {
     expect(b).toHaveAttribute('data-tip', 'Add a parent');
   });
 
+  it('arrow keys on the card ask the canvas to move, and nothing opens', () => {
+    const onNavigate = vi.fn();
+    const { onOpen } = view({ onNavigate });
+    const b = screen.getByRole('button', { name: 'Robert Hale, 1930–1998, deceased' });
+    for (const [key, dir] of [
+      ['ArrowUp', 'up'],
+      ['ArrowDown', 'down'],
+      ['ArrowLeft', 'left'],
+      ['ArrowRight', 'right'],
+    ] as const) {
+      expect(fireEvent.keyDown(b, { key })).toBe(false); // no page scroll
+      expect(onNavigate).toHaveBeenLastCalledWith(dir);
+    }
+    expect(onOpen).not.toHaveBeenCalled();
+    // With a modifier key the browser keeps it.
+    expect(fireEvent.keyDown(b, { key: 'ArrowUp', altKey: true })).toBe(true);
+  });
+
   it('has no add buttons without permission', () => {
     view({ person: { ...robert, canAddRelative: false } });
     expect(screen.queryByRole('button', { name: /^Add a/ })).toBeNull();

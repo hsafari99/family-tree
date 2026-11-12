@@ -29,6 +29,7 @@ import {
 } from './graph-to-flow';
 import { CanvasToolbar, motionMs, useMiniMapShown } from './CanvasToolbar';
 import { FamilyEdge } from './FamilyEdge';
+import { type NavDirection, neighbour } from './keyboard-nav';
 import { PersonNode } from './PersonCard';
 import { reparentFromReconnect } from './reparent';
 import { UnionNode } from './UnionNode';
@@ -50,7 +51,7 @@ export interface FamilyCanvasProps {
   layoutKey?: number;
   /** Centred after each layout in focus view; null in full view. */
   focusId: string | null;
-  actions: Omit<CanvasActions, 'reveal' | 'flyTo'>; // keep it referentially stable
+  actions: Omit<CanvasActions, 'reveal' | 'flyTo' | 'move'>; // keep it referentially stable
   /** The viewer's own person, for "Centre on me"; null when they have none in the tree. */
   meId?: string | null;
   /** A search pick to fly to; a new `seq` flies again (after the next layout if not shown yet). */
@@ -249,9 +250,33 @@ function CanvasInner({
   const [selection] = useState(() => createSelectionStore(selectedId));
   useEffect(() => selection.set(selectedId), [selection, selectedId]);
   const flyToPerson = useCallback((id: string) => void flyTo(id), [flyTo]);
+  // Arrow keys (Task 12): focus the relative's card and pan to it; Enter still opens it.
+  const familiesRef = useRef(families);
+  familiesRef.current = families;
+  const move = useCallback(
+    (personId: string, dir: NavDirection) => {
+      const positions = new Map(
+        latest.current.nodes
+          .filter((n): n is PersonFlowNode => n.type === 'person')
+          .map((n) => [n.data.person.id, n.position]),
+      );
+      const to = neighbour(dir, personId, familiesRef.current, positions);
+      if (!to) return;
+      const find = () =>
+        pane.current?.querySelector<HTMLElement>(`.card-open[data-person-id="${CSS.escape(to)}"]`);
+      reveal(to);
+      const el = find();
+      if (el) return el.focus();
+      // Not rendered (only the visible part of a large tree is): focus it once it is drawn.
+      void nextFrame()
+        .then(nextFrame)
+        .then(() => find()?.focus());
+    },
+    [reveal],
+  );
   const ctx = useMemo(
-    () => ({ ...actions, reveal, flyTo: flyToPerson }),
-    [actions, reveal, flyToPerson],
+    () => ({ ...actions, reveal, flyTo: flyToPerson, move }),
+    [actions, reveal, flyToPerson, move],
   );
   const settings = canvasSettings(nodes.length);
 
@@ -282,7 +307,7 @@ function CanvasInner({
             onlyRenderVisibleElements={settings.onlyRenderVisibleElements}
             minZoom={0.05}
             maxZoom={2}
-            aria-label="Family tree"
+            aria-label="Family tree. Use arrow keys to move between relatives, Enter to open."
           >
             <Background variant={BackgroundVariant.Dots} gap={22} size={1.2} />
             <Panel position="bottom-right">

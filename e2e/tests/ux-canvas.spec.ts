@@ -295,6 +295,19 @@ test('right-click a card for its menu: Add child opens the add form', async ({ p
   await expect(page.getByRole('form', { name: 'Add child' })).toBeVisible();
 });
 
+test('arrow keys move focus between relatives', async ({ page }) => {
+  await inLawTree(page);
+  await card(page, 'Ben Pine').focus();
+  await page.keyboard.press('ArrowUp');
+  await expect(page.locator('.card-open:focus')).toHaveAccessibleName(/^(Paul|Mary) Pine/);
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('.card-open:focus')).toHaveAccessibleName(/^(Ann|Ben|Cat) Pine/);
+  // Moving doesn't open anyone: the URL keeps the person who was open.
+  const url = page.url();
+  await page.keyboard.press('ArrowRight');
+  expect(page.url()).toBe(url);
+});
+
 test.describe('on a phone', () => {
   test.use({ viewport: { width: 390, height: 844 } });
 

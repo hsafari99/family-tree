@@ -11,6 +11,14 @@ import { useCanvasActions, useSelectionStore } from './CanvasActions';
 import { useIsSelected } from './selection';
 import { usePointerCoarse } from './use-pointer';
 import type { PersonFlowNode } from './graph-to-flow';
+import type { NavDirection } from './keyboard-nav';
+
+const ARROWS: Record<string, NavDirection> = {
+  ArrowUp: 'up',
+  ArrowDown: 'down',
+  ArrowLeft: 'left',
+  ArrowRight: 'right',
+};
 
 const ADD: { as: RelativeRole; where: 'top' | 'left' | 'right' | 'bottom'; word: string }[] = [
   { as: 'parent', where: 'top', word: 'parent' },
@@ -30,6 +38,7 @@ export function PersonCardView({
   onAdd,
   onFocus,
   menu,
+  onNavigate,
 }: {
   person: GraphPerson;
   detail: CardDetail;
@@ -43,6 +52,8 @@ export function PersonCardView({
   onFocus?: () => void;
   /** The card's menu (right-click, long-press, Shift+F10); none without it. */
   menu?: MenuItem[];
+  /** An arrow key on the card: move to a relative (Task 12). */
+  onNavigate?: (dir: NavDirection) => void;
 }) {
   const openButton = useRef<HTMLButtonElement>(null);
   const cardMenu = useCardMenu(() => openButton.current);
@@ -102,7 +113,13 @@ export function PersonCardView({
         onClick={() => {
           if (!cardMenu.swallowClick()) onOpen();
         }}
-        onKeyDown={menu ? cardMenu.onKeyDown : undefined}
+        onKeyDown={(e) => {
+          const dir = ARROWS[e.key];
+          if (dir && onNavigate && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+            e.preventDefault();
+            onNavigate(dir);
+          } else if (menu) cardMenu.onKeyDown(e);
+        }}
       >
         {detail === 'full' && (
           <>
@@ -186,6 +203,7 @@ export function PersonNode({ data }: NodeProps<PersonFlowNode>) {
         onAdd={(as) => actions.addRelative(id, as)}
         onFocus={() => actions.reveal(id)}
         menu={cardMenuItems(data.person, actions)}
+        onNavigate={(dir) => actions.move(id, dir)}
       />
       {/* Bottom: children's and elbow partner lines; the sides: straight partner lines (Task 6). */}
       {(['bottom', 'left', 'right'] as const).map((id) => (
