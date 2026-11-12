@@ -168,5 +168,7 @@ test('home sends a signed-out visitor to sign in, and shows a signed-in user the
   await signUpViaUi(page, 'Home Visitor');
   await page.goto('/');
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole('heading', { name: 'Your trees' })).toBeVisible();
+  // A first-time user: the welcome and the getting-started guide (batch 6).
+  await expect(page.getByRole('heading', { level: 1, name: 'Welcome, Home' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Getting started' })).toBeVisible();
 });

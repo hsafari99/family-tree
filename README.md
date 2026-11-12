@@ -86,7 +86,7 @@ How it works:
 
 ## Trees, invites and stewards (dev)
 
-- **Start a tree** from _Your trees_. Owners must have two-step verification, so the page asks
+- **Start a tree** from the home page (_My trees_ in the header). Owners must have two-step verification, so the page asks
   you to turn it on first. Each account can own up to `MAX_TREES_PER_USER` trees (default 3).
 - **Invite links** are created on a tree's _Members and invites_ page. A link is shown once; you
   send it yourself through any channel. It is single-use, expires after 7 days, and can make the

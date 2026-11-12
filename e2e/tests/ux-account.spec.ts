@@ -57,9 +57,7 @@ test('desktop: the section list sits beside one section, each at its own URL', a
   );
 });
 
-test('icons: one per nav item, a back-home icon link top left, and the Google status', async ({
-  page,
-}) => {
+test('icons: one per nav item, home in the header, and the Google status', async ({ page }) => {
   await signUpViaUi(page, 'Ada Icons');
   await page.goto('/account');
 
@@ -75,18 +73,10 @@ test('icons: one per nav item, a back-home icon link top left, and the Google st
   expect(box.width).toBeGreaterThanOrEqual(16);
   expect(box.width).toBeLessThanOrEqual(20);
 
-  // Back to home: an icon link before the title, big enough to tap.
-  const home = page.getByRole('link', { name: 'Back to home' });
-  await expect(home).toHaveAttribute('title', 'Back to home');
-  const homeBox = (await home.boundingBox())!;
-  const titleBox = (await page.getByRole('heading', { level: 1, name: 'Account' }).boundingBox())!;
-  // On one row: the icon, then the title, centred on each other.
-  expect(homeBox.x + homeBox.width).toBeLessThanOrEqual(titleBox.x);
-  expect(
-    Math.abs(homeBox.y + homeBox.height / 2 - (titleBox.y + titleBox.height / 2)),
-  ).toBeLessThanOrEqual(3);
-  expect(homeBox.width).toBeGreaterThanOrEqual(24);
-  expect(homeBox.height).toBeGreaterThanOrEqual(24);
+  // Home is in the global header now (batch 6), so the page has no back arrow of its own.
+  await expect(page.getByRole('link', { name: 'Back to home' })).toHaveCount(0);
+  const home = page.getByRole('banner').getByRole('link', { name: 'My trees' });
+  await expect(home).toHaveAttribute('href', '/');
   await home.focus();
   await expect(home).toBeFocused();
 
