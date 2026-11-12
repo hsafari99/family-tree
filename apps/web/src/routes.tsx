@@ -1,4 +1,4 @@
-import { Route, Routes } from 'react-router';
+import { Navigate, Route, Routes, useLocation, useParams } from 'react-router';
 import { RequireAuth } from './auth/RequireAuth';
 import { AppHeader, HeaderTreeProvider } from './components/AppHeader';
 import { AccountPage } from './pages/AccountPage';
@@ -101,14 +101,7 @@ export function AppRoutes() {
             </RequireAuth>
           }
         />
-        <Route
-          path="/trees/:treeId/relationship"
-          element={
-            <RequireAuth>
-              <TreePage />
-            </RequireAuth>
-          }
-        />
+        <Route path="/trees/:treeId/relationship" element={<RelationshipRedirect />} />
         <Route
           path="/trees/:treeId"
           element={
@@ -122,4 +115,12 @@ export function AppRoutes() {
       </Routes>
     </HeaderTreeProvider>
   );
+}
+
+/** The old "How are we related?" page: now a dialog over the tree, keeping From and To. */
+function RelationshipRedirect() {
+  const { treeId = '' } = useParams();
+  const next = new URLSearchParams(useLocation().search);
+  next.set('tab', 'related');
+  return <Navigate replace to={`/trees/${treeId}?${next}`} />;
 }

@@ -39,13 +39,13 @@ const viewerCaps = {
 };
 
 describe('TreePage', () => {
-  it('shows the name, role line and people with years and (you)', async () => {
+  it('shows the name and people with years and (you), with no role or starting-person line', async () => {
     const s = setup();
     s.trees.trees.get(s.id)!.detail.me.personId = bob.id;
     renderAt(`/trees/${s.id}`, s);
     expect(await screen.findByRole('heading', { name: 'Hale family' })).toBeInTheDocument();
-    expect(screen.getByText('You are the owner of this tree.')).toBeInTheDocument();
-    expect(screen.getByText('Starting person: Ada Hale')).toBeInTheDocument();
+    expect(screen.queryByText(/You are (the|an?) \w+ of this tree/)).toBeNull();
+    expect(screen.queryByText(/^Starting person:/)).toBeNull();
     expect(screen.getByRole('heading', { name: 'People (2)' })).toBeInTheDocument();
     const list = screen.getByRole('list', { name: 'People' });
     expect(list).toHaveClass('row-list');
@@ -64,14 +64,35 @@ describe('TreePage', () => {
 
   it('hides tree settings from viewers and editors', async () => {
     const s = setup({ role: 'viewer', detail: { capabilities: viewerCaps } });
-    renderAt(`/trees/${s.id}`, s);
-    expect(await screen.findByText('You are a viewer of this tree.')).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Tree settings' })).not.toBeInTheDocument();
+    renderAt(`/trees/${s.id}?tab=settings`, s);
+    await screen.findByRole('link', { name: 'Members and invites' });
+    expect(screen.queryByRole('button', { name: 'Tree settings' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Tree settings' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Tree name')).not.toBeInTheDocument();
+  });
+
+  it('opens Tree settings in a dialog from the side panel, at ?tab=settings', async () => {
+    const s = setup();
+    const r = renderAt(`/trees/${s.id}`, s);
+    expect(await screen.findByRole('heading', { name: 'Hale family' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Tree name')).not.toBeInTheDocument();
+    const row = within(screen.getByRole('complementary', { name: 'Details' })).getByRole('button', {
+      name: 'Tree settings',
+    });
+    expect(row).toHaveAttribute('aria-haspopup', 'dialog');
+    fireEvent.click(row);
+    const dialog = await screen.findByRole('dialog', { name: 'Tree settings' });
+    expect(within(dialog).getByLabelText('Tree name')).toHaveValue('Hale family');
+    expect(r.where()).toMatch(/[?&]tab=settings/);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(r.where()).not.toMatch(/tab=/);
+    expect(row).toHaveFocus();
   });
 
   it('renames the tree', async () => {
     const s = setup();
-    renderAt(`/trees/${s.id}`, s);
+    renderAt(`/trees/${s.id}?tab=settings`, s);
     const field = await screen.findByLabelText('Tree name');
     expect(field).toHaveValue('Hale family');
     fireEvent.change(field, { target: { value: 'The Hales' } });
@@ -83,12 +104,20 @@ describe('TreePage', () => {
 
   it('changes the starting person', async () => {
     const s = setup();
-    renderAt(`/trees/${s.id}`, s);
+    renderAt(`/trees/${s.id}/people/${bob.id}?tab=settings`, s);
     fireEvent.change(await screen.findByLabelText('Starting person'), {
       target: { value: bob.id },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Save starting person' }));
-    expect(await screen.findByText('Starting person: Bob Hale')).toBeInTheDocument();
+    // Bob's panel, behind the dialog, now says he is the starting person.
+    await screen.findByText('Saved');
+    expect(
+      screen.getByRole('heading', {
+        level: 2,
+        name: /^Bob Hale .*\(Starting person\)/,
+        hidden: true,
+      }),
+    ).toBeInTheDocument();
     expect(s.trees.callsTo('updateTree')).toEqual([
       { treeId: s.id, input: { rootPersonId: bob.id } },
     ]);
@@ -96,7 +125,7 @@ describe('TreePage', () => {
 
   it('deletes only after the exact name is typed and confirmed', async () => {
     const s = setup();
-    renderAt(`/trees/${s.id}`, s);
+    renderAt(`/trees/${s.id}?tab=settings`, s);
     const del = await screen.findByRole('button', { name: 'Delete tree' });
     expect(del).toBeDisabled();
     fireEvent.change(screen.getByLabelText('Type the tree name to confirm'), {
@@ -149,7 +178,7 @@ describe('TreePage', () => {
 
   it('cannot delete after the typed name stops matching', async () => {
     const s = setup();
-    renderAt(`/trees/${s.id}`, s);
+    renderAt(`/trees/${s.id}?tab=settings`, s);
     const field = await screen.findByLabelText('Type the tree name to confirm');
     fireEvent.change(field, { target: { value: 'Hale family' } });
     fireEvent.click(screen.getByRole('button', { name: 'Delete tree' }));
@@ -196,7 +225,7 @@ describe('TreePage', () => {
     unmount();
     const viewer = setup({ role: 'viewer', detail: { capabilities: viewerCaps } });
     renderAt(`/trees/${viewer.id}`, viewer);
-    await screen.findByText('You are a viewer of this tree.');
+    await screen.findByRole('link', { name: 'Members and invites' });
     expect(screen.queryByRole('link', { name: 'Add a person' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Trash' })).not.toBeInTheDocument();
   });
@@ -216,7 +245,7 @@ describe('TreePage', () => {
     ) {
       hrefs.push(this.href);
     });
-    renderAt(`/trees/${s.id}`, s);
+    renderAt(`/trees/${s.id}?tab=settings`, s);
     const section = await screen.findByRole('region', { name: 'Export' });
     expect(section).toHaveTextContent('living relatives');
     s.trees.hold('exportTree');
@@ -234,7 +263,7 @@ describe('TreePage', () => {
   it('shows a fixed message when the export is refused', async () => {
     const s = setup();
     s.trees.failNext('exportTree', { code: 'RATE_LIMITED', message: MESSAGES.exportLimited });
-    renderAt(`/trees/${s.id}`, s);
+    renderAt(`/trees/${s.id}?tab=settings`, s);
     const section = await screen.findByRole('region', { name: 'Export' });
     fireEvent.click(within(section).getByRole('button', { name: 'Download export' }));
     expect(await within(section).findByText(MESSAGES.exportLimited)).toBeInTheDocument();
@@ -242,8 +271,8 @@ describe('TreePage', () => {
 
   it('has no Export for viewers and editors', async () => {
     const s = setup({ role: 'viewer', detail: { capabilities: viewerCaps } });
-    renderAt(`/trees/${s.id}`, s);
-    expect(await screen.findByText('You are a viewer of this tree.')).toBeInTheDocument();
+    renderAt(`/trees/${s.id}?tab=settings`, s);
+    await screen.findByRole('link', { name: 'Members and invites' });
     expect(screen.queryByRole('region', { name: 'Export' })).not.toBeInTheDocument();
   });
 });

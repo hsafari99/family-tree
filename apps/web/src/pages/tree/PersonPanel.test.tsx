@@ -235,19 +235,20 @@ describe('PersonPanel', () => {
   });
 
   describe('sections open in a dialog (brief #15)', () => {
-    it('lists the sections with one-line summaries, and opens none by default', async () => {
+    it('lists the sections on one line each, with a count for places and photos', async () => {
       const s = setup();
       s.view.person.birthPlace = 'London';
       renderAt(at(s), s);
       const list = await screen.findByRole('list', { name: 'Sections for Ada King' });
       const rows = within(list).getAllByRole('button');
       expect(rows.map((r) => r.textContent)).toEqual([
-        'Details' + 'Names, dates and biography',
-        'Places' + '1 place',
-        'Photos' + 'No photos yet',
-        'Relations' + 'No relatives yet',
-        'History' + 'Changes to this person',
+        'Details',
+        'Places, 1',
+        'Photos',
+        'Relations',
+        'History',
       ]);
+      expect(rows[1]!.querySelector('.section-row-count')).toHaveTextContent('1');
       expect(rows[0]).toHaveAttribute('aria-haspopup', 'dialog');
       expect(screen.queryByRole('dialog')).toBeNull();
       expect(screen.queryByRole('button', { name: 'Edit details' })).toBeNull();

@@ -7,12 +7,22 @@ import {
   type RelativeRole,
   type TreeDetail,
 } from '@family-tree/shared';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type ReactNode,
+  type RefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Link, useLocation, useMatch, useNavigate, useParams, useSearchParams } from 'react-router';
 import { FormError } from '../../components/forms';
 import { PersonPhoto, PhotoRefreshContext, useThrottled } from '../../components/PersonPhoto';
-import { ChevronIcon, XIcon } from '../../components/SectionDialog';
-import { CanvasToolbar } from '../../canvas/CanvasToolbar';
+import { ChevronIcon, SectionDialog, XIcon } from '../../components/SectionDialog';
+import { RowContent } from '../../canvas/PanelRow';
+import { SearchBox } from '../../canvas/SearchBox';
+import { DepthControl, TreeLinks, ViewLinks } from '../../canvas/TreeControls';
 import type { CoupleChange } from '../../canvas/couples';
 import { FamilyCanvas } from '../../canvas/FamilyCanvas';
 import {
@@ -23,6 +33,7 @@ import {
 } from '../../canvas/params';
 import { applyHighlight, type PathHighlight, pathHighlight } from '../../canvas/highlight';
 import { useTreeGraph } from '../../canvas/useTreeGraph';
+import { ROLE_LABEL } from '../../trees/format';
 import { useTreesApi } from '../../trees/TreesApiContext';
 import { AddPersonForm } from './AddPersonForm';
 import { readCollapsed, writeCollapsed } from './panel-state';
@@ -36,16 +47,21 @@ export function TreeWorkspace({
   detail,
   persons,
   onPersonsChanged,
+  settings = null,
 }: {
   treeId: string;
   detail: TreeDetail;
   persons: PersonSummary[];
   onPersonsChanged: () => void;
+  /** Tree settings, for members who may manage the tree: a dialog at `?tab=settings`. */
+  settings?: ReactNode;
 }) {
   const { personId, unionId } = useParams();
   const newPerson = useMatch('/trees/:treeId/people/new') !== null;
-  const relationship = useMatch('/trees/:treeId/relationship') !== null;
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
+  // "How are we related?" opens in a dialog over the page (`?tab=related`).
+  const relatedOpen = params.get('tab') === 'related';
+  const settingsOpen = settings !== null && params.get('tab') === 'settings';
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const api = useTreesApi();
@@ -94,8 +110,14 @@ export function TreeWorkspace({
     const { navigate: nav, params: current } = latest.current;
     void nav(`${path}${canvasSearch(current, change)}`);
   }, []);
-  // The panel can be collapsed while something stays selected; the choice is remembered (brief #15).
-  const [collapsed, setCollapsedState] = useState(readCollapsed);
+  const canAdd = detail.capabilities.editAnywhere || detail.me.steward.active;
+  const selected = (newPerson && canAdd) || personId !== undefined || unionId !== undefined;
+  // The side panel (search, depth, the selection, tree links) can be collapsed to a rail; the
+  // choice is remembered (brief #15). On a phone it starts as a handle when nothing is selected,
+  // so the sheet doesn't cover the tree on arrival.
+  const [collapsed, setCollapsedState] = useState(
+    () => readCollapsed() || (!selected && isPhone()),
+  );
   const setCollapsed = useCallback((v: boolean) => {
     setCollapsedState(v);
     writeCollapsed(v);
@@ -105,15 +127,20 @@ export function TreeWorkspace({
     () => ({
       openPerson: (id: string) => {
         setCollapsed(false);
-        go(`${base}/people/${id}`, { focus: null, tab: null, add: null });
+        go(`${base}/people/${id}`, { focus: null, tab: null, add: null, ...NO_PAIR });
       },
       addRelative: (id: string, as: RelativeRole) => {
         setCollapsed(false);
-        go(`${base}/people/${id}`, { focus: null, tab: 'relations', add: as });
+        go(`${base}/people/${id}`, { focus: null, tab: 'relations', add: as, ...NO_PAIR });
       },
       openUnion: (id: string) => {
         setCollapsed(false);
-        go(`${base}/unions/${id}`, { focus: latest.current.keepFocus, tab: null, add: null });
+        go(`${base}/unions/${id}`, {
+          focus: latest.current.keepFocus,
+          tab: null,
+          add: null,
+          ...NO_PAIR,
+        });
       },
     }),
     [go, base, setCollapsed],
@@ -152,26 +179,22 @@ export function TreeWorkspace({
     returnFocusTo.current = { id: personId ?? null };
     setCollapsed(true);
   }, [personId, setCollapsed]);
-  const canAdd = detail.capabilities.editAnywhere || detail.me.steward.active;
-  const selected =
-    (newPerson && canAdd) || personId !== undefined || unionId !== undefined || relationship;
-  const shown = selected && !collapsed;
-  // The last person shown this session, for the Details toggle when nothing is selected.
-  const lastPerson = useRef<string | null>(null);
-  useEffect(() => {
-    if (personId) lastPerson.current = personId;
-  }, [personId]);
-  const reopenId = lastPerson.current ?? personId ?? detail.tree.rootPersonId;
-  const togglePanel = useCallback(() => {
-    if (shown) return close();
-    if (selected) return setCollapsed(false);
-    const id = lastPerson.current ?? detail.tree.rootPersonId;
-    if (id) actions.openPerson(id);
-  }, [shown, selected, close, setCollapsed, actions, detail.tree.rootPersonId]);
-  const rail = !shown && (selected || reopenId !== null);
-  // The rail shows who it would bring back: the selected person, else the last one shown.
-  const railId = personId ?? (selected ? null : reopenId);
-  const railPerson = railId ? (persons.find((p) => p.id === railId) ?? null) : null;
+  const shown = !collapsed;
+  // Expanding with nothing selected puts focus in the search box (there is no heading to go to).
+  const focusSearch = useRef(false);
+  const expand = useCallback(() => {
+    focusSearch.current = true;
+    setCollapsed(false);
+  }, [setCollapsed]);
+  // The rail shows whose panel it brings back.
+  const railPerson = personId ? (persons.find((p) => p.id === personId) ?? null) : null;
+  // The member's own card says their role; the tree's root says so too (both after the name).
+  const tagsOf = (id: string) => [
+    ...(id === detail.me.personId
+      ? [ROLE_LABEL[detail.me.role], ...(detail.me.steward.active ? ['Steward'] : [])]
+      : []),
+    ...(id === detail.tree.rootPersonId ? ['Starting person'] : []),
+  ];
   const ready = graph.status === 'ready' ? graph : null;
   const [highlight, setHighlight] = useState<PathHighlight | null>(null);
   // The drawn path belongs to one From/To pair: another pair, or leaving the panel, clears it.
@@ -179,7 +202,9 @@ export function TreeWorkspace({
   const toParam = params.get('to');
   useEffect(() => {
     setHighlight(null);
-  }, [relationship, fromParam, toParam]);
+  }, [fromParam, toParam]);
+  // "Show on the tree" closes the dialog, so the path can be seen; From and To stay in the URL, and
+  // so does the path, until the pair changes or the dialog is closed with its X.
   const showPath = useCallback(
     (fromId: string, steps: KinStep[]) => {
       setHighlight(pathHighlight(fromId, steps));
@@ -187,12 +212,51 @@ export function TreeWorkspace({
       go(
         pathname,
         n <= GRAPH_DEPTH_MAX
-          ? { view: null, branch: null, focus: fromId, depth: Math.max(1, n) }
-          : { view: 'full', focus: null },
+          ? { view: null, branch: null, focus: fromId, depth: Math.max(1, n), tab: null }
+          : { view: 'full', focus: null, tab: null },
       );
     },
     [go, pathname],
   );
+  const relatedRow = useRef<HTMLButtonElement>(null);
+  const setRelated = useCallback(
+    (open: boolean) =>
+      setParams(
+        (p) => {
+          const next = new URLSearchParams(p);
+          next.delete('add');
+          if (open) {
+            next.set('tab', 'related');
+            if (personId) next.set('to', personId);
+          } else {
+            next.delete('tab');
+            next.delete('from');
+            next.delete('to');
+          }
+          return next;
+        },
+        { replace: true },
+      ),
+    [setParams, personId],
+  );
+  const settingsRow = useRef<HTMLButtonElement>(null);
+  const setSettings = useCallback(
+    (open: boolean) =>
+      setParams(
+        (p) => {
+          const next = new URLSearchParams(p);
+          next.delete('add');
+          if (open) next.set('tab', 'settings');
+          else next.delete('tab');
+          return next;
+        },
+        { replace: true },
+      ),
+    [setParams],
+  );
+  // However a dialog closes, focus goes back to its row (unless something else has it).
+  useReturnFocus(relatedOpen, relatedRow);
+  useReturnFocus(settingsOpen, settingsRow);
   const drawn = useMemo(
     () =>
       ready && highlight
@@ -205,8 +269,9 @@ export function TreeWorkspace({
     ready !== null &&
     [...highlight.personIds].some((id) => !ready.graph.persons.some((p) => p.id === id));
   const panel = useRef<HTMLElement>(null);
+  const selection = useRef<HTMLDivElement>(null);
   const canvasArea = useRef<HTMLElement>(null);
-  const panelKey = `${newPerson}/${personId}/${unionId}/${relationship}`;
+  const panelKey = `${newPerson}/${personId}/${unionId}`;
   // Anything newly opened (a toolbar link, search, the people list) expands the panel. Not on the
   // first render, so a remembered collapse survives a reload (a ref of the last key, not a
   // first-run flag, so StrictMode's double effects don't count as a change).
@@ -217,10 +282,18 @@ export function TreeWorkspace({
     setCollapsed(false);
   }, [panelKey, setCollapsed]);
 
-  // Opening the panel moves focus to its heading, once the panel has rendered one.
+  // Opening the panel on someone moves focus to their heading, once it has rendered one; expanding
+  // it with nothing selected focuses the search box. (Not on a first visit with nothing selected:
+  // the page's own Tab order starts at the header.)
   useEffect(() => {
-    const el = panel.current;
+    const el = selection.current;
     if (!shown || !el) return;
+    if (!selected) {
+      if (focusSearch.current) panel.current?.querySelector<HTMLElement>('input')?.focus();
+      focusSearch.current = false;
+      return;
+    }
+    focusSearch.current = false;
     const focusHeading = () => {
       // A section dialog opened by a deep link (?tab=) keeps the focus it took.
       if (document.querySelector('dialog[open]')) return true;
@@ -236,7 +309,7 @@ export function TreeWorkspace({
     });
     observer.observe(el, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, [shown, panelKey]);
+  }, [shown, selected, panelKey]);
 
   // Closing returns focus to the card that was open, or to the canvas if it isn't rendered. (The
   // rail's Expand button sits just before the canvas, one Shift+Tab away.)
@@ -252,10 +325,10 @@ export function TreeWorkspace({
     (card ?? canvasArea.current)?.focus();
   }, [shown]);
 
-  // Escape collapses the panel (but not while it is cancelling a field inside a form control, or
-  // closing a menu or a dialog, which handle their own Escape).
+  // Escape collapses the panel while someone is selected (but not while it is cancelling a field
+  // inside a form control, or closing a menu or a dialog, which handle their own Escape).
   useEffect(() => {
-    if (!shown) return;
+    if (!shown || !selected) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
       const t = e.target;
@@ -264,56 +337,36 @@ export function TreeWorkspace({
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [shown, close]);
+  }, [shown, selected, close]);
 
   return (
     <>
-      <CanvasToolbar
-        treeId={treeId}
-        detail={detail}
-        persons={persons}
-        params={view}
-        disconnected={disconnected}
-        hrefOf={hrefOf}
-        selectedId={personId ?? null}
-        onChange={(change) => go(pathname, change)}
-        panelShown={shown}
-        canTogglePanel={selected || reopenId !== null}
-        onTogglePanel={togglePanel}
-      />
-      {notice && (
-        <p role="status" className="notice">
-          {notice}
-        </p>
-      )}
       <PhotoRefreshContext.Provider value={refreshPhotos}>
-        <div
-          className={
-            shown ? 'tree-workspace has-panel' : rail ? 'tree-workspace has-rail' : 'tree-workspace'
-          }
-        >
+        <div className={shown ? 'tree-workspace has-panel' : 'tree-workspace has-rail'}>
           {/* Kept mounted while collapsed, so a half-filled form survives hiding the panel. */}
-          {selected && (
-            <aside
-              id="tree-panel"
-              className="tree-panel"
-              aria-label="Details"
-              ref={panel}
-              hidden={!shown}
-            >
-              <p className="panel-close">
-                <button
-                  type="button"
-                  className="icon-button"
-                  aria-label="Collapse panel"
-                  title="Collapse panel"
-                  aria-expanded="true"
-                  aria-controls="tree-panel"
-                  onClick={close}
-                >
-                  <XIcon />
-                </button>
-              </p>
+          <aside
+            id="tree-panel"
+            className="tree-panel"
+            aria-label="Details"
+            ref={panel}
+            hidden={!shown}
+          >
+            <div className="panel-top">
+              <SearchBox treeId={treeId} persons={persons} meId={detail.me.personId} />
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="Collapse panel"
+                title="Collapse panel"
+                aria-expanded="true"
+                aria-controls="tree-panel"
+                onClick={close}
+              >
+                <XIcon />
+              </button>
+            </div>
+            <DepthControl persons={persons} params={view} onChange={(c) => go(pathname, c)} />
+            <div className="panel-selection" ref={selection}>
               {newPerson && canAdd ? (
                 <AddPersonForm
                   treeId={treeId}
@@ -328,15 +381,9 @@ export function TreeWorkspace({
                   personId={personId}
                   persons={persons}
                   onChanged={changed}
+                  tags={tagsOf(personId)}
                 />
-              ) : relationship ? (
-                <RelationshipPanel
-                  treeId={treeId}
-                  detail={detail}
-                  persons={persons}
-                  onShow={showPath}
-                />
-              ) : (
+              ) : unionId ? (
                 <UnionPanel
                   key={unionId}
                   treeId={treeId}
@@ -345,11 +392,35 @@ export function TreeWorkspace({
                   persons={persons}
                   onChanged={changed}
                 />
+              ) : (
+                <p className="hint panel-hint">Select someone on the tree.</p>
               )}
-            </aside>
-          )}
+            </div>
+            <ul className="section-list related-list">
+              <li>
+                <button
+                  type="button"
+                  className="section-row"
+                  aria-haspopup="dialog"
+                  ref={relatedRow}
+                  onClick={() => setRelated(true)}
+                >
+                  <RowContent title="How are we related?" />
+                </button>
+              </li>
+            </ul>
+            <TreeLinks
+              treeId={treeId}
+              detail={detail}
+              disconnected={disconnected}
+              hrefOf={hrefOf}
+              {...(settings
+                ? { onSettings: () => setSettings(true), settingsRef: settingsRow }
+                : {})}
+            />
+          </aside>
           {/* Collapsed, the panel leaves a slim rail (a bottom handle on a phone) to bring it back. */}
-          {rail && (
+          {!shown && (
             <div className="panel-rail">
               <button
                 type="button"
@@ -357,7 +428,7 @@ export function TreeWorkspace({
                 title="Expand panel"
                 aria-expanded="false"
                 aria-controls="tree-panel"
-                onClick={togglePanel}
+                onClick={expand}
               >
                 <ChevronIcon />
                 {railPerson && (
@@ -369,70 +440,89 @@ export function TreeWorkspace({
               </button>
             </div>
           )}
-          <section
-            className="canvas-area"
-            aria-label="Family tree view"
-            tabIndex={-1}
-            ref={canvasArea}
-          >
-            {!selected && (
-              <p className="hint canvas-hint">
-                <span>Select someone on the tree to see their details.</span>{' '}
-                <span>
-                  You can reorder siblings, swap a couple’s sides, and order someone’s partners.
-                  Everything else is placed automatically.
-                </span>{' '}
-                <span>
-                  With a mouse, drag the cards, or drag the dot end of a child’s line onto other
-                  parents to move them; the Relations tab does the same from the keyboard.
-                </span>
+          <div className="canvas-column">
+            <ViewLinks params={view} />
+            {notice && (
+              <p role="status" className="notice">
+                {notice}
               </p>
             )}
-            {graph.status === 'loading' && <p role="status">Drawing the tree…</p>}
-            {graph.status === 'error' && (
-              <>
-                <FormError>{graph.message}</FormError>
-                <p>
-                  <Link to={base}>Back to the starting person</Link>
+            <section
+              className="canvas-area"
+              aria-label="Family tree view"
+              tabIndex={-1}
+              ref={canvasArea}
+            >
+              {!selected && (
+                <p className="hint canvas-hint">
+                  <span>Select someone on the tree to see their details.</span>{' '}
+                  <span>
+                    You can reorder siblings, swap a couple’s sides, and order someone’s partners.
+                    Everything else is placed automatically.
+                  </span>{' '}
+                  <span>
+                    With a mouse, drag the cards, or drag the dot end of a child’s line onto other
+                    parents to move them; the Relations tab does the same from the keyboard.
+                  </span>
                 </p>
-              </>
-            )}
-            {ready?.graph.needsBranch && (
-              <p role="status">
-                This tree has {ready.graph.total.toLocaleString('en')} people, too many to draw at
-                once. Choose a branch to show.
-              </p>
-            )}
-            {ready?.graph.truncated && (
-              <p role="status" className="notice">
-                Only part of the tree is shown. Pick a branch or use the focus view to see the rest.
-              </p>
-            )}
-            {ready && !ready.graph.needsBranch && ready.nodes.length === 0 && (
-              <p>No one to show yet.</p>
-            )}
-            {offView && (
-              <p role="status" className="notice">
-                Part of the path is outside this view. Try the full view.
-              </p>
-            )}
-            {drawn && drawn.nodes.length > 0 && (
-              <FamilyCanvas
-                nodes={drawn.nodes}
-                edges={drawn.edges}
-                families={drawn.families}
-                focusId={view.mode === 'focus' ? focusId : null}
-                actions={actions}
-                selectedId={personId ?? null}
-                onReorder={(u, ids) => void onReorder(u, ids)}
-                onReparent={(l, u) => void onReparent(l, u)}
-                couples={drawn.couples}
-                onCoupleChange={(c) => void onCoupleChange(c)}
-              />
-            )}
-          </section>
+              )}
+              {graph.status === 'loading' && <p role="status">Drawing the tree…</p>}
+              {graph.status === 'error' && (
+                <>
+                  <FormError>{graph.message}</FormError>
+                  <p>
+                    <Link to={base}>Back to the starting person</Link>
+                  </p>
+                </>
+              )}
+              {ready?.graph.needsBranch && (
+                <p role="status">
+                  This tree has {ready.graph.total.toLocaleString('en')} people, too many to draw at
+                  once. Choose a branch to show.
+                </p>
+              )}
+              {ready?.graph.truncated && (
+                <p role="status" className="notice">
+                  Only part of the tree is shown. Pick a branch or use the focus view to see the
+                  rest.
+                </p>
+              )}
+              {ready && !ready.graph.needsBranch && ready.nodes.length === 0 && (
+                <p>No one to show yet.</p>
+              )}
+              {offView && (
+                <p role="status" className="notice">
+                  Part of the path is outside this view. Try the full view.
+                </p>
+              )}
+              {drawn && drawn.nodes.length > 0 && (
+                <FamilyCanvas
+                  nodes={drawn.nodes}
+                  edges={drawn.edges}
+                  families={drawn.families}
+                  focusId={view.mode === 'focus' ? focusId : null}
+                  actions={actions}
+                  selectedId={personId ?? null}
+                  onReorder={(u, ids) => void onReorder(u, ids)}
+                  onReparent={(l, u) => void onReparent(l, u)}
+                  couples={drawn.couples}
+                  onCoupleChange={(c) => void onCoupleChange(c)}
+                />
+              )}
+            </section>
+          </div>
         </div>
       </PhotoRefreshContext.Provider>
+      {relatedOpen && (
+        <SectionDialog title="How are we related?" onClose={() => setRelated(false)}>
+          <RelationshipPanel treeId={treeId} detail={detail} persons={persons} onShow={showPath} />
+        </SectionDialog>
+      )}
+      {settingsOpen && (
+        <SectionDialog title="Tree settings" onClose={() => setSettings(false)}>
+          {settings}
+        </SectionDialog>
+      )}
       {/* Opened when the layout timed out, so people stay reachable (decision 4). */}
       <details
         id="people-fallback"
@@ -444,4 +534,23 @@ export function TreeWorkspace({
       </details>
     </>
   );
+}
+
+/** The `from`/`to` pair of "How are we related?", dropped when someone else is opened. */
+const NO_PAIR = { from: null, to: null } as const;
+
+/** When the dialog `open` tracks closes, focus goes back to `row` if it went nowhere else. */
+function useReturnFocus(open: boolean, row: RefObject<HTMLElement | null>) {
+  const was = useRef(open);
+  useEffect(() => {
+    const prev = was.current;
+    was.current = open;
+    if (!prev || open) return;
+    const active = document.activeElement;
+    if (!active || active === document.body || !active.isConnected) row.current?.focus();
+  }, [open, row]);
+}
+
+function isPhone(): boolean {
+  return typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 720px)').matches;
 }

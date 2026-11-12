@@ -1,9 +1,10 @@
 import type { PersonSummary, PersonView } from '@family-tree/shared';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { FormError } from '../../components/forms';
 import { PersonPhoto, PhotoRefreshContext, useThrottled } from '../../components/PersonPhoto';
-import { ChevronIcon, SectionDialog } from '../../components/SectionDialog';
+import { RowContent } from '../../canvas/PanelRow';
+import { SectionDialog } from '../../components/SectionDialog';
 import { personName, personYears } from '../../trees/format';
 import { useTreesApi } from '../../trees/TreesApiContext';
 import { HistoryTab } from './HistoryTab';
@@ -23,43 +24,14 @@ export const SECTIONS = [
 type SectionId = (typeof SECTIONS)[number]['id'];
 
 const yearOf = (d: { date1: string } | null) => (d ? Number(d.date1.slice(0, 4)) : null);
-const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
-/** A one-line summary under each section heading, from data the panel already has. */
-export function sectionSummary(id: SectionId, view: PersonView): string {
+/** The small count at the end of a section's row, where one helps: places and photos. */
+export function sectionCount(id: SectionId, view: PersonView): number | null {
   const p = view.person;
-  switch (id) {
-    case 'info':
-      return 'Names, dates and biography';
-    case 'places': {
-      const n = view.residences.length + (p.birthPlace ? 1 : 0) + (p.deathPlace ? 1 : 0);
-      return n === 0 ? 'No places yet' : count(n, 'place');
-    }
-    case 'photos':
-      return view.photos.length === 0 ? 'No photos yet' : count(view.photos.length, 'photo');
-    case 'relations': {
-      const r = view.relations;
-      const parts = [
-        ...(r.parents.some((u) => u.parents.length > 0) ? ['Parents'] : []),
-        ...(r.unions.some((u) => u.partner)
-          ? [count(r.unions.filter((u) => u.partner).length, 'partner')]
-          : []),
-        ...(r.unions.some((u) => u.children.length > 0)
-          ? [
-              count(
-                r.unions.reduce((n, u) => n + u.children.length, 0),
-                'child',
-                'children',
-              ),
-            ]
-          : []),
-        ...(r.siblings.length > 0 ? [count(r.siblings.length, 'sibling')] : []),
-      ];
-      return parts.length === 0 ? 'No relatives yet' : parts.join(', ');
-    }
-    case 'history':
-      return 'Changes to this person';
-  }
+  if (id === 'places')
+    return view.residences.length + (p.birthPlace ? 1 : 0) + (p.deathPlace ? 1 : 0);
+  if (id === 'photos') return view.photos.length;
+  return null;
 }
 
 export function PersonPanel({
@@ -67,11 +39,14 @@ export function PersonPanel({
   personId,
   persons,
   onChanged,
+  tags = [],
 }: {
   treeId: string;
   personId: string;
   persons: PersonSummary[];
   onChanged: () => void;
+  /** Shown after the name, e.g. the member's own role or "Starting person". */
+  tags?: readonly string[];
 }) {
   const api = useTreesApi();
   const [view, setView] = useState<PersonView | null>(null);
@@ -160,6 +135,25 @@ export function PersonPanel({
           <h2>
             {name}
             {years && ` ${years}`}
+            {tags.length > 0 && (
+              <>
+                {' '}
+                {/* Pills in one row under the name; a screen reader hears "(Owner)" as part of
+                    the heading. */}
+                <span className="name-tags">
+                  {tags.map((t) => (
+                    <Fragment key={t}>
+                      {' '}
+                      <span className="name-tag">
+                        <span className="sr-only">(</span>
+                        {t}
+                        <span className="sr-only">)</span>
+                      </span>
+                    </Fragment>
+                  ))}
+                </span>
+              </>
+            )}
           </h2>
           {p.nickname && <p>“{p.nickname}”</p>}
           {p.maidenName && <p>Maiden name: {p.maidenName}</p>}
@@ -177,11 +171,7 @@ export function PersonPanel({
                 }}
                 onClick={() => setSection(s.id)}
               >
-                <span className="section-row-text">
-                  <span className="section-row-title">{s.label}</span>
-                  <span className="section-row-summary">{sectionSummary(s.id, view)}</span>
-                </span>
-                <ChevronIcon />
+                <RowContent title={s.label} count={sectionCount(s.id, view)} />
               </button>
             </li>
           ))}

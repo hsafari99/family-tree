@@ -130,9 +130,9 @@ describe('AppHeader', () => {
   it('follows a rename in Tree settings', async () => {
     const { auth, trees } = signedIn();
     const id = trees.addTree({ name: 'Hale family' });
-    renderAt(`/trees/${id}`, { auth, trees });
+    renderAt(`/trees/${id}?tab=settings`, { auth, trees });
     await within(banner()).findByRole('link', { name: 'Hale family' });
-    fireEvent.change(screen.getByLabelText('Tree name'), { target: { value: 'Hale clan' } });
+    fireEvent.change(await screen.findByLabelText('Tree name'), { target: { value: 'Hale clan' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save name' }));
     expect(await within(banner()).findByRole('link', { name: 'Hale clan' })).toBeInTheDocument();
   });

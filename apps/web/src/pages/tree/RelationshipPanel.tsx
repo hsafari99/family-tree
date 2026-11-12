@@ -86,7 +86,6 @@ export function RelationshipPanel({
 
   return (
     <div className="relationship-panel">
-      <h2>How are we related?</h2>
       <PersonPicker
         label="From"
         persons={persons}

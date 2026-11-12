@@ -10,12 +10,6 @@ import { startDownload } from '../trees/download';
 import { personName } from '../trees/format';
 import { useTreesApi } from '../trees/TreesApiContext';
 
-const ROLE_LINE = {
-  owner: 'You are the owner of this tree.',
-  editor: 'You are an editor of this tree.',
-  viewer: 'You are a viewer of this tree.',
-} as const;
-
 export function TreePage() {
   const { treeId = '' } = useParams();
   const newPerson = useMatch('/trees/:treeId/people/new') !== null;
@@ -81,7 +75,6 @@ export function TreePage() {
     const p = persons.find((x) => x.id === id);
     return p ? personName(p) : null;
   };
-  const rootName = nameOf(tree.rootPersonId);
   const anchors = me.steward.grants.map((g) => nameOf(g.anchorPersonId) ?? 'someone').join(', ');
 
   return (
@@ -91,7 +84,6 @@ export function TreePage() {
           {notice}
         </p>
       )}
-      <p>{ROLE_LINE[me.role]}</p>
       {me.steward.grants.length > 0 &&
         (me.steward.active ? (
           <p>You look after the branches of: {anchors}</p>
@@ -101,7 +93,6 @@ export function TreePage() {
             settings to start using it.
           </p>
         ))}
-      {rootName && <p>Starting person: {rootName}</p>}
 
       {newPerson && !(capabilities.editAnywhere || me.steward.active) && (
         <p role="alert" className="error">
@@ -113,16 +104,19 @@ export function TreePage() {
         detail={detail}
         persons={persons}
         onPersonsChanged={() => void refreshPersons()}
+        settings={
+          capabilities.manageTree ? (
+            <Settings
+              treeId={treeId}
+              detail={detail}
+              persons={persons}
+              onUpdated={(patch) =>
+                setDetail((d) => (d ? { ...d, tree: { ...d.tree, ...patch } } : d))
+              }
+            />
+          ) : null
+        }
       />
-
-      {capabilities.manageTree && (
-        <Settings
-          treeId={treeId}
-          detail={detail}
-          persons={persons}
-          onUpdated={(patch) => setDetail((d) => (d ? { ...d, tree: { ...d.tree, ...patch } } : d))}
-        />
-      )}
     </Page>
   );
 }
@@ -177,8 +171,7 @@ function Settings({
   }
 
   return (
-    <section>
-      <h2>Tree settings</h2>
+    <section aria-label="Tree settings">
       <FormError>{error}</FormError>
       {saved && (
         <p role="status" className="success">
