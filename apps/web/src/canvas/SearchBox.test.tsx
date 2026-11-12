@@ -161,6 +161,32 @@ describe('SearchBox', () => {
     expect(screen.getByRole('button', { name: 'Filters' })).toBeInTheDocument();
   });
 
+  it('folds the Filters panel on a click outside, tabbing out or Escape, keeping the values', async () => {
+    const s = setup();
+    renderAt(`/trees/${s.id}`, s);
+    const toggle = await screen.findByRole('button', { name: 'Filters' });
+    const panel = () => document.getElementById('search-filters');
+    fireEvent.click(toggle);
+    type(screen.getByLabelText('Born from'), '1900');
+    fireEvent.pointerDown(screen.getByLabelText('Born to')); // inside: stays open
+    expect(panel()).not.toBeNull();
+    fireEvent.pointerDown(document.body);
+    await waitFor(() => expect(panel()).toBeNull());
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    // The filter is still applied.
+    expect(screen.getByRole('button', { name: 'Filters (1)' })).toBeInTheDocument();
+    fireEvent.click(toggle);
+    expect(screen.getByLabelText('Born from')).toHaveValue('1900');
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    fireEvent.blur(screen.getByLabelText('Born from'), { relatedTarget: outside });
+    await waitFor(() => expect(panel()).toBeNull());
+    outside.remove();
+    fireEvent.click(toggle);
+    fireEvent.keyDown(screen.getByLabelText('Born from'), { key: 'Escape' });
+    await waitFor(() => expect(panel()).toBeNull());
+  });
+
   it('sends nothing for an empty box, a reversed range or a non-numeric year', async () => {
     const s = setup();
     renderAt(`/trees/${s.id}`, s);

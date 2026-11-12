@@ -121,13 +121,15 @@ export function SearchBox({
 
   const set = (k: keyof Filters) => (e: { target: { value: string } }) =>
     setFilters((f) => ({ ...f, [k]: e.target.value }));
+  // Dismissing the popup clears the query and folds the Filters panel; the filter values stay.
   const close = () => {
     setQ('');
     setResults(null);
     setError(null);
+    setOpen(false);
   };
 
-  // A pointer press anywhere outside the search area dismisses the popup.
+  // A pointer press anywhere outside the search area dismisses the popup and the Filters panel.
   const area = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const onDown = (e: PointerEvent) => {
