@@ -1,5 +1,5 @@
 import type { TrashBatch, TrashBatchDetail, TreeDetail } from '@family-tree/shared';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { ConfirmButton } from '../components/ConfirmButton';
 import { FormError, Success } from '../components/forms';
@@ -101,7 +101,7 @@ export function TrashPage() {
       {batches.length === 0 ? (
         <p>The Trash is empty.</p>
       ) : (
-        <ul className="trash-list">
+        <ul className="row-list trash-rows">
           {batches.map((b) => (
             <TrashRow key={b.id} treeId={treeId} batch={b} onGone={gone} />
           ))}
@@ -134,6 +134,7 @@ function TrashRow({
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [loading, setLoading] = useState(false);
+  const detailsId = useId();
 
   async function toggle() {
     if (showing) return setShowing(false);
@@ -162,15 +163,49 @@ function TrashRow({
 
   return (
     <li>
-      <strong>{title(batch)}</strong>
-      <p className="hint">
-        Deleted {new Date(batch.createdAt).toLocaleString()} by{' '}
-        {batch.deletedBy ?? 'a former member'}
-        {counts(batch) && ` — ${counts(batch)}`}
-      </p>
-      <FormError>{error}</FormError>
+      <div className="row-main">
+        <strong>{title(batch)}</strong>
+        <span className="row-meta">
+          Deleted {new Date(batch.createdAt).toLocaleString()} by{' '}
+          {batch.deletedBy ?? 'a former member'}
+          {counts(batch) && ` — ${counts(batch)}`}
+        </span>
+      </div>
+      <div className="row-actions">
+        <button
+          type="button"
+          className="link"
+          disabled={loading}
+          aria-expanded={showing}
+          aria-controls={showing ? detailsId : undefined}
+          onClick={() => void toggle()}
+        >
+          {showing ? 'Hide details' : 'Show details'}
+        </button>
+        <button
+          type="button"
+          className="compact"
+          disabled={pending}
+          onClick={() => void act('restore')}
+        >
+          Restore
+        </button>
+        <ConfirmButton
+          label="Erase permanently"
+          confirmLabel="Yes, erase for good"
+          danger
+          compact
+          pending={pending}
+          onConfirm={() => void act('erase')}
+        />
+      </div>
+      {error && (
+        <div className="row-details">
+          <FormError>{error}</FormError>
+        </div>
+      )}
       {showing && detail && (
-        <div>
+        <div className="row-details" id={detailsId}>
           <ul>
             {detail.people.map((p) => (
               <li key={p.id}>
@@ -195,26 +230,6 @@ function TrashRow({
           )}
         </div>
       )}
-      <p className="actions">
-        <button
-          type="button"
-          className="secondary"
-          disabled={loading}
-          onClick={() => void toggle()}
-        >
-          {showing ? 'Hide details' : 'Show details'}
-        </button>
-        <button type="button" disabled={pending} onClick={() => void act('restore')}>
-          Restore
-        </button>
-        <ConfirmButton
-          label="Erase permanently"
-          confirmLabel="Yes, erase for good"
-          danger
-          pending={pending}
-          onConfirm={() => void act('erase')}
-        />
-      </p>
     </li>
   );
 }

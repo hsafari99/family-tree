@@ -1218,3 +1218,32 @@ button.menu-item.danger-text {
   gap: 0.5rem;
   align-items: center;
 }
+.row-list .row-details {
+  grid-column: 1 / -1;
+}
+.row-details > ul {
+  margin: 0.25rem 0;
+}
+.row-main > strong {
+  overflow-wrap: anywhere;
+}
+/* Trash rows: a title over its meta line (brief #18) */
+.trash-rows .row-main {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+}
+.row-actions .confirm {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+@media (max-width: 720px) {
+  .trash-rows > li {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .trash-rows .row-actions {
+    flex-wrap: wrap;
+  }
+}

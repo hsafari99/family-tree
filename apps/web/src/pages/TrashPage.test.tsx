@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import type { TrashBatchDetail } from '@family-tree/shared';
 import { describe, expect, it } from 'vitest';
 import { MESSAGES } from '../auth/api';
@@ -103,6 +103,40 @@ describe('TrashPage', () => {
     await waitFor(() =>
       expect(screen.getAllByText('Siblings with unknown parents')).toHaveLength(2),
     );
+  });
+
+  it('lays each batch out as a compact row: title and meta, then the actions (brief #18)', async () => {
+    const s = setup([batch({ deletedBy: 'Hossein', people: 2, links: 1 })]);
+    const { container } = renderAt(`/trees/${s.id}/trash`, s);
+    await screen.findByText('Ada King');
+    expect(container.querySelector('ul.trash-list')).toBeNull();
+    const list = container.querySelector('ul.row-list')!;
+    expect(list).not.toBeNull();
+    const row = within(list as HTMLElement).getAllByRole('listitem')[0]!;
+    const main = row.querySelector(':scope > .row-main')!;
+    expect(main.querySelector('strong')).toHaveTextContent('Ada King');
+    expect(main.querySelector('.row-meta')!.textContent).toMatch(
+      /^Deleted .+ by Hossein — 2 people · 1 link$/,
+    );
+    const actions = within(row.querySelector(':scope > .row-actions') as HTMLElement);
+    const show = actions.getByRole('button', { name: 'Show details' });
+    expect(show).toHaveClass('link');
+    expect(show).toHaveAttribute('aria-expanded', 'false');
+    expect(actions.getByRole('button', { name: 'Restore' })).toHaveClass('compact');
+    expect(actions.getByRole('button', { name: 'Erase permanently' })).toHaveClass(
+      'danger',
+      'compact',
+    );
+    fireEvent.click(show);
+    await screen.findByText(/Ada King 1815–1852/);
+    expect(show).toHaveAttribute('aria-expanded', 'true');
+    // The details open under the row, as their own full-width part of it.
+    const details = row.querySelector(':scope > .row-details')!;
+    expect(details).toHaveTextContent('Ada King 1815–1852');
+    expect(show).toHaveAttribute('aria-controls', details.id);
+    fireEvent.click(actions.getByRole('button', { name: 'Erase permanently' }));
+    expect(actions.getByRole('button', { name: 'Yes, erase for good' })).toHaveClass('compact');
+    expect(actions.getByRole('button', { name: 'Cancel' })).toHaveClass('compact');
   });
 
   it('shows the details of a batch', async () => {
