@@ -12,12 +12,21 @@ const id = '00000000-0000-4000-8000-000000000001';
 
 describe('graphQuerySchema', () => {
   it('defaults to a depth-1 focus view and coerces the depth from the query string', () => {
-    expect(graphQuerySchema.parse({})).toEqual({ mode: 'focus', depth: 1 });
+    expect(graphQuerySchema.parse({})).toEqual({ mode: 'focus', depth: 1, generations: 4 });
     expect(graphQuerySchema.parse({ focus: id, depth: '3' })).toEqual({
       mode: 'focus',
       focus: id,
       depth: 3,
+      generations: 4,
     });
+  });
+  it('takes the ancestors and descendants modes with 1..6 generations', () => {
+    expect(
+      graphQuerySchema.parse({ mode: 'ancestors', focus: id, generations: '6' }),
+    ).toMatchObject({ mode: 'ancestors', focus: id, generations: 6 });
+    expect(graphQuerySchema.parse({ mode: 'descendants' }).generations).toBe(4);
+    for (const generations of ['0', '7', '2.5'])
+      expect(graphQuerySchema.safeParse({ mode: 'ancestors', generations }).success).toBe(false);
   });
   it('rejects depths outside 1..3, bad modes and bad ids', () => {
     for (const q of [

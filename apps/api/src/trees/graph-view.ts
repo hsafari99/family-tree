@@ -1,5 +1,7 @@
 import {
+  ancestorIds,
   branchOf,
+  descendantIds,
   FOCUS_VIEW_MAX,
   FULL_VIEW_MAX,
   hourglassIds,
@@ -35,6 +37,14 @@ export function buildTreeGraph(rows: GraphRows, access: Access, q: ParsedGraphQu
       if (!live.has(focusId)) throw notFound();
       // An hourglass: `depth` generations up and down (Batch 5).
       ({ ids, truncated } = hourglassIds(rows, focusId, q.depth, FOCUS_VIEW_MAX));
+    }
+  } else if (q.mode === 'ancestors' || q.mode === 'descendants') {
+    // The fan chart and the illustrated tree: one person's line, `generations` deep.
+    focusId = q.focus ?? access.rootPersonId;
+    if (focusId !== null) {
+      if (!live.has(focusId)) throw notFound();
+      const line = q.mode === 'ancestors' ? ancestorIds : descendantIds;
+      ({ ids, truncated } = line(rows, focusId, q.generations, FOCUS_VIEW_MAX));
     }
   } else if (q.branch !== undefined) {
     if (!live.has(q.branch)) throw notFound();

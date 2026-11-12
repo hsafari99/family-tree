@@ -111,6 +111,67 @@ describe('GET graph', () => {
     expect(names).toContain('Gp');
   });
 
+  it('ancestors mode returns the person and N generations of parents only', async () => {
+    const { owner, treeId, p } = await setup();
+    const res = await call(
+      app,
+      'GET',
+      g(treeId, `mode=ancestors&focus=${p.kid!.id}&generations=2`),
+      {
+        jar: owner.jar,
+      },
+    );
+    expect(res.statusCode).toBe(200);
+    const body = parse(res.json());
+    expect(namesOf(body)).toEqual(['Kid', 'Ma', 'Olive', 'Pa', 'Sam']);
+    expect(body).toMatchObject({ mode: 'ancestors', focusId: p.kid!.id, truncated: false });
+    expect(body.links).toHaveLength(2);
+  });
+
+  it('descendants mode returns children, grandchildren and their partners', async () => {
+    const { owner, treeId, p } = await setup();
+    const res = await call(app, 'GET', g(treeId, `mode=descendants&focus=${p.pa!.id}`), {
+      jar: owner.jar,
+    });
+    expect(res.statusCode).toBe(200);
+    // Not Half: Ma's child with Step is no descendant of Pa.
+    expect(namesOf(res.json())).toEqual(['Gk', 'Kid', 'Kp', 'Ma', 'Olive', 'Pa', 'Sam', 'Sis']);
+    // Defaults to the root.
+    const root = parse(
+      (await call(app, 'GET', g(treeId, 'mode=descendants'), { jar: owner.jar })).json(),
+    );
+    expect(root.focusId).toBe(p.olive!.id);
+    expect(namesOf(root)).toEqual(['Gk', 'Kid', 'Kp', 'Olive', 'Sam']);
+  });
+
+  it('the line modes keep the 404s, the 400s and the can() flags', async () => {
+    const { owner, treeId, p } = await setup();
+    const stranger = await signUp(app, { name: 'Stranger' });
+    const q = `mode=ancestors&focus=${p.kid!.id}`;
+    expect((await call(app, 'GET', g(treeId, q), { jar: stranger.jar })).statusCode).toBe(404);
+    for (const mode of ['ancestors', 'descendants']) {
+      const unknown = await call(
+        app,
+        'GET',
+        g(treeId, `mode=${mode}&focus=${crypto.randomUUID()}`),
+        {
+          jar: owner.jar,
+        },
+      );
+      expect(unknown.statusCode, mode).toBe(404);
+      const bad = await call(app, 'GET', g(treeId, `mode=${mode}&generations=7`), {
+        jar: owner.jar,
+      });
+      expect(bad.statusCode, mode).toBe(400);
+    }
+    const steward = await userWith2fa(app, 'Sam Steward');
+    await addMember(db, treeId, steward.userId, 'viewer', owner.userId);
+    await addGrant(db, treeId, steward.userId, p.sam!.id, owner.userId);
+    const sb = parse((await call(app, 'GET', g(treeId, q), { jar: steward.jar })).json());
+    const add = (n: string) => sb.persons.find((x) => x.givenName === n)!.canAddRelative;
+    expect(['Kid', 'Sam', 'Olive'].map(add)).toEqual([true, true, false]);
+  });
+
   it('full view returns everyone; a branch view returns the branch', async () => {
     const { owner, treeId, p } = await setup();
     const full = await call(app, 'GET', g(treeId, 'mode=full'), { jar: owner.jar });

@@ -52,7 +52,7 @@ export function useTreeGraph(
   const engine = useLayoutEngine();
   const [state, setState] = useState<TreeGraphState>({ status: 'loading' });
   const layouts = useRef(0);
-  const { mode, focus, depth, branch } = query;
+  const { mode, focus, depth, generations, branch } = query;
   const { focusId, meId, hidden = NONE, anchorId = null } = ctx;
   // A string, so a new Set with the same ids doesn't lay out again.
   const hiddenKey = [...hidden].sort().join('\n');
@@ -66,10 +66,14 @@ export function useTreeGraph(
     // the first load) shows "loading".
     setState((s) => (s.status === 'ready' && s.treeId === treeId ? s : { status: 'loading' }));
     void (async () => {
-      const key = JSON.stringify([treeId, mode, focus, depth, branch, refreshKey]);
+      const key = JSON.stringify([treeId, mode, focus, depth, generations, branch, refreshKey]);
       let data = fetched.current?.key === key ? fetched.current.data : null;
       if (!data) {
-        const res = await api.getGraph(treeId, { mode, focus, depth, branch }, controller.signal);
+        const res = await api.getGraph(
+          treeId,
+          { mode, focus, depth, generations, branch },
+          controller.signal,
+        );
         if (!active) return;
         if (!res.ok) return setState({ status: 'error', message: res.error.message });
         data = res.data;
@@ -118,6 +122,7 @@ export function useTreeGraph(
     mode,
     focus,
     depth,
+    generations,
     branch,
     focusId,
     meId,

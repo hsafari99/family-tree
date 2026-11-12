@@ -359,6 +359,14 @@ describe('graph, disconnected, similar and child-order', () => {
     expect(urlOf(mock.mock.calls[1]!)).toBe(`${BASE}/api/v1/trees/t/graph?mode=full`);
   });
 
+  it('passes generations for the line modes', async () => {
+    const mock = stubFetch({ status: 200, body: { ...graph, mode: 'ancestors' } });
+    await api().getGraph('t', { mode: 'ancestors', focus: PID, generations: 5 });
+    expect(urlOf(mock.mock.calls[0]!)).toBe(
+      `${BASE}/api/v1/trees/t/graph?mode=ancestors&focus=${PID}&generations=5`,
+    );
+  });
+
   it('passes an abort signal to fetch for the graph', async () => {
     const mock = stubFetch({ status: 200, body: graph });
     const ctl = new AbortController();

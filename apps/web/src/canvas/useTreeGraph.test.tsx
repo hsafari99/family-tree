@@ -44,7 +44,29 @@ function setup() {
   return { trees, layout, a, b, out, wrap };
 }
 
+function LineProbe({ treeId, generations }: { treeId: string; generations: number }) {
+  useTreeGraph(
+    treeId,
+    { mode: 'ancestors', focus: 'x', generations },
+    { focusId: null, meId: null },
+    0,
+  );
+  return null;
+}
+
 describe('useTreeGraph', () => {
+  it('forwards generations, and fetches again when it changes', async () => {
+    const s = setup();
+    const { rerender } = render(s.wrap(<LineProbe treeId={s.a} generations={3} />));
+    await waitFor(() => expect(s.trees.callsTo('getGraph')).toHaveLength(1));
+    expect(s.trees.callsTo('getGraph')[0]).toMatchObject({
+      query: { mode: 'ancestors', focus: 'x', generations: 3 },
+    });
+    rerender(s.wrap(<LineProbe treeId={s.a} generations={5} />));
+    await waitFor(() => expect(s.trees.callsTo('getGraph')).toHaveLength(2));
+    expect(s.trees.callsTo('getGraph')[1]).toMatchObject({ query: { generations: 5 } });
+  });
+
   it('aborts the previous request when the query changes, and never lays out stale data', async () => {
     const s = setup();
     s.trees.hold('getGraph');

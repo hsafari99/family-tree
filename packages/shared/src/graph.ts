@@ -4,25 +4,36 @@ import { CHILD_KINDS, UNION_STATUSES, UNION_TYPES } from './people.js';
 import { NAME_MAX, personSummarySchema, SEXES } from './trees.js';
 
 export const GRAPH_DEPTH_MAX = 3;
+/** The fan chart and the illustrated tree draw at most this many generations (Batch 5). */
+export const GRAPH_GENERATIONS_MAX = 6;
 /** Spec §6: above this many people the full view loads by branch. */
 export const FULL_VIEW_MAX = 2000;
 /** A focus view never returns more people than this, nearest first (decision 4). */
 export const FOCUS_VIEW_MAX = 500;
 /** Duplicate-check matches returned (decision 8). */
 export const SIMILAR_LIMIT = 5;
-export const GRAPH_MODES = ['focus', 'full'] as const;
+export const GRAPH_MODES = ['focus', 'full', 'ancestors', 'descendants'] as const;
 export type GraphMode = (typeof GRAPH_MODES)[number];
 
 /**
- * GET /trees/:id/graph query (decision 1). `branch` only applies to mode=full, and `focus` and
- * `depth` only to mode=focus; the others are ignored, not rejected. The focus view is an
- * hourglass: `depth` generations of the person's ancestors above and descendants below.
+ * GET /trees/:id/graph query (decision 1). `branch` only applies to mode=full; `focus` (default:
+ * the root) to the three person-centred modes; `depth` to mode=focus and `generations` to
+ * ancestors and descendants. The others are ignored, not rejected. The focus view is an
+ * hourglass: `depth` generations of the person's ancestors above and descendants below;
+ * `ancestors` is the person and their parents' line (the fan chart), `descendants` the person,
+ * their partners and their descendants with partners (the illustrated tree).
  */
 export const graphQuerySchema = z.object({
   mode: z.enum(GRAPH_MODES).default('focus'),
   focus: z.uuid().optional(),
   // The generic keeps the input type `number | string` (Zod 4 coerce inputs are `unknown` otherwise).
   depth: z.coerce.number<number | string>().int().min(1).max(GRAPH_DEPTH_MAX).default(1),
+  generations: z.coerce
+    .number<number | string>()
+    .int()
+    .min(1)
+    .max(GRAPH_GENERATIONS_MAX)
+    .default(4),
   branch: z.uuid().optional(),
 });
 export type GraphQuery = z.input<typeof graphQuerySchema>;
