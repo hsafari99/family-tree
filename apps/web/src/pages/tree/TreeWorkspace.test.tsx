@@ -448,8 +448,10 @@ describe('TreeWorkspace add from a card', () => {
 describe('TreeWorkspace panel focus and keys', () => {
   it('moves focus to the panel heading, and Escape closes and returns focus to the card', async () => {
     const s = setup();
-    renderAt(`/trees/${s.id}`, s);
+    const r = renderAt(`/trees/${s.id}`, s);
     const card = await screen.findByRole('button', { name: 'David Hale, b. 1956', hidden: true });
+    // Let the tree finish opening on its default person (which moves no focus) first.
+    await waitFor(() => expect(r.where()).toMatch(/\/people\//));
     fireEvent.click(card);
     const heading = await screen.findByRole('heading', { level: 2, name: /David Hale/ });
     await waitFor(() => expect(document.activeElement).toBe(heading));

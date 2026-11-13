@@ -108,7 +108,12 @@ function TreeCard({ tree: t }: { tree: HomeTree }) {
   return (
     <li className="tree-card">
       <div className="tree-card-head">
-        <h3>{t.name}</h3>
+        {/* The name's link covers the whole card (::after), so a click anywhere opens it. */}
+        <h3>
+          <Link to={`/trees/${t.id}`} className="tree-card-link">
+            {t.name}
+          </Link>
+        </h3>
         <span className="badge pill">{ROLE_LABEL[t.role]}</span>
       </div>
       <p className="tree-card-meta">
@@ -120,16 +125,13 @@ function TreeCard({ tree: t }: { tree: HomeTree }) {
           </time>
         </span>
       </p>
-      <div className="tree-card-actions">
-        <Link to={`/trees/${t.id}`} className="button-link" aria-label={`Open ${t.name}`}>
-          Open
-        </Link>
-        {invites > 0 && (
+      {invites > 0 && (
+        <div className="tree-card-actions">
           <Link to={`/trees/${t.id}/members`} className="tree-card-invites">
             {invites === 1 ? '1 open invite' : `${invites} open invites`}
           </Link>
-        )}
-      </div>
+        </div>
+      )}
     </li>
   );
 }

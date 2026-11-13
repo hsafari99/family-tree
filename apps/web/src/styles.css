@@ -2372,6 +2372,16 @@ a.section-row:hover {
 .menu-list > li {
   margin: 0;
 }
+.menu-list > li.menu-separator {
+  height: 1px;
+  margin: 0.25rem 0.5rem;
+  background: var(--line);
+}
+.menu-check {
+  display: inline-block;
+  width: 1.25rem;
+  color: var(--accent);
+}
 button.menu-item {
   display: block;
   width: 100%;
@@ -2624,8 +2634,53 @@ main:focus {
   font-weight: 600;
   text-decoration: none;
 }
+/* With several trees the name is a menu button: same text, a chevron, a light pill on hover. */
+/* Sized by its content (the name has its own cap), never squeezed by the header row. */
+.menu:has(> button.tree-switch) {
+  flex: none;
+  display: inline-flex;
+}
+button.app-header-tree.tree-switch {
+  flex: none;
+  overflow: visible;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  margin-left: -0.5rem;
+  min-height: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font: inherit;
+  font-weight: 600;
+}
+button.tree-switch > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+}
+/* Its own cap (not flex shrinking, which cut short names too): long names end in an ellipsis. */
+.tree-switch-name {
+  flex: none;
+  max-width: min(24rem, 40vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+button.tree-switch .icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+button.tree-switch:hover,
+button.tree-switch[aria-expanded='true'] {
+  background: var(--surface);
+  border-color: var(--border);
+  box-shadow: none;
+  text-decoration: none;
+}
 .app-name:hover,
-.app-header-tree:hover,
+a.app-header-tree:hover,
 .app-nav a:hover {
   text-decoration: underline;
 }
@@ -2758,6 +2813,36 @@ a.button-link:hover {
 .tree-card:hover {
   border-color: var(--line-strong);
   box-shadow: var(--shadow-2);
+}
+/* The whole card opens the tree: the name's link stretches over it. Other links on the card
+   (open invites) sit above that layer and keep their own target. */
+.tree-card {
+  position: relative;
+  cursor: pointer;
+}
+a.tree-card-link {
+  color: inherit;
+  text-decoration: none;
+}
+a.tree-card-link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+.tree-card:hover a.tree-card-link {
+  text-decoration: underline;
+}
+.tree-card:has(a.tree-card-link:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+a.tree-card-link:focus-visible {
+  outline: none;
+}
+.tree-card-actions {
+  position: relative;
+  z-index: 1;
 }
 .tree-card-head {
   display: flex;

@@ -10,7 +10,17 @@ import { startDownload } from '../trees/download';
 import { personName } from '../trees/format';
 import { useTreesApi } from '../trees/TreesApiContext';
 
+/**
+ * Keyed by the tree, so going from one tree to another (the header's switcher) starts the page
+ * afresh: no render pairs the new tree's id with the old tree's details (which would open the old
+ * tree's default person in the new tree), and per-tree state like hidden branches is re-read.
+ */
 export function TreePage() {
+  const { treeId = '' } = useParams();
+  return <TreePageFor key={treeId} />;
+}
+
+function TreePageFor() {
   const { treeId = '' } = useParams();
   const newPerson = useMatch('/trees/:treeId/people/new') !== null;
   const api = useTreesApi();

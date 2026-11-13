@@ -1,13 +1,19 @@
-import { type KeyboardEvent, type Ref, type RefObject, useEffect } from 'react';
+import { Fragment, type KeyboardEvent, type Ref, type RefObject, useEffect } from 'react';
 
 export interface MenuItem {
   label: string;
   onSelect: () => void;
   danger?: boolean;
   disabled?: boolean;
+  /** A stable key when labels can repeat (two trees with one name). */
+  key?: string;
+  /** Marks the current choice in a list of options (a menuitemradio, ticked). */
+  checked?: boolean;
+  /** Draws a divider above this item. */
+  separated?: boolean;
 }
 
-const ITEMS = '[role="menuitem"]:not(:disabled)';
+const ITEMS = '[role="menuitem"]:not(:disabled), [role="menuitemradio"]:not(:disabled)';
 
 /** Moves focus to item i of the open list (wrapping round). */
 export function focusMenuItem(list: HTMLElement | null, i: number) {
@@ -107,21 +113,30 @@ export function MenuList({
       onKeyDown={onKey}
     >
       {items.map((it) => (
-        <li key={it.label} role="none">
-          <button
-            type="button"
-            role="menuitem"
-            tabIndex={-1}
-            disabled={it.disabled}
-            className={it.danger ? 'menu-item danger-text' : 'menu-item'}
-            onClick={() => {
-              onClose(true);
-              it.onSelect();
-            }}
-          >
-            {it.label}
-          </button>
-        </li>
+        <Fragment key={it.key ?? it.label}>
+          {it.separated && <li role="separator" className="menu-separator" />}
+          <li role="none">
+            <button
+              type="button"
+              role={it.checked === undefined ? 'menuitem' : 'menuitemradio'}
+              aria-checked={it.checked}
+              tabIndex={-1}
+              disabled={it.disabled}
+              className={it.danger ? 'menu-item danger-text' : 'menu-item'}
+              onClick={() => {
+                onClose(true);
+                it.onSelect();
+              }}
+            >
+              {it.checked !== undefined && (
+                <span className="menu-check" aria-hidden="true">
+                  {it.checked ? '✓' : ''}
+                </span>
+              )}
+              {it.label}
+            </button>
+          </li>
+        </Fragment>
       ))}
     </ul>
   );

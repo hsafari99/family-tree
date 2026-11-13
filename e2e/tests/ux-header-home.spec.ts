@@ -120,11 +120,11 @@ test('home: tree cards, recent activity, and the header inside a tree', async ({
   await expect(activity.getByRole('listitem').first()).toContainText('Added: Ivo Home');
   await expect(activity.getByRole('listitem').first()).toContainText('by Hana Home');
 
-  // The activity links to the person; Open opens the tree.
+  // The activity links to the person; the tree's card opens the tree.
   await activity.getByRole('link', { name: 'Ivo Home' }).click();
   await expect(page.getByRole('heading', { name: /^Ivo Home/ })).toBeVisible();
   await banner(page).getByRole('link', { name: 'Family Tree' }).click();
-  await page.getByRole('link', { name: `Open ${treeName}` }).click();
+  await page.getByRole('link', { name: treeName, exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/trees/${treeId}$`));
   await page.setViewportSize({ width: 390, height: 844 });
   await noSidewaysScroll(page);

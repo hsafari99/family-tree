@@ -1,9 +1,10 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { MESSAGES } from '../auth/api';
 import { FakeAuthApi } from '../test/fake-auth';
 import { FakeTreesApi } from '../test/fake-trees';
 import { renderAt } from '../test/render';
+import { switcherOrder } from './AppHeader';
 
 function signedIn(extra: { avatarUrl?: string | null } = {}) {
   const auth = new FakeAuthApi();
@@ -15,9 +16,13 @@ function signedIn(extra: { avatarUrl?: string | null } = {}) {
 }
 
 const banner = () => screen.getByRole('banner');
+const personCalls = (trees: FakeTreesApi) =>
+  trees.callsTo('getPerson') as { treeId: string; personId: string }[];
 const accountMenu = () => within(banner()).getByRole('button', { name: 'Account menu' });
 
 describe('AppHeader', () => {
+  beforeEach(() => localStorage.clear());
+
   it('signed out, is minimal: the app name and a skip link, no nav or account menu', async () => {
     renderAt('/sign-in');
     await screen.findByRole('heading', { name: 'Sign in' });
@@ -147,5 +152,79 @@ describe('AppHeader', () => {
     });
     await within(profile).findByText('Profile picture added.');
     expect(accountMenu().querySelector('img')).toHaveAttribute('src', user.avatarUrl!);
+  });
+
+  it('with one tree, the tree name stays a plain link', async () => {
+    const { auth, trees } = signedIn();
+    const id = trees.addTree({ name: 'Hale family' });
+    renderAt(`/trees/${id}/members`, { auth, trees });
+    await within(banner()).findByRole('link', { name: 'Hale family' });
+    expect(within(banner()).queryByRole('button', { name: /switch tree/ })).toBeNull();
+  });
+
+  it('with several trees, the tree name is a switcher: recent first, current ticked', async () => {
+    const { auth, trees } = signedIn();
+    const hale = trees.addTree({ name: 'Hale family' });
+    const king = trees.addTree({ name: 'King family' });
+    trees.addTree({ name: 'Ada family' });
+    const r = renderAt(`/trees/${king}`, { auth, trees });
+    await screen.findByRole('heading', { name: 'King family' });
+    // King was just opened, so it leads; the rest by name.
+    const trigger = await within(banner()).findByRole('button', {
+      name: 'King family, switch tree',
+    });
+    expect(trigger).toHaveAttribute('aria-haspopup', 'menu');
+    fireEvent.click(trigger);
+    const menu = screen.getByRole('menu', { name: 'King family, switch tree' });
+    const options = within(menu).getAllByRole('menuitemradio');
+    expect(options.map((o) => o.textContent)).toEqual([
+      '✓King family',
+      'Ada family',
+      'Hale family',
+    ]);
+    expect(options[0]).toHaveAttribute('aria-checked', 'true');
+    expect(options[1]).toHaveAttribute('aria-checked', 'false');
+    expect(within(menu).getByRole('separator')).toBeInTheDocument();
+    expect(
+      within(menu)
+        .getAllByRole('menuitem')
+        .map((m) => m.textContent),
+    ).toEqual(['All trees', 'Start a new tree']);
+
+    fireEvent.click(within(menu).getByRole('menuitemradio', { name: 'Hale family' }));
+    await screen.findByRole('heading', { name: 'Hale family' });
+    // It opens on Hale's own default person, not the one King had open (a regression: the page
+    // once carried King's details into Hale for a render, and Hale had no such person).
+    const haleRoot = trees.trees.get(hale)!.detail.tree.rootPersonId!;
+    await waitFor(() => expect(r.where()).toBe(`/trees/${hale}/people/${haleRoot}`));
+    expect(screen.queryByText(MESSAGES.notFound)).toBeNull();
+    expect(
+      personCalls(trees).every(
+        (c) => c.treeId !== hale || trees.trees.get(hale)!.persons.some((p) => p.id === c.personId),
+      ),
+    ).toBe(true);
+    // Now Hale is the most recent, then King.
+    fireEvent.click(
+      await within(banner()).findByRole('button', { name: 'Hale family, switch tree' }),
+    );
+    expect(
+      within(screen.getByRole('menu'))
+        .getAllByRole('menuitemradio')
+        .map((o) => o.textContent),
+    ).toEqual(['✓Hale family', 'King family', 'Ada family']);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'All trees' }));
+    await screen.findByRole('heading', { name: /Welcome, Ada/ });
+    expect(r.where()).toBe('/');
+  });
+
+  it('orders the switcher by recent use, then by name', () => {
+    const t = (id: string, name: string) => ({ id, name, role: 'owner' as const });
+    const list = [t('a', 'Zed'), t('b', 'Tree 10'), t('c', 'Tree 2'), t('d', 'Alpha')];
+    expect(switcherOrder(list, ['d', 'a']).map((x) => x.name)).toEqual([
+      'Alpha',
+      'Zed',
+      'Tree 2',
+      'Tree 10',
+    ]);
   });
 });

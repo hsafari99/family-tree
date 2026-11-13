@@ -56,7 +56,7 @@ describe('HomePage', () => {
     expect(haleCard).toHaveTextContent('Owner');
     expect(haleCard).toHaveTextContent('3 people');
     expect(haleCard).toHaveTextContent('Updated 3 hours ago');
-    const open = within(haleCard).getByRole('link', { name: 'Open Hale family' });
+    const open = within(haleCard).getByRole('link', { name: 'Hale family' });
     expect(open).toHaveAttribute('href', `/trees/${a}`);
     // Open invite links, for those who can see them, lead to the members page.
     expect(within(haleCard).getByRole('link', { name: '1 open invite' })).toHaveAttribute(
@@ -69,7 +69,7 @@ describe('HomePage', () => {
     expect(lovelace).toHaveTextContent('1 person');
     expect(lovelace).toHaveTextContent('Updated just now');
     expect(within(lovelace).queryByRole('link', { name: /open invite/ })).toBeNull();
-    expect(within(lovelace).getByRole('link', { name: 'Open Lovelace family' })).toHaveAttribute(
+    expect(within(lovelace).getByRole('link', { name: 'Lovelace family' })).toHaveAttribute(
       'href',
       `/trees/${b}`,
     );
@@ -174,7 +174,7 @@ describe('HomePage', () => {
     // Only a deleted tree: not a first-time user, so no guide.
     expect(screen.queryByRole('heading', { name: 'Getting started' })).toBeNull();
     fireEvent.click(within(section).getByRole('button', { name: 'Restore' }));
-    expect(await screen.findByRole('link', { name: 'Open Hale family' })).toHaveAttribute(
+    expect(await screen.findByRole('link', { name: 'Hale family' })).toHaveAttribute(
       'href',
       `/trees/${id}`,
     );
