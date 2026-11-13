@@ -365,6 +365,9 @@ describe('MembersPage', () => {
     const input = (await screen.findByLabelText('Invite link')) as HTMLInputElement;
     expect(input.value).toBe(`${window.location.origin}/invite/fake-token-1`);
     expect(screen.getByText(/You won't be able to see this link again/)).toBeInTheDocument();
+    // The form starts over: those choices were used, not a draft that keeps the dialog open.
+    expect(screen.getByLabelText('Can add and edit')).not.toBeChecked();
+    expect(screen.getByLabelText('This invite is for')).toHaveValue('');
     expect(s.trees.callsTo('createInvite')).toEqual([
       {
         treeId: s.id,

@@ -21,6 +21,9 @@ export function InvitesSection({
   const api = useTreesApi();
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<CreatedInvite | null>(null);
+  // A new form after each invite: the choices made for the last one were used, not a draft (so an
+  // outside click can close the dialog), and the next invite starts from the defaults.
+  const [formKey, setFormKey] = useState(0);
   // Skip the mount run: under load it can fire after a click has already set `created`.
   const seenActed = useRef(acted.n);
   useEffect(() => {
@@ -48,12 +51,14 @@ export function InvitesSection({
       <h2>Invite someone</h2>
       <FormError>{error}</FormError>
       <InviteForm
+        key={formKey}
         treeId={treeId}
         detail={detail}
         persons={persons}
         candidates={unlinked}
         onCreated={(c) => {
           setCreated(c);
+          setFormKey((k) => k + 1);
           onActed('invite');
           void reload('invites');
         }}
