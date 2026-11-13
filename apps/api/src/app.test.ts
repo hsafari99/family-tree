@@ -55,18 +55,21 @@ describe('buildApp', () => {
     ).toBeUndefined();
   });
 
-  it('allows PATCH and DELETE in CORS preflights', async () => {
+  // Every method the web app sends cross-origin in production (dev goes through the Vite proxy,
+  // same origin, so a missing one only shows on the real site). PUT is the avatar upload.
+  it('allows every method the web app uses in CORS preflights', async () => {
     const config = testConfig();
     app = buildApp({ config, checks });
     const res = await app.inject({
       method: 'OPTIONS',
       url: '/api/v1/health',
-      headers: { origin: config.WEB_ORIGIN, 'access-control-request-method': 'DELETE' },
+      headers: { origin: config.WEB_ORIGIN, 'access-control-request-method': 'PUT' },
     });
     expect(res.statusCode).toBe(204);
-    const methods = String(res.headers['access-control-allow-methods']);
-    expect(methods).toContain('DELETE');
-    expect(methods).toContain('PATCH');
+    const methods = String(res.headers['access-control-allow-methods'])
+      .split(',')
+      .map((m) => m.trim());
+    expect(methods).toEqual(expect.arrayContaining(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']));
   });
 
   it('hides internal error details behind a generic 500', async () => {

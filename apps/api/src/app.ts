@@ -112,7 +112,8 @@ export function buildApp({
   app.register(cors, {
     origin: [config.WEB_ORIGIN],
     credentials: true,
-    methods: ['GET', 'HEAD', 'POST', 'PATCH', 'DELETE'],
+    // Every method the web app sends; PUT is the avatar upload (PUT /api/v1/account/avatar).
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'],
     // The web app is on another origin: without this it can't read the export's file name.
     exposedHeaders: ['Content-Disposition'],
   });
