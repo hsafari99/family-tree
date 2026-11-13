@@ -135,18 +135,6 @@ table {
 .subtitle {
   opacity: 0.7;
 }
-.status {
-  padding: 1rem;
-  border-radius: var(--radius);
-  border: 1px solid currentColor;
-}
-.status--ok {
-  color: var(--ok);
-}
-.status--bad {
-  color: var(--bad);
-}
-
 /* Page layout: one centred card. */
 .page {
   display: flex;
@@ -2845,9 +2833,6 @@ button.account-trigger[aria-expanded='true'] {
 }
 
 /* Home dashboard (batch 6) */
-.card > .status {
-  margin-top: 2rem;
-}
 .home-lead {
   margin-top: -0.25rem;
   color: var(--muted);

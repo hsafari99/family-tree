@@ -6,7 +6,6 @@ import { EmptyState, PeopleArt } from '../components/EmptyState';
 import { FormError } from '../components/forms';
 import { Page } from '../components/Page';
 import { TreeCardsSkeleton } from '../components/Skeleton';
-import { HealthStatus } from '../HealthStatus';
 import { ACTION_LABEL, countPeople, ROLE_LABEL, timeAgo } from '../trees/format';
 import { useTreesApi } from '../trees/TreesApiContext';
 
@@ -98,7 +97,6 @@ export function HomePage() {
           )}
         </>
       )}
-      <HealthStatus />
     </Page>
   );
 }

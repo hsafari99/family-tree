@@ -37,7 +37,7 @@ export function renderAt(
     nav.where = l.pathname + l.search;
     return null;
   }
-  // The home page's HealthStatus calls fetch; answer it so tests never hit the network.
+  // Answer any stray fetch, so tests never hit the network.
   vi.stubGlobal(
     'fetch',
     vi.fn(

@@ -245,7 +245,8 @@ describe('routes', () => {
   it('home greets a signed-in user and signs out to sign in', async () => {
     renderAt('/', { auth: signedInApi() });
     expect(await screen.findByRole('heading', { name: 'Welcome, Ada' })).toBeInTheDocument();
-    expect(await screen.findByText('All systems operational')).toBeInTheDocument();
+    // No service status for users: that is for whoever runs the server (GET /api/v1/health).
+    expect(screen.queryByText('All systems operational')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Account menu' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Sign out' }));
     expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
