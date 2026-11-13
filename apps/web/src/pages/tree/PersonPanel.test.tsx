@@ -62,8 +62,13 @@ describe('PersonPanel', () => {
     expect(s.trees.callsTo('updatePerson')).toMatchObject([
       { input: { version: 1, surname: 'Lovelace' } },
     ]);
-    const list = screen.getByRole('link', { name: /^Ada Lovelace/ });
-    expect(list).toHaveAttribute('aria-current', 'page');
+    // The tree reloads: All people lists her new name, marked as the one open.
+    fireEvent.click(screen.getByRole('button', { name: 'List of all people' }));
+    const all = await screen.findByRole('dialog', { name: /^All people/ });
+    expect(within(all).getByRole('link', { name: /^Ada Lovelace/ })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
     expect(screen.getByRole('heading', { name: /^Ada Lovelace/ })).toBeInTheDocument();
   });
 

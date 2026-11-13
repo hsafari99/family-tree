@@ -58,7 +58,9 @@ describe('AddPersonForm', () => {
     expect(s.trees.callsTo('createPerson')).toEqual([
       { treeId: s.id, input: { person: { givenName: 'Ada', sex: 'unknown' } } },
     ]);
-    expect(screen.getByRole('heading', { name: /People \(2\)/ })).toBeInTheDocument();
+    // The tree reloads with her: All people counts two.
+    fireEvent.click(screen.getByRole('button', { name: 'List of all people' }));
+    expect(await screen.findByRole('dialog', { name: 'All people (2)' })).toBeInTheDocument();
   });
 
   it('connects the new person to someone', async () => {

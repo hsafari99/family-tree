@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { FakeAuthApi } from '../../test/fake-auth';
 import { FakeTreesApi, fakePerson, fakePersonView } from '../../test/fake-trees';
@@ -93,10 +93,10 @@ describe('DeletePerson', () => {
       await screen.findByText('Moved to Trash. The owner can restore it from the Trash.'),
     ).toBeInTheDocument();
     expect(s.trees.callsTo('deletePerson')).toHaveLength(1);
-    await waitFor(() =>
-      expect(screen.getByRole('heading', { name: 'People (2)' })).toBeInTheDocument(),
-    );
-    expect(screen.queryByRole('link', { name: /Ada King/ })).not.toBeInTheDocument();
+    // The tree reloads without her: All people counts two and does not list her.
+    fireEvent.click(screen.getByRole('button', { name: 'List of all people' }));
+    const all = await screen.findByRole('dialog', { name: 'All people (2)' });
+    expect(within(all).queryByRole('link', { name: /Ada King/ })).not.toBeInTheDocument();
   });
 
   it('shows the fixed message when the server refuses', async () => {
