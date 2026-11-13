@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 
 /** A destructive action behind an inline two-step confirm (no window.confirm: it blocks browser automation). */
 export function ConfirmButton({
@@ -11,6 +11,7 @@ export function ConfirmButton({
   startAsking = false,
   onCancel,
   compact = false,
+  icon,
 }: {
   label: string;
   confirmLabel: string;
@@ -24,6 +25,8 @@ export function ConfirmButton({
   /** Called when the confirm step is cancelled (Cancel or Escape). */
   onCancel?: () => void;
   compact?: boolean;
+  /** Shows only this icon on the first step, with `label` as its name and tooltip. */
+  icon?: ReactNode;
 }) {
   const [asking, setAsking] = useState(startAsking);
   const confirmRef = useRef<HTMLButtonElement>(null);
@@ -54,11 +57,13 @@ export function ConfirmButton({
       <button
         ref={startRef}
         type="button"
-        className={cls}
+        className={icon ? [cls, 'icon-button'].filter(Boolean).join(' ') : cls}
+        aria-label={icon ? label : undefined}
+        title={icon ? label : undefined}
         disabled={pending || disabled}
         onClick={() => setAsking(true)}
       >
-        {label}
+        {icon ?? label}
       </button>
     );
   }

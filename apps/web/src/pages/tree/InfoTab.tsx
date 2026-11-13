@@ -70,10 +70,14 @@ export function InfoTab(props: TabProps) {
   const { edit, delete: canDelete } = view.capabilities;
 
   return (
-    <div>
-      <MainPhoto {...props} />
+    <div className="info-tab">
       {s.saved && !editing && <Success>Saved</Success>}
-      <Details person={view.person} />
+      {/* Where there is room (the Details dialog), the photo sits to the right of the details
+          instead of above them; in the narrow side panel it stays on top. */}
+      <div className="info-top">
+        <MainPhoto {...props} />
+        <Details person={view.person} />
+      </div>
       {/* One row: Edit on the left, Delete… on the right; each only when allowed. */}
       {!editing && (edit || canDelete) && (
         <p className="detail-actions">

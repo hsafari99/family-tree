@@ -1826,8 +1826,65 @@ a.section-row:hover {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem 1rem;
+  gap: 0.5rem;
   margin: 0.5rem 0 0;
+}
+/* Change and Remove under the photo are icon-only (their names are in aria-label and the
+   tooltip), outlined so they read as buttons; Remove keeps the danger colour. */
+.details-photo-actions button.icon-button {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-color: var(--line-strong);
+  color: var(--accent);
+}
+.details-photo-actions button.icon-button.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.details-photo-actions .confirm {
+  display: inline-flex;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+.details-photo-actions .icon-button .icon {
+  width: 18px;
+  height: 18px;
+}
+/* In the Details dialog there is room beside the details: the photo goes on the right, larger,
+   with its links under it, so the dialog does not grow taller. Changing the photo needs the
+   width, so it goes back on top while the picker or cropper is open. */
+.info-tab {
+  container-type: inline-size;
+}
+@container (min-width: 520px) {
+  .info-top:not(:has(.details-photo.is-changing)) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 1.5rem;
+    align-items: start;
+  }
+  .info-top:not(:has(.details-photo.is-changing)) > .details-photo {
+    grid-column: 2;
+    grid-row: 1;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    width: 200px;
+    margin: 0.75rem 0 0;
+  }
+  .info-top:not(:has(.details-photo.is-changing)) > .details-photo .details-photo-img {
+    width: 200px;
+    height: 200px;
+    border-radius: 16px;
+    font-size: 3rem;
+  }
+  .info-top:not(:has(.details-photo.is-changing)) > .details-photo .details-photo-actions {
+    justify-content: center;
+  }
+  .info-top:not(:has(.details-photo.is-changing)) > :not(.details-photo) {
+    grid-column: 1;
+    grid-row: 1;
+  }
 }
 .photo-choices {
   list-style: none;

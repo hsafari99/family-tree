@@ -2,6 +2,7 @@ import { PHOTO_MEDIA_TYPES } from '@family-tree/shared';
 import { useRef, useState } from 'react';
 import { avatarTone } from '../../canvas/avatar-tone';
 import { ConfirmButton } from '../../components/ConfirmButton';
+import { TrashIcon, UploadIcon } from '../../components/icons';
 import { FormError, Success } from '../../components/forms';
 import { PersonPhoto } from '../../components/PersonPhoto';
 import { PhotoCropper } from '../../photos/PhotoCropper';
@@ -36,7 +37,11 @@ export function MainPhoto(props: TabProps) {
   };
 
   return (
-    <div className="details-photo" role="group" aria-label="Main photo">
+    <div
+      className={changing ? 'details-photo is-changing' : 'details-photo'}
+      role="group"
+      aria-label="Main photo"
+    >
       <PersonPhoto
         url={main?.thumbUrl ?? null}
         person={view.person}
@@ -52,20 +57,23 @@ export function MainPhoto(props: TabProps) {
             <button
               type="button"
               ref={changeButton}
-              className="link"
+              className="icon-button"
+              aria-label="Change photo"
+              title="Change photo"
               onClick={() => {
                 setChanging(true);
                 requestAnimationFrame(() => photos.input.current?.focus());
               }}
             >
-              Change photo
+              <UploadIcon />
             </button>
             {main && (
               <ConfirmButton
                 label="Remove photo"
-                confirmLabel="Delete this photo"
+                confirmLabel="Delete photo"
                 danger
                 compact
+                icon={<TrashIcon />}
                 pending={photos.busy}
                 onConfirm={() => void photos.remove(main.id).then(after)}
               />
