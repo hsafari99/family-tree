@@ -160,9 +160,10 @@ describe('TreePage', () => {
       },
     });
     const { unmount } = renderAt(`/trees/${inactive.id}`, inactive);
+    // The notice links straight to the two-step setup.
     expect(
-      await screen.findByText(/Turn on two-step verification in Account settings/),
-    ).toBeInTheDocument();
+      await screen.findByRole('link', { name: 'Turn on two-step verification' }),
+    ).toHaveAttribute('href', '/account/two-step');
     unmount();
     const active = setup({
       role: 'viewer',

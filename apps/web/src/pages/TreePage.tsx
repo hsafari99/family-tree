@@ -1,6 +1,6 @@
 import type { PersonSummary, TreeDetail } from '@family-tree/shared';
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
-import { useLocation, useMatch, useNavigate, useParams } from 'react-router';
+import { Link, useLocation, useMatch, useNavigate, useParams } from 'react-router';
 import { useHeaderTree } from '../components/AppHeader';
 import { ConfirmButton } from '../components/ConfirmButton';
 import { FormError } from '../components/forms';
@@ -104,8 +104,8 @@ function TreePageFor() {
           <p>You look after the branches of: {anchors}</p>
         ) : (
           <p role="status" className="notice">
-            You&apos;ve been made a branch steward. Turn on two-step verification in Account
-            settings to start using it.
+            You&apos;ve been made a branch steward.{' '}
+            <Link to="/account/two-step">Turn on two-step verification</Link> to start using it.
           </p>
         ))}
 
