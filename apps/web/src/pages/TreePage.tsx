@@ -64,6 +64,11 @@ function TreePageFor() {
     const res = await api.listPersons(treeId);
     if (res.ok) setPersons(res.data);
   }, [api, treeId]);
+  // After "This is me" or a member change: the cards marked as you and as others' accounts.
+  const refreshDetail = useCallback(async () => {
+    const res = await api.getTree(treeId);
+    if (res.ok) setDetail(res.data);
+  }, [api, treeId]);
 
   if (error) {
     return (
@@ -114,6 +119,7 @@ function TreePageFor() {
         detail={detail}
         persons={persons}
         onPersonsChanged={() => void refreshPersons()}
+        onDetailChanged={() => void refreshDetail()}
         settings={
           capabilities.manageTree ? (
             <Settings

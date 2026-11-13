@@ -12,6 +12,8 @@ import {
 import { createPortal } from 'react-dom';
 import { placeMenu } from '../components/MenuButton';
 import { focusMenuItem, type MenuItem, MenuList, useCloseOnOutside } from '../components/MenuList';
+import { personName } from '../trees/format';
+import type { InviteState } from './account-links';
 
 /** What the card menu can do; the page supplies these through the canvas actions. */
 export interface CardMenuActions {
@@ -21,6 +23,8 @@ export interface CardMenuActions {
   addRelative(personId: string, as: RelativeRole): void;
   /** "How are we related?" with this person as To. */
   howRelated(personId: string): void;
+  /** The invite dialog for this person (?tab=invite); only shown with an `invite` state. */
+  invitePerson?(personId: string): void;
 }
 
 const ADD: [RelativeRole, string][] = [
@@ -30,8 +34,14 @@ const ADD: [RelativeRole, string][] = [
   ['sibling', 'Add sibling'],
 ];
 
-export function cardMenuItems(person: GraphPerson, a: CardMenuActions): MenuItem[] {
+export function cardMenuItems(
+  person: GraphPerson,
+  a: CardMenuActions,
+  invite: InviteState = null,
+): MenuItem[] {
   const id = person.id;
+  const given = person.givenName || personName(person);
+  const invitePerson = a.invitePerson;
   return [
     { label: 'Open details', onSelect: () => a.openPerson(id) },
     { label: 'Focus on this person', onSelect: () => a.focusPerson(id) },
@@ -39,6 +49,15 @@ export function cardMenuItems(person: GraphPerson, a: CardMenuActions): MenuItem
       ? ADD.map(([as, label]) => ({ label, onSelect: () => a.addRelative(id, as) }))
       : []),
     { label: 'How are we related?', onSelect: () => a.howRelated(id) },
+    ...(invite && invitePerson
+      ? [
+          {
+            label: invite === 'pending' ? `Invite pending for ${given}…` : `Invite ${given}…`,
+            onSelect: () => invitePerson(id),
+            separated: true,
+          },
+        ]
+      : []),
   ];
 }
 

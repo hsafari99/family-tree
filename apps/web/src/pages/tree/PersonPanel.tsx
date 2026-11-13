@@ -1,5 +1,5 @@
 import type { PersonSummary, PersonView } from '@family-tree/shared';
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { FormError } from '../../components/forms';
 import { PersonPhoto, PhotoRefreshContext, useThrottled } from '../../components/PersonPhoto';
@@ -42,6 +42,7 @@ export function PersonPanel({
   persons,
   onChanged,
   tags = [],
+  account,
 }: {
   treeId: string;
   personId: string;
@@ -49,6 +50,8 @@ export function PersonPanel({
   onChanged: () => void;
   /** Shown after the name, e.g. the member's own role or "Starting person". */
   tags?: readonly string[];
+  /** Under the name: whose account this person is, invite and "This is me" (PersonAccount). */
+  account?: (view: PersonView) => ReactNode;
 }) {
   const api = useTreesApi();
   const [view, setView] = useState<PersonView | null>(null);
@@ -160,6 +163,7 @@ export function PersonPanel({
           </h2>
           {p.nickname && <p>“{p.nickname}”</p>}
           {p.maidenName && <p>Maiden name: {p.maidenName}</p>}
+          {account?.(view)}
         </div>
         <ul className="section-list" aria-label={`Sections for ${name}`}>
           {SECTIONS.map((s) => (

@@ -146,3 +146,36 @@ describe('card menu', () => {
     expect(onOpen).toHaveBeenCalled();
   });
 });
+
+describe('card menu invite item', () => {
+  const actions = (): CardMenuActions => ({
+    openPerson: vi.fn(),
+    focusPerson: vi.fn(),
+    addRelative: vi.fn(),
+    howRelated: vi.fn(),
+    invitePerson: vi.fn(),
+  });
+
+  it('is last, names the person, and opens their invite', () => {
+    const a = actions();
+    const items = cardMenuItems(robert, a, 'new');
+    const last = items.at(-1)!;
+    expect(last.label).toBe('Invite Robert…');
+    expect(last.separated).toBe(true);
+    last.onSelect();
+    expect(a.invitePerson).toHaveBeenCalledWith('robert');
+  });
+
+  it('says when an invite is already open', () => {
+    expect(cardMenuItems(robert, actions(), 'pending').at(-1)!.label).toBe(
+      'Invite pending for Robert…',
+    );
+  });
+
+  it('is left out without an invite state or an invite action', () => {
+    const labels = (items: { label: string }[]) => items.map((i) => i.label);
+    expect(labels(cardMenuItems(robert, actions()))).not.toContain('Invite Robert…');
+    const noInvite = { ...actions(), invitePerson: undefined };
+    expect(labels(cardMenuItems(robert, noInvite, 'new'))).not.toContain('Invite Robert…');
+  });
+});

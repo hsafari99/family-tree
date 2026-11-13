@@ -1,10 +1,11 @@
 import type { GraphPerson, RelativeRole } from '@family-tree/shared';
 import { Handle, type NodeProps, Position, type ReactFlowState, useStore } from '@xyflow/react';
-import { ChevronIcon } from '../components/icons';
+import { ChevronIcon, UserIcon } from '../components/icons';
 import { PersonPhoto } from '../components/PersonPhoto';
 import { initials, personName, personYears } from '../trees/format';
 import { useRef } from 'react';
 import type { MenuItem } from '../components/MenuList';
+import { useAccountLinks } from './account-links';
 import { avatarTone } from './avatar-tone';
 import { CardMenu, cardMenuItems, useCardMenu } from './CardMenu';
 import { type CardDetail, cardDetail } from './canvas-settings';
@@ -42,6 +43,7 @@ export function PersonCardView({
   onNavigate,
   branch = null,
   onToggleBranch,
+  linkedTo = null,
 }: {
   person: GraphPerson;
   detail: CardDetail;
@@ -60,6 +62,8 @@ export function PersonCardView({
   /** Collapse state (Task 13): a chevron hides the descendants, "+N" shows them again. */
   branch?: PersonNodeData['branch'];
   onToggleBranch?: () => void;
+  /** The member whose account this person is (not you: your card says "You"). */
+  linkedTo?: string | null;
 }) {
   const openButton = useRef<HTMLButtonElement>(null);
   const cardMenu = useCardMenu(() => openButton.current);
@@ -72,6 +76,7 @@ export function PersonCardView({
     years,
     deceased && 'deceased',
     isMe && 'you',
+    !isMe && linkedTo && `linked to ${linkedTo}`,
     person.hiddenRelatives && 'more relatives not shown',
   ]
     .filter(Boolean)
@@ -153,6 +158,16 @@ export function PersonCardView({
         )}
       </button>
       {detail === 'full' && isMe && <span className="card-you">You</span>}
+      {detail !== 'dot' && !isMe && linkedTo && (
+        <span
+          className="card-linked"
+          role="img"
+          aria-label={`Linked to ${linkedTo}`}
+          title={`Linked to ${linkedTo}`}
+        >
+          <UserIcon />
+        </span>
+      )}
       {detail !== 'dot' && person.hiddenRelatives && (
         <span className="card-more" aria-hidden="true" title="More relatives not shown">
           …
@@ -226,6 +241,7 @@ export function PersonNode({ data }: NodeProps<PersonFlowNode>) {
   const id = data.person.id;
   const selected = useIsSelected(useSelectionStore(), id);
   const coarse = usePointerCoarse();
+  const links = useAccountLinks();
   return (
     <>
       <Handle
@@ -245,10 +261,11 @@ export function PersonNode({ data }: NodeProps<PersonFlowNode>) {
         onOpen={() => actions.openPerson(id)}
         onAdd={(as) => actions.addRelative(id, as)}
         onFocus={() => actions.reveal(id)}
-        menu={cardMenuItems(data.person, actions)}
+        menu={cardMenuItems(data.person, actions, links.inviteState(data.person))}
         onNavigate={(dir) => actions.move(id, dir)}
         branch={data.branch}
         onToggleBranch={() => actions.toggleBranch(id)}
+        linkedTo={links.linkedName(id)}
       />
       {/* Bottom: children's and elbow partner lines; the sides: straight partner lines (Task 6). */}
       {(['bottom', 'left', 'right'] as const).map((id) => (

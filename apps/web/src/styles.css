@@ -743,6 +743,24 @@ img.card-avatar {
   line-height: 18px;
   pointer-events: none;
 }
+/* Someone's account (not yours): a small person mark where "You" would sit. */
+.card-linked {
+  position: absolute;
+  top: -9px;
+  right: 12px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--accent);
+}
+.card-linked .icon {
+  width: 12px;
+  height: 12px;
+}
 .card-more {
   position: absolute;
   right: 10px;
@@ -1543,6 +1561,43 @@ button.panel-toggle:hover {
 }
 .person-summary p {
   margin: 0.15rem 0;
+}
+/* Whose account the person is, or the invite and "This is me" links: small, under the name. */
+.person-account {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  margin: 0.15rem 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.person-account > .icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.person-account .link-button {
+  margin-left: -0.4rem;
+}
+.person-account .link-button + .link-button {
+  margin-left: 0;
+}
+.person-account .error {
+  flex-basis: 100%;
+}
+/* "Which one is you?": one line above the canvas, with its own close button. */
+.whoami-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.35rem 0.4rem 0.35rem 0.85rem;
+  font-size: 0.9rem;
+}
+.whoami-banner > span {
+  flex: 1;
+  min-width: 0;
 }
 .person-summary::after {
   content: '';

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { CardDetail } from './canvas-settings';
 import { PersonCardView } from './PersonCard';
@@ -27,6 +27,26 @@ function view(
 }
 
 describe('PersonCardView', () => {
+  it('marks a card linked to a member, in its name and with a titled badge', () => {
+    view({ linkedTo: 'Dana' });
+    expect(screen.getByRole('button', { name: /^Robert Hale/ })).toHaveAccessibleName(
+      'Robert Hale, 1930–1998, deceased, linked to Dana',
+    );
+    expect(screen.getByRole('img', { name: 'Linked to Dana' })).toHaveAttribute(
+      'title',
+      'Linked to Dana',
+    );
+  });
+
+  it('shows no link badge on a dot, nor on your own card', () => {
+    view({ linkedTo: 'Dana' }, 'dot');
+    expect(screen.queryByRole('img', { name: 'Linked to Dana' })).toBeNull();
+    cleanup();
+    view({ linkedTo: 'Dana', isMe: true });
+    expect(screen.queryByRole('img', { name: 'Linked to Dana' })).toBeNull();
+    expect(screen.getByText('You')).toBeInTheDocument();
+  });
+
   it('reports keyboard focus (to pan the card into view) but not a pointer press', () => {
     const onFocus = vi.fn();
     view({ onFocus });

@@ -2,6 +2,7 @@ import {
   GRAPH_DEPTH_MAX,
   type GraphQuery,
   hourglassGenerations,
+  type Invite,
   type KinStep,
   type PersonSummary,
   type RelativeRole,
@@ -20,9 +21,10 @@ import {
 import { Link, useLocation, useMatch, useNavigate, useParams, useSearchParams } from 'react-router';
 import { FormError } from '../../components/forms';
 import { PhotoRefreshContext, useThrottled } from '../../components/PersonPhoto';
-import { ChevronIcon, LinkPathIcon } from '../../components/icons';
+import { ChevronIcon, LinkPathIcon, XIcon } from '../../components/icons';
 import { SectionDialog } from '../../components/SectionDialog';
 import { CanvasSkeleton } from '../../components/Skeleton';
+import { AccountLinksProvider, type InviteState } from '../../canvas/account-links';
 import { RowContent } from '../../canvas/PanelRow';
 import { SearchBox } from '../../canvas/SearchBox';
 import {
@@ -52,7 +54,14 @@ import { useTreeGraph } from '../../canvas/useTreeGraph';
 import { personName, ROLE_LABEL } from '../../trees/format';
 import { useTreesApi } from '../../trees/TreesApiContext';
 import { AddPersonForm } from './AddPersonForm';
-import { readCollapsed, writeCollapsed } from './panel-state';
+import { InvitePerson } from './InvitePerson';
+import {
+  readCollapsed,
+  readWhoamiDismissed,
+  writeCollapsed,
+  writeWhoamiDismissed,
+} from './panel-state';
+import { PersonAccount } from './PersonAccount';
 import { MembersPanel } from '../MembersPage';
 import { TrashPanel } from '../TrashPage';
 import { PeopleList } from './PeopleList';
@@ -66,12 +75,15 @@ export function TreeWorkspace({
   detail,
   persons,
   onPersonsChanged,
+  onDetailChanged = () => {},
   settings = null,
 }: {
   treeId: string;
   detail: TreeDetail;
   persons: PersonSummary[];
   onPersonsChanged: () => void;
+  /** Reload the tree's detail: after "This is me", or a member change in the Members dialog. */
+  onDetailChanged?: () => void;
   /** Tree settings, for members who may manage the tree: a dialog at `?tab=settings`. */
   settings?: ReactNode;
 }) {
@@ -80,6 +92,9 @@ export function TreeWorkspace({
   const [params, setParams] = useSearchParams();
   // "How are we related?" opens in a dialog over the page (`?tab=related`).
   const relatedOpen = params.get('tab') === 'related';
+  // Inviting the open person (their card's menu or panel) opens in a dialog too (`?tab=invite`).
+  const canInvite = detail.capabilities.invite;
+  const inviteOpen = params.get('tab') === 'invite' && canInvite && personId !== undefined;
   // The tree-wide dialogs of the panel's "This tree" rows (`?tab=`): Tree settings and the Trash
   // only for whoever may manage the tree.
   const tabParam = params.get('tab');
@@ -151,6 +166,59 @@ export function TreeWorkspace({
     };
   }, [api, treeId, refreshKey]);
 
+  // Open invites (owners see all, stewards their own): a person with one shows "Invite pending".
+  const [invites, setInvites] = useState<Invite[]>([]);
+  const [invitesKey, setInvitesKey] = useState(0);
+  useEffect(() => {
+    let active = true;
+    if (!canInvite) return setInvites([]);
+    void api.listInvites(treeId).then((r) => {
+      if (active && r.ok) setInvites(r.data);
+    });
+    return () => {
+      active = false;
+    };
+  }, [api, treeId, canInvite, invitesKey]);
+  const reloadInvites = useCallback(() => setInvitesKey((k) => k + 1), []);
+  // Whose account each card is; your own card says "You" instead.
+  const linkedNames = useMemo(
+    () =>
+      new Map(
+        detail.linkedMembers
+          .filter((l) => l.personId !== detail.me.personId)
+          .map((l) => [l.personId, l.name]),
+      ),
+    [detail.linkedMembers, detail.me.personId],
+  );
+  const invitedIds = useMemo(
+    () => new Set(invites.map((i) => i.targetPersonId).filter((x): x is string => x !== null)),
+    [invites],
+  );
+  const accountLinks = useMemo(
+    () => ({
+      linkedName: (id: string) => linkedNames.get(id) ?? null,
+      // An invite is for someone no member is; `canAddRelative` is the steward's branch, which
+      // is also where they may invite (the server checks it either way).
+      inviteState: (p: { id: string; canAddRelative: boolean }): InviteState =>
+        !canInvite || p.id === detail.me.personId || linkedNames.has(p.id)
+          ? null
+          : invitedIds.has(p.id)
+            ? 'pending'
+            : p.canAddRelative
+              ? 'new'
+              : null,
+    }),
+    [linkedNames, invitedIds, canInvite, detail.me.personId],
+  );
+  // "Which one is you?" for a member with no card, until dismissed (per tree) or answered.
+  const [whoamiDismissed, setWhoamiDismissed] = useState(() => readWhoamiDismissed(treeId));
+  const showWhoami =
+    detail.me.personId === null && !whoamiDismissed && persons.some((p) => !linkedNames.has(p.id));
+  const dismissWhoami = () => {
+    writeWhoamiDismissed(treeId);
+    setWhoamiDismissed(true);
+  };
+
   const changed = useCallback(() => {
     setRefreshKey((k) => k + 1);
     onPersonsChanged();
@@ -209,6 +277,10 @@ export function TreeWorkspace({
           // Asking how you are related to yourself means nothing: then To starts empty.
           to: id === latest.current.meId ? null : id,
         });
+      },
+      invitePerson: (id: string) => {
+        setCollapsed(false);
+        go(`${base}/people/${id}`, { focus: null, tab: 'invite', add: null, ...NO_PAIR });
       },
       toggleBranch: toggleBranchOf,
       openUnion: (id: string) => {
@@ -321,6 +393,21 @@ export function TreeWorkspace({
     [go, pathname],
   );
   const relatedRow = useRef<HTMLButtonElement>(null);
+  const inviteRow = useRef<HTMLButtonElement>(null);
+  const setInvite = useCallback(
+    (open: boolean) =>
+      setParams(
+        (p) => {
+          const next = new URLSearchParams(p);
+          next.delete('add');
+          if (open) next.set('tab', 'invite');
+          else next.delete('tab');
+          return next;
+        },
+        { replace: true },
+      ),
+    [setParams],
+  );
   const toggle = useRef<HTMLButtonElement>(null);
   const nameOf = (id: string) => {
     const p = persons.find((x) => x.id === id);
@@ -383,6 +470,7 @@ export function TreeWorkspace({
   );
   // However a dialog closes, focus goes back to its row (unless something else has it).
   useReturnFocus(relatedOpen, relatedRow);
+  useReturnFocus(inviteOpen, inviteRow);
   useReturnFocus(treeDialog, dialogRows);
   // A "How are we related?" path wins; otherwise the open person's direct line, only while the
   // panel shows them (Escape collapses it and so clears the dimming; the URL keeps the person).
@@ -576,6 +664,29 @@ export function TreeWorkspace({
                   persons={persons}
                   onChanged={changed}
                   tags={tagsOf(personId)}
+                  account={(view) => {
+                    const p = view.person;
+                    return (
+                      <PersonAccount
+                        treeId={treeId}
+                        personId={p.id}
+                        name={personName(p)}
+                        given={p.givenName || personName(p)}
+                        linkedName={linkedNames.get(p.id) ?? null}
+                        invite={accountLinks.inviteState({
+                          id: p.id,
+                          canAddRelative: view.capabilities.addRelative,
+                        })}
+                        canClaim={detail.me.personId === null && !linkedNames.has(p.id)}
+                        onInvite={() => setInvite(true)}
+                        inviteRef={inviteRow}
+                        onClaimed={() => {
+                          onDetailChanged();
+                          changed();
+                        }}
+                      />
+                    );
+                  }}
                 />
               ) : unionId ? (
                 <UnionPanel
@@ -635,6 +746,20 @@ export function TreeWorkspace({
             </span>
           </button>
           <div className="canvas-column">
+            {showWhoami && (
+              <p className="notice whoami-banner">
+                <span>Which one is you? Open your card and choose “This is me”.</span>
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label="Dismiss: which one is you?"
+                  title="Dismiss"
+                  onClick={dismissWhoami}
+                >
+                  <XIcon />
+                </button>
+              </p>
+            )}
             {notice && (
               <p role="status" className="notice">
                 {notice}
@@ -720,23 +845,25 @@ export function TreeWorkspace({
                 </p>
               )}
               {onCanvas && drawn && drawn.nodes.length > 0 && (
-                <FamilyCanvas
-                  nodes={drawn.nodes}
-                  edges={drawn.edges}
-                  families={drawn.families}
-                  layoutKey={drawn.layoutKey}
-                  focusId={view.view === 'focus' ? focusId : null}
-                  actions={actions}
-                  selectedId={personId ?? null}
-                  meId={detail.me.personId}
-                  flyRequest={flyRequest}
-                  coverRef={panel}
-                  bands={bands}
-                  onReorder={(u, ids) => void onReorder(u, ids)}
-                  onReparent={(l, u) => void onReparent(l, u)}
-                  couples={drawn.couples}
-                  onCoupleChange={(c) => void onCoupleChange(c)}
-                />
+                <AccountLinksProvider value={accountLinks}>
+                  <FamilyCanvas
+                    nodes={drawn.nodes}
+                    edges={drawn.edges}
+                    families={drawn.families}
+                    layoutKey={drawn.layoutKey}
+                    focusId={view.view === 'focus' ? focusId : null}
+                    actions={actions}
+                    selectedId={personId ?? null}
+                    meId={detail.me.personId}
+                    flyRequest={flyRequest}
+                    coverRef={panel}
+                    bands={bands}
+                    onReorder={(u, ids) => void onReorder(u, ids)}
+                    onReparent={(l, u) => void onReparent(l, u)}
+                    couples={drawn.couples}
+                    onCoupleChange={(c) => void onCoupleChange(c)}
+                  />
+                </AccountLinksProvider>
               )}
             </section>
           </div>
@@ -745,6 +872,22 @@ export function TreeWorkspace({
       {relatedOpen && (
         <SectionDialog title="How are we related?" onClose={() => setRelated(false)}>
           <RelationshipPanel treeId={treeId} detail={detail} persons={persons} onShow={showPath} />
+        </SectionDialog>
+      )}
+      {inviteOpen && personId && (
+        <SectionDialog title={`Invite ${nameOf(personId)}`} onClose={() => setInvite(false)}>
+          {persons.some((p) => p.id === personId) ? (
+            <InvitePerson
+              treeId={treeId}
+              detail={detail}
+              persons={persons}
+              person={persons.find((p) => p.id === personId)!}
+              invites={invites}
+              onChanged={reloadInvites}
+            />
+          ) : (
+            <p>Loading…</p>
+          )}
         </SectionDialog>
       )}
       {treeDialog && (
@@ -757,7 +900,15 @@ export function TreeWorkspace({
           {treeDialog === 'new-person' && (
             <AddPersonForm treeId={treeId} persons={persons} detail={detail} onCreated={changed} />
           )}
-          {treeDialog === 'members' && <MembersPanel treeId={treeId} />}
+          {treeDialog === 'members' && (
+            <MembersPanel
+              treeId={treeId}
+              onChanged={() => {
+                onDetailChanged();
+                reloadInvites();
+              }}
+            />
+          )}
           {treeDialog === 'trash' && <TrashPanel treeId={treeId} onChanged={changed} />}
           {treeDialog === 'people' && (
             <PeopleList
