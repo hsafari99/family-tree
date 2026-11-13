@@ -1,5 +1,4 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
-import { ConfirmButton } from '../../components/ConfirmButton';
 import { FormError } from '../../components/forms';
 import { personName } from '../../trees/format';
 import { useTreesApi } from '../../trees/TreesApiContext';
@@ -13,22 +12,16 @@ export function StewardsSection({
   me,
   reload,
   onActed,
-  stewards,
 }: SectionProps) {
   const api = useTreesApi();
   const [error, setError] = useState<string | null>(null);
   const [userId, setUserId] = useState('');
   const [personId, setPersonId] = useState('');
-  const isOwner = detail.me.role === 'owner';
   const [pending, setPending] = useState(false);
   const candidates = useMemo(
     () => members.filter((m) => m.role !== 'owner' && m.userId !== me),
     [members, me],
   );
-  const nameOfPerson = (id: string) => {
-    const p = persons.find((x) => x.id === id);
-    return p ? personName(p) : 'someone';
-  };
 
   useEffect(() => {
     // Keep the selections pointing at someone who is still in the list.
@@ -58,14 +51,7 @@ export function StewardsSection({
     await reload('stewards');
   }
 
-  async function revoke(id: string) {
-    setError(null);
-    const res = await api.revokeSteward(treeId, id);
-    if (!res.ok) return setError(actionMessage(res.error));
-    onActed(null);
-    await reload('stewards');
-  }
-
+  if (!detail.capabilities.grantStewardship) return null;
   return (
     <section>
       <h2>Branch stewards</h2>
@@ -73,28 +59,9 @@ export function StewardsSection({
         A steward can add, edit and delete people in one branch of the family, and invite relatives
         to it.
       </p>
+      {/* Who is a steward of what shows in the members table above, with Revoke in each
+          member's More actions; this section only explains it and grants new ones. */}
       <FormError>{error}</FormError>
-      {stewards.length === 0 ? (
-        <p>No branch stewards yet.</p>
-      ) : (
-        <ul>
-          {stewards.map((s) => (
-            <li key={s.id}>
-              {s.userName} looks after {nameOfPerson(s.anchorPersonId)}&apos;s branch, granted by{' '}
-              {s.grantedByName ?? 'someone who left'}
-              {!s.active && ' (starts when they turn on two-step verification)'}{' '}
-              {(isOwner || (detail.me.steward.active && s.grantedByUserId === me)) && (
-                <ConfirmButton
-                  label="Revoke"
-                  confirmLabel="Revoke stewardship"
-                  danger
-                  onConfirm={() => void revoke(s.id)}
-                />
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
       {detail.capabilities.grantStewardship && candidates.length === 0 && (
         <p className="hint">
           Invite someone and have them join first; then you can make them a steward.

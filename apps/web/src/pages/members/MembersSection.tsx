@@ -1,4 +1,4 @@
-import { type InviteRole } from '@family-tree/shared';
+import { type InviteRole, type StewardGrant } from '@family-tree/shared';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { AuthError } from '../../auth/api';
 import { ConfirmButton } from '../../components/ConfirmButton';
@@ -42,6 +42,8 @@ export function MembersSection({
   // Linking a member to a person card (owner only): whose link, and the person chosen.
   const [linking, setLinking] = useState<{ userId: string; personId: string } | null>(null);
   const [unlinking, setUnlinking] = useState<string | null>(null);
+  // The grant whose Revoke was chosen from a row's More actions, waiting for the confirm.
+  const [revoking, setRevoking] = useState<StewardGrant | null>(null);
   const captionId = useId();
   const linkSelectId = useId();
 
@@ -73,6 +75,15 @@ export function MembersSection({
   }
 
   const grantsOf = (userId: string) => stewards.filter((g) => g.userId === userId);
+  // The owner revokes any grant; an active steward the ones they made.
+  const canRevoke = (g: StewardGrant) => isOwner || (activeSteward && g.grantedByUserId === me);
+  /** Whose branch a grant covers, said plainly when it is the member's own card. */
+  const branchOf = (g: StewardGrant, m: (typeof members)[number]) =>
+    g.anchorPersonId === m.personId
+      ? m.userId === me
+        ? 'your own branch'
+        : 'their own branch'
+      : `${personLabel(g.anchorPersonId)}’s branch`;
   const transferTarget = members.find((m) => m.userId === transferTo) ?? null;
   const linkTarget = members.find((m) => m.userId === linking?.userId) ?? null;
   const unlinkTarget = members.find((m) => m.userId === unlinking) ?? null;
@@ -114,8 +125,18 @@ export function MembersSection({
                       : []),
                   ]
                 : [];
+              const revokeItems: MenuItem[] = grants.filter(canRevoke).map((g) => ({
+                key: `revoke-${g.id}`,
+                label:
+                  grants.length > 1
+                    ? `Revoke stewardship of ${branchOf(g, m)}`
+                    : 'Revoke stewardship',
+                danger: true,
+                onSelect: () => setRevoking(g),
+              }));
               const more: MenuItem[] = [
                 ...linkItems,
+                ...revokeItems,
                 ...(isOwner && m.role !== 'owner'
                   ? m.twoFactorEnabled
                     ? [{ label: 'Make owner', onSelect: () => setTransferTo(m.userId) }]
@@ -168,7 +189,7 @@ export function MembersSection({
                     <div className="cell">
                       {grants.map((g) => (
                         <div key={g.id}>
-                          Steward of {personLabel(g.anchorPersonId)}’s branch
+                          Steward of {branchOf(g, m)}
                           {!g.active && ' (waiting for 2FA)'}
                         </div>
                       ))}
@@ -267,6 +288,24 @@ export function MembersSection({
         }}
       >
         <p>The card stays in the tree. They can choose “This is me” again, or you can link them.</p>
+      </ConfirmDialog>
+      <ConfirmDialog
+        open={revoking !== null}
+        title="Revoke this stewardship?"
+        confirmLabel="Revoke stewardship"
+        danger
+        onCancel={() => setRevoking(null)}
+        onConfirm={() => {
+          const g = revoking;
+          setRevoking(null);
+          if (g) void act(() => api.revokeSteward(treeId, g.id), ['stewards']);
+        }}
+      >
+        <p>
+          {members.find((x) => x.userId === revoking?.userId)?.name ?? 'They'} can no longer add,
+          edit or delete people in {personLabel(revoking?.anchorPersonId ?? null)}’s branch. Their
+          role in the tree stays as it is.
+        </p>
       </ConfirmDialog>
       <ConfirmDialog
         open={transferTarget !== null}

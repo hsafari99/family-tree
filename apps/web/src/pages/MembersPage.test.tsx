@@ -139,6 +139,29 @@ describe('MembersPage', () => {
     await waitFor(() => expect(screen.queryByText('Invited By Me')).not.toBeInTheDocument());
   });
 
+  it('says "their own branch" when the steward’s branch starts at their own card', async () => {
+    const s = setup();
+    const t = s.trees.trees.get(s.id)!;
+    t.members = t.members.map((m) =>
+      m.userId === s.other.userId ? { ...m, personId: bob.id } : m,
+    );
+    t.stewards.push({
+      id: crypto.randomUUID(),
+      userId: s.other.userId,
+      userName: 'Other Person',
+      anchorPersonId: bob.id,
+      grantedByUserId: s.user.id,
+      grantedByName: 'Me',
+      parentGrantId: null,
+      active: false,
+    });
+    renderAt(`/trees/${s.id}/members`, s);
+    await screen.findByText('a@example.com');
+    const scope = within(rowOf('Other Person')).getAllByRole('cell')[2]!;
+    expect(scope).toHaveTextContent('Steward of their own branch (waiting for 2FA)');
+    expect(scope).not.toHaveTextContent('Bob Hale’s branch');
+  });
+
   it('is a real table: five headers, five cells per row, each labelled (brief #19)', async () => {
     const s = setup();
     const t = s.trees.trees.get(s.id)!;
@@ -390,19 +413,19 @@ describe('MembersPage', () => {
     fireEvent.change(screen.getByLabelText('Member'), { target: { value: s.other.userId } });
     fireEvent.change(screen.getByLabelText('Branch of'), { target: { value: cy.id } });
     fireEvent.click(screen.getByRole('button', { name: 'Make steward' }));
-    expect(
-      await screen.findByText(
-        /Other Person looks after Cy Hale's branch, granted by someone who left/,
-      ),
-    ).toBeInTheDocument();
+    // The grant shows once, in the member's row (no second list under the form).
+    const scope = () => within(rowOf('Other Person')).getAllByRole('cell')[2]!;
+    await waitFor(() => expect(scope()).toHaveTextContent('Steward of Cy Hale’s branch'));
+    expect(screen.queryByText(/looks after/)).not.toBeInTheDocument();
     expect(s.trees.callsTo('grantSteward')).toEqual([
       { treeId: s.id, input: { userId: s.other.userId, anchorPersonId: cy.id } },
     ]);
-    const item = screen.getByText(/looks after Cy Hale/).closest('li')!;
-    fireEvent.click(within(item).getByRole('button', { name: 'Revoke' }));
-    fireEvent.click(within(item).getByRole('button', { name: 'Revoke stewardship' }));
+    // Revoke is in the member's More actions, behind a confirm.
+    pick(rowOf('Other Person'), 'Other Person', 'Revoke stewardship');
+    const ask = await screen.findByRole('dialog', { name: 'Revoke this stewardship?' });
+    fireEvent.click(within(ask).getByRole('button', { name: 'Revoke stewardship' }));
     await waitFor(() => expect(s.trees.callsTo('revokeSteward')).toHaveLength(1));
-    await waitFor(() => expect(screen.queryByText(/looks after Cy Hale/)).not.toBeInTheDocument());
+    await waitFor(() => expect(scope()).not.toHaveTextContent('Steward of'));
   });
 
   it('hides the steward form and says why when nobody could be made a steward', async () => {
@@ -456,7 +479,7 @@ describe('MembersPage', () => {
     fireEvent.submit(form);
     fireEvent.submit(form);
     s.trees.release();
-    await screen.findByText(/looks after/);
+    await waitFor(() => expect(s.trees.callsTo('grantSteward')).toHaveLength(1));
     expect(s.trees.callsTo('grantSteward')).toHaveLength(1);
   });
 
