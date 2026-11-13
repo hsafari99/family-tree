@@ -7,13 +7,13 @@ import { CopyLink } from './members/CopyLink';
 
 /**
  * Support Family Tree: why it asks, then each way this build offers (Interac e-Transfer, PayPal,
- * Ko-fi), plainly worded for people who don't do this often. Payment happens on the bank's or the
+ * Ko-fi, Buy Me a Coffee), plainly worded for people who don't do this often. Payment happens on the bank's or the
  * platform's own site; this app never sees it. With no option set, the page doesn't exist.
  */
 export function SupportPage() {
   const support = useSupport();
   if (!hasSupport(support)) return <Navigate to="/" replace />;
-  const { etransferEmail, paypalUrl, kofiUrl } = support;
+  const { etransferEmail, paypalUrl, kofiUrl, bmacUrl } = support;
   return (
     <Page title="Support Family Tree">
       <p className="support-lead">
@@ -39,7 +39,7 @@ export function SupportPage() {
         </section>
       )}
 
-      {(paypalUrl || kofiUrl) && (
+      {(paypalUrl || kofiUrl || bmacUrl) && (
         <section aria-labelledby="support-online" className="support-option">
           <h2 id="support-online">Online, by card or PayPal</h2>
           <p>Opens in a new tab. You can pay with a card; you don’t need an account.</p>
@@ -52,6 +52,11 @@ export function SupportPage() {
             {kofiUrl && (
               <a className="button-link" href={kofiUrl} target="_blank" rel="noopener noreferrer">
                 Donate on Ko-fi
+              </a>
+            )}
+            {bmacUrl && (
+              <a className="button-link" href={bmacUrl} target="_blank" rel="noopener noreferrer">
+                Buy me a coffee
               </a>
             )}
           </p>

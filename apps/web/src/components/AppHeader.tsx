@@ -162,7 +162,8 @@ export function AppHeader() {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const signedIn = user !== null && user !== 'loading';
-  // Support: a quiet link beside My trees; on a phone, where the bar is full, a menu item instead.
+  // Support: a quiet link in the middle of the bar (not on a phone, where the bar is full), and
+  // always the last item of the account menu.
   const support = hasSupport(useSupport());
   const narrow = useNarrow();
 
@@ -211,18 +212,18 @@ export function AppHeader() {
             </>
           )}
         </div>
+        {signedIn && support && !narrow && (
+          <Link
+            to={SUPPORT_PATH}
+            className="app-header-support"
+            aria-current={pathname === SUPPORT_PATH ? 'page' : undefined}
+          >
+            <HeartIcon /> Support
+          </Link>
+        )}
         {signedIn && (
-          <>
+          <div className="app-header-end">
             <nav aria-label="Main" className="app-nav">
-              {support && !narrow && (
-                <Link
-                  to={SUPPORT_PATH}
-                  className="app-nav-support"
-                  aria-current={pathname === SUPPORT_PATH ? 'page' : undefined}
-                >
-                  <HeartIcon /> Support
-                </Link>
-              )}
               <Link to="/" aria-current={pathname === '/' ? 'page' : undefined}>
                 My trees
               </Link>
@@ -238,18 +239,19 @@ export function AppHeader() {
               }
               items={[
                 { label: 'Account', onSelect: () => void navigate('/account') },
-                ...(support && narrow
+                { label: 'Sign out', onSelect: () => void onSignOut(), disabled: pending },
+                ...(support
                   ? [
                       {
                         label: 'Support Family Tree',
+                        separated: true,
                         onSelect: () => void navigate(SUPPORT_PATH),
                       },
                     ]
                   : []),
-                { label: 'Sign out', onSelect: () => void onSignOut(), disabled: pending },
               ]}
             />
-          </>
+          </div>
         )}
       </div>
       {error && (

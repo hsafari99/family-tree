@@ -7,11 +7,13 @@
  *   for Autodeposit, so donors aren't asked for a security question.
  * - VITE_DONATE_PAYPAL_URL: a PayPal.me link.
  * - VITE_DONATE_KOFI_URL: a Ko-fi page.
+ * - VITE_DONATE_BMAC_URL: a Buy Me a Coffee page.
  */
 export interface SupportConfig {
   etransferEmail: string | null;
   paypalUrl: string | null;
   kofiUrl: string | null;
+  bmacUrl: string | null;
 }
 
 type Env = Record<string, string | boolean | undefined>;
@@ -38,11 +40,12 @@ export function readSupport(env: Env): SupportConfig {
     etransferEmail: email(env.VITE_DONATE_ETRANSFER_EMAIL),
     paypalUrl: link(env.VITE_DONATE_PAYPAL_URL, ['paypal.me', 'paypal.com']),
     kofiUrl: link(env.VITE_DONATE_KOFI_URL, ['ko-fi.com']),
+    bmacUrl: link(env.VITE_DONATE_BMAC_URL, ['buymeacoffee.com']),
   };
 }
 
 export const hasSupport = (c: SupportConfig) =>
-  c.etransferEmail !== null || c.paypalUrl !== null || c.kofiUrl !== null;
+  c.etransferEmail !== null || c.paypalUrl !== null || c.kofiUrl !== null || c.bmacUrl !== null;
 
 /** This build's support options. */
 export const SUPPORT: SupportConfig = readSupport(import.meta.env as Env);

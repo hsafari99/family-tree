@@ -1,3 +1,4 @@
+import { APP_NAME } from '../components/AppHeader';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SupportConfig } from '../support/config';
@@ -9,11 +10,13 @@ const ALL: SupportConfig = {
   etransferEmail: 'give@example.com',
   paypalUrl: 'https://paypal.me/someone',
   kofiUrl: 'https://ko-fi.com/someone',
+  bmacUrl: 'https://buymeacoffee.com/someone',
 };
 const ETRANSFER_ONLY: SupportConfig = {
   etransferEmail: 'give@example.com',
   paypalUrl: null,
   kofiUrl: null,
+  bmacUrl: null,
 };
 
 function signedIn() {
@@ -54,28 +57,37 @@ describe('Support', () => {
     expect(screen.queryByRole('link', { name: 'support it' })).toBeNull();
   });
 
-  it('desktop: a Support link beside My trees and a line at the end of home', async () => {
+  it('desktop: a Support link in the middle of the header, last in the account menu, and a line at the end of home', async () => {
     phone(false);
     const s = signedIn();
-    renderAt('/', { ...s, support: ALL });
+    const r = renderAt('/', { ...s, support: ALL });
     await screen.findByRole('heading', { name: /Welcome, Ada/ });
-    const nav = within(banner()).getByRole('navigation', { name: 'Main' });
-    expect(
-      within(nav)
-        .getAllByRole('link')
-        .map((a) => a.textContent?.trim()),
-    ).toEqual(['Support', 'My trees']);
-    expect(within(nav).getByRole('link', { name: 'Support' })).toHaveAttribute('href', '/support');
+    const links = within(banner())
+      .getAllByRole('link')
+      .map((a) => a.textContent?.trim());
+    // Between the app name (place) and My trees (end).
+    expect(links.indexOf('Support')).toBeGreaterThan(links.indexOf(APP_NAME));
+    expect(links.indexOf('Support')).toBeLessThan(links.indexOf('My trees'));
+    expect(within(banner()).getByRole('link', { name: 'Support' })).toHaveAttribute(
+      'href',
+      '/support',
+    );
     expect(await screen.findByRole('link', { name: 'support it' })).toHaveAttribute(
       'href',
       '/support',
     );
-    // Not in the account menu as well.
     fireEvent.click(within(banner()).getByRole('button', { name: 'Account menu' }));
-    expect(screen.queryByRole('menuitem', { name: 'Support Family Tree' })).toBeNull();
+    expect(
+      within(screen.getByRole('menu'))
+        .getAllByRole('menuitem')
+        .map((m) => m.textContent),
+    ).toEqual(['Account', 'Sign out', 'Support Family Tree']);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Support Family Tree' }));
+    expect(await screen.findByRole('heading', { name: 'Support Family Tree' })).toBeVisible();
+    expect(r.where()).toBe('/support');
   });
 
-  it('phone: in the account menu instead of the header bar', async () => {
+  it('phone: only in the account menu (last), not in the header bar', async () => {
     phone(true);
     const s = signedIn();
     const r = renderAt('/', { ...s, support: ALL });
@@ -86,13 +98,13 @@ describe('Support', () => {
       within(screen.getByRole('menu'))
         .getAllByRole('menuitem')
         .map((m) => m.textContent),
-    ).toEqual(['Account', 'Support Family Tree', 'Sign out']);
+    ).toEqual(['Account', 'Sign out', 'Support Family Tree']);
     fireEvent.click(screen.getByRole('menuitem', { name: 'Support Family Tree' }));
     expect(await screen.findByRole('heading', { name: 'Support Family Tree' })).toBeVisible();
     expect(r.where()).toBe('/support');
   });
 
-  it('shows e-Transfer steps with a copyable email, and opens PayPal and Ko-fi in a new tab', async () => {
+  it('shows e-Transfer steps with a copyable email, and opens PayPal, Ko-fi and Buy Me a Coffee in a new tab', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
     const s = signedIn();
@@ -106,6 +118,7 @@ describe('Support', () => {
     for (const [name, href] of [
       ['Donate with PayPal', ALL.paypalUrl],
       ['Donate on Ko-fi', ALL.kofiUrl],
+      ['Buy me a coffee', ALL.bmacUrl],
     ] as const) {
       const a = within(online).getByRole('link', { name });
       expect(a).toHaveAttribute('href', href);

@@ -2678,9 +2678,10 @@ main:focus {
   min-height: 3.25rem;
   padding: 0.4rem 1rem;
 }
+/* Place and end share the spare width equally, so the Support link between them sits centred. */
 .app-header-place {
   display: flex;
-  flex: 1;
+  flex: 1 1 0;
   align-items: center;
   gap: 0.4rem;
   min-width: 0;
@@ -2811,6 +2812,11 @@ button.account-trigger[aria-expanded='true'] {
   .app-header-bar {
     gap: 0.25rem 0.5rem;
     padding: 0.35rem 0.75rem;
+  }
+  /* No centred link here: the end keeps its own width and the tree name gets the rest. */
+  .app-header-end {
+    flex: none;
+    gap: 0.25rem 0.5rem;
   }
   button.account-trigger {
     padding: 0.15rem;
@@ -3373,13 +3379,34 @@ button.section-row {
 }
 
 /* Support: a quiet heart link in the header, the page's options, one line on home. */
-.app-nav a.app-nav-support {
+.app-header-end {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem 1rem;
+}
+a.app-header-support {
+  flex: none;
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 0.4rem;
   color: var(--muted);
+  text-decoration: none;
+  white-space: nowrap;
 }
-.app-nav a.app-nav-support .icon {
+a.app-header-support:hover {
+  text-decoration: underline;
+}
+a.app-header-support[aria-current='page'] {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.4em;
+}
+a.app-header-support .icon {
   width: 16px;
   height: 16px;
   color: var(--bad);

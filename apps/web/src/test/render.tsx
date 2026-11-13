@@ -13,7 +13,12 @@ import { ToastProvider } from '../components/Toast';
 import type { SupportConfig } from '../support/config';
 import { SupportProvider } from '../support/SupportContext';
 
-const NO_SUPPORT: SupportConfig = { etransferEmail: null, paypalUrl: null, kofiUrl: null };
+const NO_SUPPORT: SupportConfig = {
+  etransferEmail: null,
+  paypalUrl: null,
+  kofiUrl: null,
+  bmacUrl: null,
+};
 
 /** Renders the whole route table at `path` with fake auth and trees APIs. */
 export function renderAt(
