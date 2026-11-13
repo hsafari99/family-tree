@@ -38,7 +38,7 @@ import { PersonNode } from './PersonCard';
 import { reparentFromReconnect } from './reparent';
 import { UnionNode } from './UnionNode';
 import { useAnimatedNodes } from './useAnimatedNodes';
-import { centredOn, focusZoom, isClear, onScreen, pinnedAt } from './view-math';
+import { centredOn, focusView, isClear, onScreen, pinnedAt } from './view-math';
 
 const NODE_TYPES = { person: PersonNode, union: UnionNode } satisfies NodeTypes;
 const EDGE_TYPES = { family: FamilyEdge } satisfies EdgeTypes;
@@ -85,6 +85,8 @@ export function FamilyCanvas(props: FamilyCanvasProps) {
 
 /** Room kept on the right for the toolbar's column. */
 const TOOLBAR_SPACE = 64;
+/** Room between a fitted drawing and the toolbar or minimap. */
+const EDGE_ROOM = 20;
 const MIN_ZOOM = 0.05;
 const NO_BANDS: readonly Band[] = [];
 
@@ -149,18 +151,21 @@ function CanvasInner({
   }, [coverRef]);
   // Whether a fit has run yet: the first one jumps, later ones glide (unless motion is reduced).
   const fitted = useRef(false);
-  /** Fit the drawing, then (focus view) centre on the focus person. */
+  /** Fit the drawing; in focus view, centre on the focus person only when it can't all fit. */
   const fit = useCallback(async () => {
     const { nodes, focusId, mapShown } = latest.current;
     const { size, cover } = coverOf();
     // Keep the drawing clear of the toolbar (right edge), of the minimap above its bottom corner
-    // and of a phone's sheet, so no card sits under them.
+    // and of a phone's sheet, so no card sits under them. The focus view, which is small, keeps a
+    // little more room for the focus card's ring and add buttons. (The generation names are in
+    // their own column beside the pane, never over it.)
     const bottom = Math.max(mapShown ? 176 : 0, cover.bottom);
+    const room = focusId ? EDGE_ROOM : 0;
     const padding = {
       top: 0.1,
       left: 0.1,
-      right: `${TOOLBAR_SPACE}px` as const,
-      bottom: bottom > 0 ? (`${bottom}px` as const) : 0.1,
+      right: `${TOOLBAR_SPACE + room}px` as const,
+      bottom: bottom > 0 ? (`${bottom + room}px` as const) : 0.1,
     };
     const duration = fitted.current ? motionMs(300) : 0;
     fitted.current = true;
@@ -180,8 +185,11 @@ function CanvasInner({
     );
     const focus = focusId ? nodes.find((n) => n.id === personNodeId(focusId)) : undefined;
     if (focus) {
-      const [x, y] = [focus.position.x + CARD_WIDTH / 2, focus.position.y + CARD_HEIGHT / 2];
-      vp = centredOn(x, y, focusZoom(vp.zoom), size, cover);
+      const centre = {
+        x: focus.position.x + CARD_WIDTH / 2,
+        y: focus.position.y + CARD_HEIGHT / 2,
+      };
+      vp = focusView(vp, centre, size, cover);
     }
     await flow.setViewport(vp, { duration });
   }, [flow, coverOf]);

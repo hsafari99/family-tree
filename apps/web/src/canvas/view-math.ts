@@ -70,9 +70,23 @@ export const onScreen = (box: Rect, vp: Viewport): Rect => ({
 });
 
 /**
- * The focus view's zoom after a fit: never below the name-and-years card, because it centres on
- * the focus person anyway and the rest is a pan away (a phone would otherwise get dots).
+ * The focus view's zoom after a fit: never below the name-and-years card (a phone would otherwise
+ * get dots).
  */
 export const FOCUS_MIN_ZOOM = 0.4;
-export const focusZoom = (fitted: number, max = 1.1) =>
-  Math.min(max, Math.max(fitted, FOCUS_MIN_ZOOM));
+
+/**
+ * The focus view after a layout: the fit of the whole focus graph (`fitted`, already clear of the
+ * toolbar, the minimap and a sheet) while it is readable, so no relative is left off screen; when
+ * the whole graph needs a smaller zoom than the compact cards, the focus person (flow point
+ * `focus`) centred at that zoom instead, with the rest a pan away.
+ */
+export function focusView(
+  fitted: Viewport,
+  focus: { x: number; y: number },
+  pane: { width: number; height: number },
+  cover: Pick<Cover, 'right' | 'bottom'>,
+): Viewport {
+  if (fitted.zoom >= FOCUS_MIN_ZOOM) return fitted;
+  return centredOn(focus.x, focus.y, FOCUS_MIN_ZOOM, pane, cover);
+}

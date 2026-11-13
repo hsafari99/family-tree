@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { PROD_LOCAL, statePath } from '../support/env';
 import { treeUrl } from '../support/fixture';
+import { card } from '../support/ui';
 
 test.skip(PROD_LOCAL, 'dev stack only');
 test.use({ storageState: statePath('owner.json') });
@@ -47,4 +48,26 @@ test('the illustrated tree grows from the oldest ancestor and opens a child', as
   await expect(
     page.getByRole('group', { name: 'Illustrated tree of David Hale’s descendants' }),
   ).toBeVisible();
+});
+
+test('the focus view at 3 generations fits all of Leo’s relatives beside the labels', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(`${treeUrl()}?depth=3`);
+  const pane = page.locator('.family-canvas-pane');
+  const gutter = page.locator('.generation-gutter');
+  await expect(card(page, 'Leo Hale')).toBeVisible();
+  // Let the fit settle.
+  await page.waitForTimeout(800);
+  const box = (await pane.boundingBox())!;
+  const edge = (await gutter.boundingBox())!;
+  const everyone = ['Robert Hale', 'Margaret Hale', 'David Hale', 'Laura Hale'];
+  for (const name of [...everyone, 'Leo Hale', 'Emma Hale', 'Mia Hale']) {
+    const c = (await card(page, name).boundingBox())!;
+    expect(c.x, `${name} left`).toBeGreaterThanOrEqual(Math.max(box.x, edge.x + edge.width));
+    expect(c.x + c.width, `${name} right`).toBeLessThanOrEqual(box.x + box.width);
+    expect(c.y, `${name} top`).toBeGreaterThanOrEqual(box.y);
+    expect(c.y + c.height, `${name} bottom`).toBeLessThanOrEqual(box.y + box.height);
+  }
 });

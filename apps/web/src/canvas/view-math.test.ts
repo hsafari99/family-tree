@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { centredOn, focusZoom, isClear, onScreen, pinnedAt } from './view-math';
+import { centredOn, focusView, isClear, onScreen, pinnedAt } from './view-math';
 
 const pane = { width: 1000, height: 600 };
 const none = { right: 0, bottom: 0, boxes: [] };
@@ -39,10 +39,20 @@ describe('view math', () => {
   });
 });
 
-describe('focusZoom', () => {
-  it('keeps the fitted zoom, but never below the compact cards', () => {
-    expect(focusZoom(0.8)).toBe(0.8);
-    expect(focusZoom(0.12)).toBe(0.4);
-    expect(focusZoom(2)).toBe(1.1);
+describe('focusView', () => {
+  const cover = { right: 64, bottom: 0 };
+  it('keeps the fit of the whole focus graph when it is readable', () => {
+    const fitted = { x: -40, y: 12, zoom: 0.55 };
+    expect(focusView(fitted, { x: 900, y: 300 }, pane, cover)).toEqual(fitted);
+    // Down to the compact cards exactly.
+    expect(focusView({ ...fitted, zoom: 0.4 }, { x: 900, y: 300 }, pane, cover)).toEqual({
+      ...fitted,
+      zoom: 0.4,
+    });
+  });
+  it('centres on the focus person at the compact zoom when the whole graph cannot fit', () => {
+    expect(focusView({ x: 5, y: 5, zoom: 0.2 }, { x: 1000, y: 500 }, pane, cover)).toEqual(
+      centredOn(1000, 500, 0.4, pane, cover),
+    );
   });
 });
