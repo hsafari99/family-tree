@@ -1,7 +1,7 @@
 import { PHOTO_MEDIA_TYPES } from '@family-tree/shared';
 import { useRef, useState } from 'react';
 import { avatarTone } from '../../canvas/avatar-tone';
-import { ConfirmButton } from '../../components/ConfirmButton';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { TrashIcon, UploadIcon } from '../../components/icons';
 import { FormError, Success } from '../../components/forms';
 import { PersonPhoto } from '../../components/PersonPhoto';
@@ -21,6 +21,7 @@ export function MainPhoto(props: TabProps) {
   const canEdit = view.capabilities.edit;
   const photos = usePhotoActions(props);
   const [changing, setChanging] = useState(false);
+  const [asking, setAsking] = useState(false);
   const changeButton = useRef<HTMLButtonElement>(null);
   const name = personName(view.person);
   const main = view.photos.find((p) => p.isPrimary) ?? null;
@@ -52,33 +53,54 @@ export function MainPhoto(props: TabProps) {
       <div className="details-photo-side">
         <FormError>{photos.error}</FormError>
         {photos.done && <Success>{photos.done}</Success>}
+        {/* Like the profile picture in Account: small icon-and-word links; Remove asks first. */}
         {canEdit && !changing && (
           <p className="details-photo-actions">
             <button
               type="button"
               ref={changeButton}
-              className="icon-button"
-              aria-label="Change photo"
+              className="link-button"
               title="Change photo"
+              aria-label="Change photo"
+              disabled={photos.busy}
               onClick={() => {
                 setChanging(true);
                 requestAnimationFrame(() => photos.input.current?.focus());
               }}
             >
               <UploadIcon />
+              Change
             </button>
             {main && (
-              <ConfirmButton
-                label="Remove photo"
-                confirmLabel="Delete photo"
-                danger
-                compact
-                icon={<TrashIcon />}
-                pending={photos.busy}
-                onConfirm={() => void photos.remove(main.id).then(after)}
-              />
+              <button
+                type="button"
+                className="link-button danger"
+                title="Remove photo"
+                aria-label="Remove photo"
+                disabled={photos.busy}
+                onClick={() => setAsking(true)}
+              >
+                <TrashIcon />
+                Remove
+              </button>
             )}
           </p>
+        )}
+        {main && (
+          <ConfirmDialog
+            open={asking}
+            title="Remove this photo?"
+            confirmLabel="Remove"
+            danger
+            pending={photos.busy}
+            onCancel={() => setAsking(false)}
+            onConfirm={() => {
+              setAsking(false);
+              void photos.remove(main.id).then(after);
+            }}
+          >
+            <p>It is deleted. Their next photo, if they have one, becomes the main photo.</p>
+          </ConfirmDialog>
         )}
         {canEdit && changing && (
           <div className="details-photo-change">

@@ -309,7 +309,8 @@ describe('the main photo in Details', () => {
     await d.findByText('Main photo changed');
     expect(s.trees.callsTo('setPrimaryPhoto')).toHaveLength(1);
     fireEvent.click(d.getByRole('button', { name: 'Remove photo' }));
-    fireEvent.click(d.getByRole('button', { name: 'Delete photo' }));
+    const ask = await screen.findByRole('dialog', { name: 'Remove this photo?' });
+    fireEvent.click(within(ask).getByRole('button', { name: 'Remove' }));
     await d.findByText('Photo removed');
     expect(s.trees.callsTo('deletePhoto')).toHaveLength(1);
   });
