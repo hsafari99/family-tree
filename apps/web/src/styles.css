@@ -3371,3 +3371,48 @@ button.section-row {
   stroke-width: 3px;
   stroke-linejoin: round;
 }
+
+/* Support: a quiet heart link in the header, the page's options, one line on home. */
+.app-nav a.app-nav-support {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--muted);
+}
+.app-nav a.app-nav-support .icon {
+  width: 16px;
+  height: 16px;
+  color: var(--bad);
+}
+.support-lead {
+  font-size: 1.05rem;
+}
+.support-lead .icon {
+  width: 18px;
+  height: 18px;
+  vertical-align: -3px;
+  color: var(--bad);
+}
+.support-option {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+.support-steps {
+  padding-left: 1.25rem;
+}
+.support-option .link-box + .hint {
+  margin-top: 0.5rem;
+}
+.support-steps li + li {
+  margin-top: 0.25rem;
+}
+.support-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.home-support {
+  margin-top: 2rem;
+  text-align: center;
+}

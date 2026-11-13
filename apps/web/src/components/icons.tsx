@@ -307,3 +307,10 @@ export const EyeIcon = ({ crossed = false }: { crossed?: boolean }) => (
     {crossed && <path d="M3 3l18 18" />}
   </Icon>
 );
+
+/** Support: a heart. */
+export const HeartIcon = () => (
+  <Icon>
+    <path d="M12 20s-7-4.35-7-10a4 4 0 0 1 7-2.65A4 4 0 0 1 19 10c0 5.65-7 10-7 10Z" />
+  </Icon>
+);

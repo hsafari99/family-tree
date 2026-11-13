@@ -12,7 +12,10 @@ import logoUrl from '../assets/logo.png';
 import type { TreeList } from '@family-tree/shared';
 import { useTreesApi } from '../trees/TreesApiContext';
 import { Avatar } from './Avatar';
-import { ChevronDownIcon } from './icons';
+import { hasSupport, SUPPORT_PATH } from '../support/config';
+import { useSupport } from '../support/SupportContext';
+import { useNarrow } from './use-narrow';
+import { ChevronDownIcon, HeartIcon } from './icons';
 import { MenuButton } from './MenuButton';
 
 export const APP_NAME = 'Family Tree';
@@ -159,6 +162,9 @@ export function AppHeader() {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const signedIn = user !== null && user !== 'loading';
+  // Support: a quiet link beside My trees; on a phone, where the bar is full, a menu item instead.
+  const support = hasSupport(useSupport());
+  const narrow = useNarrow();
 
   // A failed sign-out message belongs to that attempt; another page doesn't keep it.
   useEffect(() => setError(null), [pathname]);
@@ -208,6 +214,15 @@ export function AppHeader() {
         {signedIn && (
           <>
             <nav aria-label="Main" className="app-nav">
+              {support && !narrow && (
+                <Link
+                  to={SUPPORT_PATH}
+                  className="app-nav-support"
+                  aria-current={pathname === SUPPORT_PATH ? 'page' : undefined}
+                >
+                  <HeartIcon /> Support
+                </Link>
+              )}
               <Link to="/" aria-current={pathname === '/' ? 'page' : undefined}>
                 My trees
               </Link>
@@ -223,6 +238,14 @@ export function AppHeader() {
               }
               items={[
                 { label: 'Account', onSelect: () => void navigate('/account') },
+                ...(support && narrow
+                  ? [
+                      {
+                        label: 'Support Family Tree',
+                        onSelect: () => void navigate(SUPPORT_PATH),
+                      },
+                    ]
+                  : []),
                 { label: 'Sign out', onSelect: () => void onSignOut(), disabled: pending },
               ]}
             />

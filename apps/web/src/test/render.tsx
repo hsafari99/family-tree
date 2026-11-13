@@ -10,6 +10,10 @@ import { FakeAuthApi } from './fake-auth';
 import { FakeLayoutEngine } from './fake-layout';
 import { FakeTreesApi } from './fake-trees';
 import { ToastProvider } from '../components/Toast';
+import type { SupportConfig } from '../support/config';
+import { SupportProvider } from '../support/SupportContext';
+
+const NO_SUPPORT: SupportConfig = { etransferEmail: null, paypalUrl: null, kofiUrl: null };
 
 /** Renders the whole route table at `path` with fake auth and trees APIs. */
 export function renderAt(
@@ -20,6 +24,7 @@ export function renderAt(
     layout = new FakeLayoutEngine(),
     entries,
     toasts = false,
+    support = NO_SUPPORT,
   }: {
     auth?: FakeAuthApi;
     trees?: FakeTreesApi;
@@ -27,6 +32,8 @@ export function renderAt(
     entries?: string[];
     /** Shows toasts, as the app does (off by default, so their text doesn't double a page's). */
     toasts?: boolean;
+    /** The build's support options (none by default, as in a build without them). */
+    support?: SupportConfig;
   } = {},
 ) {
   const nav: { current: NavigateFunction | null; where: string } = { current: null, where: '' };
@@ -46,22 +53,24 @@ export function renderAt(
     ),
   );
   const utils = render(
-    <AuthProvider api={auth}>
-      <TreesApiProvider api={trees}>
-        <MemoryRouter initialEntries={entries ?? [path]}>
-          <NavProbe />
-          <LayoutEngineProvider engine={layout}>
-            {toasts ? (
-              <ToastProvider>
+    <SupportProvider value={support}>
+      <AuthProvider api={auth}>
+        <TreesApiProvider api={trees}>
+          <MemoryRouter initialEntries={entries ?? [path]}>
+            <NavProbe />
+            <LayoutEngineProvider engine={layout}>
+              {toasts ? (
+                <ToastProvider>
+                  <AppRoutes />
+                </ToastProvider>
+              ) : (
                 <AppRoutes />
-              </ToastProvider>
-            ) : (
-              <AppRoutes />
-            )}
-          </LayoutEngineProvider>
-        </MemoryRouter>
-      </TreesApiProvider>
-    </AuthProvider>,
+              )}
+            </LayoutEngineProvider>
+          </MemoryRouter>
+        </TreesApiProvider>
+      </AuthProvider>
+    </SupportProvider>,
   );
   return {
     ...utils,

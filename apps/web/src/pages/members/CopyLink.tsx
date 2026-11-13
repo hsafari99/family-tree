@@ -8,7 +8,8 @@ export function CopyLink({
 }: {
   label: string;
   url: string;
-  children: ReactNode;
+  /** What to do with it, shown above the field (optional). */
+  children?: ReactNode;
 }) {
   const [copied, setCopied] = useState<boolean | null>(null);
   async function copy() {
@@ -21,7 +22,7 @@ export function CopyLink({
   }
   return (
     <div className="link-box">
-      <p>{children}</p>
+      {children && <p>{children}</p>}
       {/* The field and its button on one row; the result as a line of text under them. */}
       <div className="link-box-row">
         <input readOnly aria-label={label} value={url} onFocus={(e) => e.currentTarget.select()} />

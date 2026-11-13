@@ -8,6 +8,8 @@ import { Page } from '../components/Page';
 import { TreeCardsSkeleton } from '../components/Skeleton';
 import { ACTION_LABEL, countPeople, ROLE_LABEL, timeAgo } from '../trees/format';
 import { useTreesApi } from '../trees/TreesApiContext';
+import { hasSupport, SUPPORT_PATH } from '../support/config';
+import { useSupport } from '../support/SupportContext';
 
 const firstName = (name: string) => name.trim().split(/\s+/)[0] ?? name;
 
@@ -19,6 +21,7 @@ const firstName = (name: string) => name.trim().split(/\s+/)[0] ?? name;
 export function HomePage() {
   const { user, loadError } = useAuth();
   const api = useTreesApi();
+  const support = hasSupport(useSupport());
   const [summary, setSummary] = useState<HomeSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -96,6 +99,13 @@ export function HomePage() {
             <DeletedTrees trees={summary.deletedTrees} onRestored={load} />
           )}
         </>
+      )}
+      {/* One quiet line at the very end, for those who read that far. */}
+      {support && summary && (
+        <p className="home-support hint">
+          Family Tree is free. If it helps your family, you can{' '}
+          <Link to={SUPPORT_PATH}>support it</Link>.
+        </p>
       )}
     </Page>
   );

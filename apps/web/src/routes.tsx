@@ -11,6 +11,7 @@ import { NotFoundPage } from './pages/NotFoundPage';
 import { ResetLinkPage } from './pages/ResetLinkPage';
 import { SignInPage } from './pages/SignInPage';
 import { SignUpPage } from './pages/SignUpPage';
+import { SupportPage } from './pages/SupportPage';
 import { TrashPage } from './pages/TrashPage';
 import { TreePage } from './pages/TreePage';
 import { VerifyTwoFactorPage } from './pages/VerifyTwoFactorPage';
@@ -107,6 +108,14 @@ export function AppRoutes() {
           element={
             <RequireAuth>
               <TreePage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/support"
+          element={
+            <RequireAuth>
+              <SupportPage />
             </RequireAuth>
           }
         />
