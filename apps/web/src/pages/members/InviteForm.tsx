@@ -20,6 +20,7 @@ export function InviteForm({
   candidates = [],
   target,
   onCreated,
+  onCancel,
 }: {
   treeId: string;
   detail: TreeDetail;
@@ -28,6 +29,8 @@ export function InviteForm({
   candidates?: PersonSummary[];
   target?: PersonSummary;
   onCreated: (created: CreatedInvite) => void;
+  /** Shows a Cancel button that calls this (the Members page's form opens on request). */
+  onCancel?: () => void;
 }) {
   const api = useTreesApi();
   const canSteward = detail.capabilities.grantStewardship;
@@ -154,9 +157,16 @@ export function InviteForm({
           </div>
         </>
       )}
-      <button type="submit" disabled={pending}>
-        Create invite link
-      </button>
+      <p className="form-actions">
+        <button type="submit" disabled={pending}>
+          Create invite link
+        </button>
+        {onCancel && (
+          <button type="button" className="secondary" onClick={onCancel}>
+            Cancel
+          </button>
+        )}
+      </p>
     </form>
   );
 }

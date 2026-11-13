@@ -38,6 +38,7 @@ test('spec §9: family, steward invite, steward edits and deletes, owner restore
   // 3. An invite: viewer, steward of Pete. Pete's branch is Pete and his children; Olive has her
   //    own parents, so she and they are outside it (spec §4 rule 4).
   await owner.goto(`/trees/${treeId}/members`);
+  await owner.getByRole('button', { name: 'New invite link' }).click();
   await owner.getByRole('radio', { name: 'Can view' }).check();
   await owner.getByLabel('Make them a steward of').selectOption({ label: 'Pete Partner' });
   await owner.getByRole('button', { name: 'Create invite link' }).click();

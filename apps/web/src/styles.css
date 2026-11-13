@@ -547,6 +547,12 @@ button.google:hover:not(:disabled) {
 .link-box > p {
   margin: 0 0 0.5rem;
 }
+/* A form's submit and Cancel, side by side. */
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
 .link-box-row {
   display: flex;
   align-items: stretch;

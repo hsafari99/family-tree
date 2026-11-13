@@ -1,4 +1,5 @@
-import { type FormEvent, useEffect, useMemo, useState } from 'react';
+import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { PlusIcon } from '../../components/icons';
 import { FormError } from '../../components/forms';
 import { personName } from '../../trees/format';
 import { useTreesApi } from '../../trees/TreesApiContext';
@@ -18,6 +19,17 @@ export function StewardsSection({
   const [userId, setUserId] = useState('');
   const [personId, setPersonId] = useState('');
   const [pending, setPending] = useState(false);
+  // The grant form opens on request and closes once granted or on Cancel, focus back on its button.
+  const [adding, setAdding] = useState(false);
+  const addButton = useRef<HTMLButtonElement>(null);
+  const memberSelect = useRef<HTMLSelectElement>(null);
+  useEffect(() => {
+    if (adding) memberSelect.current?.focus();
+  }, [adding]);
+  const closeForm = () => {
+    setAdding(false);
+    requestAnimationFrame(() => addButton.current?.focus());
+  };
   const candidates = useMemo(
     () => members.filter((m) => m.role !== 'owner' && m.userId !== me),
     [members, me],
@@ -47,6 +59,7 @@ export function StewardsSection({
       );
       return;
     }
+    closeForm();
     onActed(null);
     await reload('stewards');
   }
@@ -62,17 +75,29 @@ export function StewardsSection({
       {/* Who is a steward of what shows in the members table above, with Revoke in each
           member's More actions; this section only explains it and grants new ones. */}
       <FormError>{error}</FormError>
-      {detail.capabilities.grantStewardship && candidates.length === 0 && (
+      {candidates.length === 0 && (
         <p className="hint">
           Invite someone and have them join first; then you can make them a steward.
         </p>
       )}
-      {detail.capabilities.grantStewardship && candidates.length > 0 && (
+      {candidates.length > 0 && !adding && (
+        <p>
+          <button type="button" ref={addButton} onClick={() => setAdding(true)}>
+            <PlusIcon /> Make someone a steward
+          </button>
+        </p>
+      )}
+      {candidates.length > 0 && adding && (
         <form onSubmit={grant}>
           <h3>Make someone a steward</h3>
           <div className="field">
             <label htmlFor="steward-member">Member</label>
-            <select id="steward-member" value={userId} onChange={(e) => setUserId(e.target.value)}>
+            <select
+              id="steward-member"
+              ref={memberSelect}
+              value={userId}
+              onChange={(e) => setUserId(e.target.value)}
+            >
               {candidates.map((m) => (
                 <option key={m.userId} value={m.userId}>
                   {m.name}
@@ -94,9 +119,14 @@ export function StewardsSection({
               ))}
             </select>
           </div>
-          <button type="submit" disabled={pending || userId === '' || personId === ''}>
-            Make steward
-          </button>
+          <p className="form-actions">
+            <button type="submit" disabled={pending || userId === '' || personId === ''}>
+              Make steward
+            </button>
+            <button type="button" className="secondary" onClick={closeForm}>
+              Cancel
+            </button>
+          </p>
         </form>
       )}
     </section>

@@ -96,6 +96,12 @@ function setup(kind: 'owner' | 'editor' | 'steward' = 'owner') {
 const rowOf = (name: string) => screen.getByText(name, { selector: '.member-name' }).closest('tr')!;
 
 /** Opens a row's "More actions" menu and picks an item. */
+/** The invite and steward forms open from a button. */
+const openInviteForm = () =>
+  fireEvent.click(screen.getByRole('button', { name: 'New invite link' }));
+const openStewardForm = () =>
+  fireEvent.click(screen.getByRole('button', { name: 'Make someone a steward' }));
+
 function pick(row: HTMLElement, name: string, item: string) {
   fireEvent.click(within(row).getByRole('button', { name: `More actions for ${name}` }));
   fireEvent.click(screen.getByRole('menuitem', { name: item }));
@@ -369,6 +375,7 @@ describe('MembersPage', () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /More actions for/ })).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Invite someone' })).toBeInTheDocument();
+    openInviteForm();
     // A steward may only anchor stewardship in their own branch.
     const anchors = within(screen.getByLabelText('Make them a steward of'));
     expect(anchors.getByRole('option', { name: 'Bob Hale' })).toBeInTheDocument();
@@ -379,6 +386,16 @@ describe('MembersPage', () => {
     const s = setup();
     renderAt(`/trees/${s.id}/members`, s);
     await screen.findByRole('heading', { name: 'Invite someone' });
+    // Only a button until asked for; the form then takes focus and has Cancel.
+    expect(screen.queryByRole('button', { name: 'Create invite link' })).not.toBeInTheDocument();
+    openInviteForm();
+    expect(screen.getByLabelText('Can view')).toHaveFocus();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('button', { name: 'Create invite link' })).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'New invite link' })).toHaveFocus(),
+    );
+    openInviteForm();
     fireEvent.click(screen.getByLabelText('Can add and edit'));
     fireEvent.change(screen.getByLabelText('Make them a steward of'), {
       target: { value: bob.id },
@@ -388,9 +405,14 @@ describe('MembersPage', () => {
     const input = (await screen.findByLabelText('Invite link')) as HTMLInputElement;
     expect(input.value).toBe(`${window.location.origin}/invite/fake-token-1`);
     expect(screen.getByText(/You won't be able to see this link again/)).toBeInTheDocument();
-    // The form starts over: those choices were used, not a draft that keeps the dialog open.
+    // The form closes once its link is made (nothing left as a draft); the next one starts over.
+    expect(screen.queryByRole('button', { name: 'Create invite link' })).not.toBeInTheDocument();
+    openInviteForm();
     expect(screen.getByLabelText('Can add and edit')).not.toBeChecked();
     expect(screen.getByLabelText('This invite is for')).toHaveValue('');
+    // Opening a new form puts the last link away.
+    expect(screen.queryByLabelText('Invite link')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(s.trees.callsTo('createInvite')).toEqual([
       {
         treeId: s.id,
@@ -410,6 +432,9 @@ describe('MembersPage', () => {
     renderAt(`/trees/${s.id}/members`, s);
     await screen.findByRole('heading', { name: 'Branch stewards' });
     await screen.findByText('a@example.com');
+    expect(screen.queryByRole('button', { name: 'Make steward' })).not.toBeInTheDocument();
+    openStewardForm();
+    expect(screen.getByLabelText('Member')).toHaveFocus();
     fireEvent.change(screen.getByLabelText('Member'), { target: { value: s.other.userId } });
     fireEvent.change(screen.getByLabelText('Branch of'), { target: { value: cy.id } });
     fireEvent.click(screen.getByRole('button', { name: 'Make steward' }));
@@ -475,6 +500,7 @@ describe('MembersPage', () => {
     renderAt(`/trees/${s.id}/members`, s);
     await screen.findByText('a@example.com');
     s.trees.hold('grantSteward');
+    openStewardForm();
     const form = screen.getByRole('button', { name: 'Make steward' }).closest('form')!;
     fireEvent.submit(form);
     fireEvent.submit(form);
@@ -487,6 +513,7 @@ describe('MembersPage', () => {
     const s = setup();
     renderAt(`/trees/${s.id}/members`, s);
     await screen.findByText('a@example.com');
+    openStewardForm();
     const select = screen.getByLabelText('Member') as HTMLSelectElement;
     fireEvent.change(select, { target: { value: s.other.userId } });
     const row = rowOf('Other Person');
@@ -514,6 +541,7 @@ describe('MembersPage', () => {
     const s = setup();
     renderAt(`/trees/${s.id}/members`, s);
     await screen.findByRole('heading', { name: 'Invite someone' });
+    openInviteForm();
     fireEvent.click(screen.getByRole('button', { name: 'Create invite link' }));
     await screen.findByLabelText('Invite link');
     const open = (await screen.findByRole('heading', { name: 'Open invites' })).parentElement!;

@@ -49,6 +49,7 @@ test('invite from a card, join as that person; "This is me" for an unlinked memb
 
   // 3. A plain invite: Dan joins with no card, is asked which one he is, and picks his.
   await owner.goto(`/trees/${treeId}/members`);
+  await owner.getByRole('button', { name: 'New invite link' }).click();
   await owner.getByRole('radio', { name: 'Can view' }).check();
   await owner.getByRole('button', { name: 'Create invite link' }).click();
   const plain = await owner.getByLabel('Invite link').inputValue();

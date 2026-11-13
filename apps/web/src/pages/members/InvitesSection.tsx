@@ -1,6 +1,7 @@
 import type { CreatedInvite, Invite } from '@family-tree/shared';
 import { useEffect, useRef, useState } from 'react';
 import { ConfirmButton } from '../../components/ConfirmButton';
+import { PlusIcon } from '../../components/icons';
 import { FormError } from '../../components/forms';
 import { personName } from '../../trees/format';
 import { useTreesApi } from '../../trees/TreesApiContext';
@@ -21,9 +22,18 @@ export function InvitesSection({
   const api = useTreesApi();
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<CreatedInvite | null>(null);
-  // A new form after each invite: the choices made for the last one were used, not a draft (so an
-  // outside click can close the dialog), and the next invite starts from the defaults.
-  const [formKey, setFormKey] = useState(0);
+  // The form opens on request (a button), and closes once its link is made or on Cancel; focus
+  // then goes back to the button. Each opening starts from the defaults.
+  const [adding, setAdding] = useState(false);
+  const addButton = useRef<HTMLButtonElement>(null);
+  const formWrap = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (adding) formWrap.current?.querySelector<HTMLElement>('input, select, button')?.focus();
+  }, [adding]);
+  const closeForm = () => {
+    setAdding(false);
+    requestAnimationFrame(() => addButton.current?.focus());
+  };
   // Skip the mount run: under load it can fire after a click has already set `created`.
   const seenActed = useRef(acted.n);
   useEffect(() => {
@@ -50,19 +60,36 @@ export function InvitesSection({
     <section>
       <h2>Invite someone</h2>
       <FormError>{error}</FormError>
-      <InviteForm
-        key={formKey}
-        treeId={treeId}
-        detail={detail}
-        persons={persons}
-        candidates={unlinked}
-        onCreated={(c) => {
-          setCreated(c);
-          setFormKey((k) => k + 1);
-          onActed('invite');
-          void reload('invites');
-        }}
-      />
+      {adding ? (
+        <div ref={formWrap}>
+          <InviteForm
+            treeId={treeId}
+            detail={detail}
+            persons={persons}
+            candidates={unlinked}
+            onCancel={closeForm}
+            onCreated={(c) => {
+              setCreated(c);
+              closeForm();
+              onActed('invite');
+              void reload('invites');
+            }}
+          />
+        </div>
+      ) : (
+        <p>
+          <button
+            type="button"
+            ref={addButton}
+            onClick={() => {
+              setCreated(null);
+              setAdding(true);
+            }}
+          >
+            <PlusIcon /> New invite link
+          </button>
+        </p>
+      )}
       {created && <InviteLink created={created} />}
       <h3>Open invites</h3>
       {invites.length === 0 ? (
