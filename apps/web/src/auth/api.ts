@@ -110,6 +110,8 @@ export const MESSAGES = {
   restoreConflict:
     'This can’t be restored because the family has changed since it was deleted. You can erase it instead.',
   alreadyRelated: 'They are already related this way',
+  personClaimed: 'Someone else in this tree is already linked to that person',
+  alreadyLinked: 'You’re already linked to someone in this tree',
   alreadyChild: 'They are already a child of those parents.',
   trashOwnerOnly: 'Only the tree owner can open the Trash',
   photoType: 'Use a JPEG, PNG or WebP photo.',
@@ -174,6 +176,8 @@ const BY_CODE: Record<string, string> = {
   FORBIDDEN: MESSAGES.forbidden,
   NOT_FOUND: MESSAGES.notFound,
   CONFLICT: MESSAGES.conflict,
+  PERSON_CLAIMED: MESSAGES.personClaimed,
+  ALREADY_LINKED: MESSAGES.alreadyLinked,
   TWO_FACTOR_CODE_REQUIRED: MESSAGES.codeRequired,
   GOOGLE_ALREADY_CONNECTED: MESSAGES.googleAlreadyConnected,
   GOOGLE_NOT_CONNECTED: MESSAGES.googleNotConnected,

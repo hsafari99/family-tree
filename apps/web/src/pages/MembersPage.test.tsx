@@ -199,7 +199,76 @@ describe('MembersPage', () => {
     const mine = within(rowOf('Me')).getAllByRole('cell');
     expect(mine[1]).toHaveTextContent('Owner');
     expect(mine[2]).toHaveTextContent('—');
-    expect(mine[4]).toBeEmptyDOMElement();
+    // The owner can't remove themselves, only link their own card.
+    expect(within(mine[4]!).queryByRole('button', { name: 'Remove' })).toBeNull();
+    expect(within(mine[4]!).getByRole('button', { name: 'More actions for Me' })).toBeVisible();
+  });
+
+  it('owner: links a member to a person, changes it, and unlinks after confirming', async () => {
+    const s = setup();
+    renderAt(`/trees/${s.id}/members`, s);
+    await screen.findByText('a@example.com');
+    pick(rowOf('Other Person'), 'Other Person', 'Link to a person…');
+    const dialog = await screen.findByRole('dialog', { name: 'Which person is Other Person?' });
+    const link = within(dialog).getByRole('button', { name: 'Link' });
+    expect(link).toBeDisabled();
+    fireEvent.change(within(dialog).getByLabelText('Person'), { target: { value: cy.id } });
+    fireEvent.click(link);
+    await waitFor(() =>
+      expect(s.trees.callsTo('setMemberPerson')).toEqual([
+        { treeId: s.id, userId: s.other.userId, personId: cy.id },
+      ]),
+    );
+    expect(
+      await within(rowOf('Other Person')).findByText('Card: Cy Hale', { exact: false }),
+    ).toBeInTheDocument();
+
+    pick(rowOf('Other Person'), 'Other Person', 'Unlink from Cy Hale');
+    const confirm = await screen.findByRole('dialog', {
+      name: 'Unlink Other Person from Cy Hale?',
+    });
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Unlink' }));
+    await waitFor(() => expect(s.trees.callsTo('setMemberPerson')).toHaveLength(2));
+    expect(s.trees.callsTo('setMemberPerson')[1]).toEqual({
+      treeId: s.id,
+      userId: s.other.userId,
+      personId: null,
+    });
+    await waitFor(() =>
+      expect(within(rowOf('Other Person')).queryByText(/Card:/)).not.toBeInTheDocument(),
+    );
+  });
+
+  it('owner: offers only cards no other member has, and shows a clash clearly', async () => {
+    const s = setup();
+    const t = s.trees.trees.get(s.id)!;
+    t.members = t.members.map((m) =>
+      m.userId === s.other.userId ? { ...m, personId: dee.id } : m,
+    );
+    renderAt(`/trees/${s.id}/members`, s);
+    await screen.findByText('a@example.com');
+    pick(rowOf('Invited By Me'), 'Invited By Me', 'Link to a person…');
+    const dialog = await screen.findByRole('dialog', { name: 'Which person is Invited By Me?' });
+    const options = within(within(dialog).getByLabelText('Person'))
+      .getAllByRole('option')
+      .map((o) => o.textContent);
+    expect(options).toEqual(['Choose…', 'Ada Hale', 'Bob Hale', 'Cy Hale']);
+    s.trees.failNext('setMemberPerson', {
+      code: 'PERSON_CLAIMED',
+      message: MESSAGES.personClaimed,
+    });
+    fireEvent.change(within(dialog).getByLabelText('Person'), { target: { value: ada.id } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Link' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(MESSAGES.personClaimed);
+  });
+
+  it('no link items for a non-owner', async () => {
+    const s = setup('steward');
+    renderAt(`/trees/${s.id}/members`, s);
+    await screen.findByText('Invited By Me', { selector: '.member-name' });
+    expect(
+      within(rowOf('Invited By Me')).queryByRole('button', { name: /^More actions/ }),
+    ).toBeNull();
   });
 
   it('owner: Make owner only on 2FA rows, and the controls vanish after a transfer', async () => {

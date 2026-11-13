@@ -74,6 +74,10 @@ export interface TreesApi {
   listMembers(treeId: string): Promise<Result<Member[]>>;
   changeRole(treeId: string, userId: string, role: InviteRole): Promise<Result<void>>;
   removeMember(treeId: string, userId: string): Promise<Result<void>>;
+  /** Links a member to a person card, or unlinks them with null (owner only). */
+  setMemberPerson(treeId: string, userId: string, personId: string | null): Promise<Result<void>>;
+  /** "This is me": links the signed-in member, who has no card yet, to an unclaimed person. */
+  claimPerson(treeId: string, personId: string): Promise<Result<void>>;
   transferOwnership(treeId: string, userId: string): Promise<Result<void>>;
   createResetLink(treeId: string, userId: string): Promise<Result<ResetLinkCreated>>;
   listStewards(treeId: string): Promise<Result<StewardGrant[]>>;
@@ -156,6 +160,8 @@ export const TREES_API_METHODS = Object.keys({
   listMembers: true,
   changeRole: true,
   removeMember: true,
+  setMemberPerson: true,
+  claimPerson: true,
   transferOwnership: true,
   createResetLink: true,
   listStewards: true,
@@ -312,6 +318,12 @@ export function createTreesApi({ baseUrl }: { baseUrl: string }): TreesApi {
       map(request('GET', `${t(id)}/members`, undefined, memberListSchema), (d) => d.members),
     changeRole: (id, userId, role) => request('PATCH', `${t(id)}/members/${enc(userId)}`, { role }),
     removeMember: (id, userId) => request('DELETE', `${t(id)}/members/${enc(userId)}`),
+    setMemberPerson: (id, userId, personId) =>
+      request('PATCH', `${t(id)}/members/${enc(userId)}`, { personId }),
+    claimPerson: (id, personId) =>
+      request('POST', `${t(id)}/me/person`, { personId }, undefined, 'session', {
+        NOT_FOUND: MESSAGES.personNotFound,
+      }),
     transferOwnership: (id, userId) => request('POST', `${t(id)}/transfer`, { userId }),
     createResetLink: (id, userId) =>
       request('POST', `${t(id)}/members/${enc(userId)}/reset-link`, {}, resetLinkCreatedSchema),

@@ -33,9 +33,12 @@ export function MembersPage() {
   );
 }
 
-/** The tree's members, stewards and invites, as in a dialog over the tree (`?tab=members`). */
-export function MembersPanel({ treeId }: { treeId: string }) {
-  const { error, body } = useMembers(treeId);
+/**
+ * The tree's members, stewards and invites, as in a dialog over the tree (`?tab=members`).
+ * `onChanged` follows each successful change, so the tree behind can refresh (a relinked card).
+ */
+export function MembersPanel({ treeId, onChanged }: { treeId: string; onChanged?: () => void }) {
+  const { error, body } = useMembers(treeId, onChanged);
   return (
     body ?? (
       <>
@@ -47,7 +50,7 @@ export function MembersPanel({ treeId }: { treeId: string }) {
 }
 
 /** Loads everything the members sections show; `body` is null until the tree has loaded. */
-function useMembers(treeId: string) {
+function useMembers(treeId: string, onChanged?: () => void) {
   const api = useTreesApi();
   const { user } = useAuth();
   const [detail, setDetail] = useState<TreeDetail | null>(null);
@@ -57,7 +60,14 @@ function useMembers(treeId: string) {
   const [invites, setInvites] = useState<Invite[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [acted, setActed] = useState<Acted>({ n: 0, from: null });
-  const onActed = useCallback((from: Acted['from']) => setActed((a) => ({ n: a.n + 1, from })), []);
+  const changedRef = useRef(onChanged);
+  useEffect(() => {
+    changedRef.current = onChanged;
+  });
+  const onActed = useCallback((from: Acted['from']) => {
+    setActed((a) => ({ n: a.n + 1, from }));
+    changedRef.current?.();
+  }, []);
   // The tree this page is showing now; late responses for another tree are dropped.
   const current = useRef(treeId);
 

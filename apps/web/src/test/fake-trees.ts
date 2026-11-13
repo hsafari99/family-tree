@@ -231,6 +231,7 @@ export class FakeTreesApi implements TreesApi {
         steward: { grants: [], active: false },
       },
       capabilities: { editAnywhere: true, manageTree: true, invite: true, grantStewardship: true },
+      linkedMembers: [],
       ...partial.detail,
     };
     this.trees.set(id, {
@@ -361,7 +362,12 @@ export class FakeTreesApi implements TreesApi {
     const forced = await this.enter('getTree', treeId);
     if (forced) return { ok: false as const, error: forced };
     const t = this.find(treeId);
-    return t ? ok(t.detail) : notFound();
+    if (!t) return notFound();
+    // Seeded links, plus whatever the members list links (as the API derives them).
+    const linked = new Map(t.detail.linkedMembers.map((l) => [l.personId, l.name]));
+    for (const m of t.members) if (m.personId) linked.set(m.personId, m.name);
+    const linkedMembers = [...linked].map(([personId, name]) => ({ personId, name }));
+    return ok({ ...t.detail, linkedMembers });
   }
 
   async updateTree(treeId: string, input: UpdateTreeInput) {
@@ -451,6 +457,49 @@ export class FakeTreesApi implements TreesApi {
     t.members = t.members.filter((x) => x.userId !== userId);
     t.stewards = t.stewards.filter((s) => s.userId !== userId);
     return ok(undefined);
+  }
+
+  async setMemberPerson(treeId: string, userId: string, personId: string | null) {
+    const forced = await this.enter('setMemberPerson', { treeId, userId, personId });
+    if (forced) return { ok: false as const, error: forced };
+    const t = this.find(treeId);
+    const m = t?.members.find((x) => x.userId === userId);
+    if (!t || !m) return notFound();
+    if (!t.detail.capabilities.manageTree) return forbidden();
+    if (personId !== null && !t.persons.some((p) => p.id === personId)) return notFound();
+    if (personId !== null && this.claimedBy(t, personId, userId)) {
+      return fail('PERSON_CLAIMED', MESSAGES.personClaimed);
+    }
+    const old = m.personId;
+    m.personId = personId;
+    t.detail.linkedMembers = t.detail.linkedMembers.filter((l) => l.personId !== old);
+    if (userId === this.meUserId) t.detail.me = { ...t.detail.me, personId };
+    return ok(undefined);
+  }
+
+  async claimPerson(treeId: string, personId: string) {
+    const forced = await this.enter('claimPerson', { treeId, personId });
+    if (forced) return { ok: false as const, error: forced };
+    const t = this.find(treeId);
+    if (!t) return notFound();
+    if (t.detail.me.personId) return fail('ALREADY_LINKED', MESSAGES.alreadyLinked);
+    if (!t.persons.some((p) => p.id === personId)) return this.personNotFound();
+    if (this.claimedBy(t, personId, this.meUserId)) {
+      return fail('PERSON_CLAIMED', MESSAGES.personClaimed);
+    }
+    t.detail.me = { ...t.detail.me, personId };
+    const mine = t.members.find((m) => m.userId === this.meUserId);
+    if (mine) mine.personId = personId;
+    return ok(undefined);
+  }
+
+  /** Whether a member other than `userId` is linked to the person. */
+  private claimedBy(t: FakeTree, personId: string, userId: string | null): boolean {
+    return (
+      t.members.some((m) => m.personId === personId && m.userId !== userId) ||
+      t.detail.linkedMembers.some((l) => l.personId === personId) ||
+      (t.detail.me.personId === personId && userId !== this.meUserId)
+    );
   }
 
   async transferOwnership(treeId: string, userId: string) {

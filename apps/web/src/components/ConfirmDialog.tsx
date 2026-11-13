@@ -15,6 +15,7 @@ export function ConfirmDialog({
   cancelLabel = 'Cancel',
   danger = false,
   pending = false,
+  confirmDisabled = false,
   onConfirm,
   onCancel,
 }: {
@@ -26,6 +27,8 @@ export function ConfirmDialog({
   cancelLabel?: string;
   danger?: boolean;
   pending?: boolean;
+  /** Only the confirm button, e.g. until a choice inside is made (Cancel still works). */
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -89,7 +92,7 @@ export function ConfirmDialog({
         <button
           type="button"
           className={danger ? 'danger' : undefined}
-          disabled={pending}
+          disabled={pending || confirmDisabled}
           onClick={onConfirm}
         >
           {confirmLabel}

@@ -144,6 +144,7 @@ export const ACTION_LABEL: Record<AuditAction, string> = {
   'member.join': 'Joined the tree',
   'member.role': 'Role changed',
   'member.remove': 'Removed from the tree',
+  'member.link': 'Linked to a person',
   'ownership.transfer': 'Ownership transferred',
   'steward.grant': 'Made a branch steward',
   'steward.revoke': 'Branch stewardship revoked',

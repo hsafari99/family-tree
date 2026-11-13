@@ -39,7 +39,11 @@ export function MembersSection({
   const isOwner = detail.me.role === 'owner';
   const activeSteward = detail.me.steward.active;
   const [transferTo, setTransferTo] = useState<string | null>(null);
+  // Linking a member to a person card (owner only): whose link, and the person chosen.
+  const [linking, setLinking] = useState<{ userId: string; personId: string } | null>(null);
+  const [unlinking, setUnlinking] = useState<string | null>(null);
   const captionId = useId();
+  const linkSelectId = useId();
 
   const canManage = (m: (typeof members)[number]) =>
     m.role !== 'owner' && (isOwner || (activeSteward && m.invitedByUserId === me));
@@ -70,6 +74,12 @@ export function MembersSection({
 
   const grantsOf = (userId: string) => stewards.filter((g) => g.userId === userId);
   const transferTarget = members.find((m) => m.userId === transferTo) ?? null;
+  const linkTarget = members.find((m) => m.userId === linking?.userId) ?? null;
+  const unlinkTarget = members.find((m) => m.userId === unlinking) ?? null;
+  // A member can be linked to anyone no other member has (or keep the card they have).
+  const linkOptions = persons.filter(
+    (p) => !members.some((o) => o.personId === p.id && o.userId !== linking?.userId),
+  );
 
   return (
     <section>
@@ -93,8 +103,20 @@ export function MembersSection({
             {members.map((m) => {
               const grants = grantsOf(m.userId);
               const card = m.personId ? personLabel(m.personId) : null;
-              const more: MenuItem[] =
-                isOwner && m.role !== 'owner'
+              const linkItems: MenuItem[] = isOwner
+                ? [
+                    {
+                      label: card ? 'Change linked person…' : 'Link to a person…',
+                      onSelect: () => setLinking({ userId: m.userId, personId: m.personId ?? '' }),
+                    },
+                    ...(card
+                      ? [{ label: `Unlink from ${card}`, onSelect: () => setUnlinking(m.userId) }]
+                      : []),
+                  ]
+                : [];
+              const more: MenuItem[] = [
+                ...linkItems,
+                ...(isOwner && m.role !== 'owner'
                   ? m.twoFactorEnabled
                     ? [{ label: 'Make owner', onSelect: () => setTransferTo(m.userId) }]
                     : [
@@ -105,7 +127,8 @@ export function MembersSection({
                         },
                         { label: 'Reset link', onSelect: () => void resetLink(m.userId, m.name) },
                       ]
-                  : [];
+                  : []),
+              ];
               return (
                 <tr key={m.userId}>
                   <td data-label={COLUMNS[0]}>
@@ -201,6 +224,50 @@ export function MembersSection({
           Send this link to {link.name} yourself. It works once, for 24 hours.
         </CopyLink>
       )}
+      <ConfirmDialog
+        open={linkTarget !== null}
+        title={`Which person is ${linkTarget?.name ?? 'this member'}?`}
+        confirmLabel="Link"
+        confirmDisabled={!linking?.personId}
+        onCancel={() => setLinking(null)}
+        onConfirm={() => {
+          const l = linking;
+          setLinking(null);
+          if (l?.personId)
+            void act(() => api.setMemberPerson(treeId, l.userId, l.personId), ['members']);
+        }}
+      >
+        <p>Their card shows them as “You”, and the tree opens on it for them.</p>
+        <div className="field">
+          <label htmlFor={linkSelectId}>Person</label>
+          <select
+            id={linkSelectId}
+            value={linking?.personId ?? ''}
+            onChange={(e) => setLinking((l) => (l ? { ...l, personId: e.target.value } : l))}
+          >
+            <option value="">Choose…</option>
+            {linkOptions.map((p) => (
+              <option key={p.id} value={p.id}>
+                {personName(p)}
+              </option>
+            ))}
+          </select>
+        </div>
+      </ConfirmDialog>
+      <ConfirmDialog
+        open={unlinkTarget !== null}
+        title={`Unlink ${unlinkTarget?.name ?? 'them'} from ${personLabel(unlinkTarget?.personId ?? null)}?`}
+        confirmLabel="Unlink"
+        danger
+        onCancel={() => setUnlinking(null)}
+        onConfirm={() => {
+          const u = unlinking;
+          setUnlinking(null);
+          if (u) void act(() => api.setMemberPerson(treeId, u, null), ['members']);
+        }}
+      >
+        <p>The card stays in the tree. They can choose “This is me” again, or you can link them.</p>
+      </ConfirmDialog>
       <ConfirmDialog
         open={transferTarget !== null}
         title={`Make ${transferTarget?.name ?? 'them'} the owner?`}
