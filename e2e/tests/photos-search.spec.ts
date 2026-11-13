@@ -31,9 +31,18 @@ test('an uploaded photo is stored without EXIF and shows on the card', async ({ 
   for (const marker of [SECRET_MARKER, 'E2ECam', 'Exif']) {
     expect(body.includes(Buffer.from(marker)), marker).toBe(false);
   }
-  await expect(
-    page.locator('.react-flow__node', { has: card(page, 'Robert Hale') }).locator('img'),
-  ).toBeVisible();
+  // The full view fits the whole tree, where cards are compact and load no image; zoom in
+  // until Robert's card is full size, then it shows the photo.
+  await page.keyboard.press('Escape');
+  const cardImg = page
+    .locator('.react-flow__node', { has: card(page, 'Robert Hale') })
+    .locator('img');
+  await expect(async () => {
+    if (!(await cardImg.isVisible())) {
+      await page.getByRole('button', { name: 'Zoom in' }).click();
+    }
+    await expect(cardImg).toBeVisible({ timeout: 1000 });
+  }).toPass({ timeout: 15_000 });
 });
 
 test('search tolerates a typo and says how each person is related to you', async ({ page }) => {
