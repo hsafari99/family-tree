@@ -770,15 +770,14 @@ export function TreeWorkspace({
           )}
         </SectionDialog>
       )}
-      {/* Opened when the layout timed out, so people stay reachable (decision 4). */}
-      <details
-        id="people-fallback"
-        className="people-fallback"
-        open={graph.status === 'error' && graph.timedOut ? true : undefined}
-      >
-        <summary>All people ({persons.length})</summary>
-        <PeopleList treeId={treeId} persons={persons} detail={detail} selectedId={personId} />
-      </details>
+      {/* Only when the layout timed out, so people stay reachable (decision 4); otherwise the
+          list lives in the All people dialog. */}
+      {graph.status === 'error' && graph.timedOut && (
+        <details id="people-fallback" className="people-fallback" open>
+          <summary>All people ({persons.length})</summary>
+          <PeopleList treeId={treeId} persons={persons} detail={detail} selectedId={personId} />
+        </details>
+      )}
     </>
   );
 }

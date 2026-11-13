@@ -313,16 +313,11 @@ describe('TreeWorkspace', () => {
     expect(screen.queryByRole('button', { name: /Disconnected people/ })).toBeNull();
   });
 
-  it('has the all-people fallback, keeping the full view in its links', async () => {
+  it('has no all-people list under the tree while the layout works', async () => {
     const s = setup();
     renderAt(`/trees/${s.id}?view=full`, s);
-    const summary = await screen.findByText('All people (11)');
-    const list = within(summary.closest('details')!);
-    expect(list.getByRole('link', { name: /Robert Hale/ })).toHaveAttribute(
-      'href',
-      `/trees/${s.id}/people/robert?view=full`,
-    );
-    expect(summary.closest('details')).not.toHaveAttribute('open');
+    await card(ROBERT);
+    expect(screen.queryByText('All people (11)')).toBeNull();
   });
 
   it('opens the list of all people in a dialog, deep-linked by ?tab=people', async () => {
