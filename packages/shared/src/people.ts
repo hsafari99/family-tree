@@ -340,6 +340,7 @@ export const AUDIT_ACTIONS = [
   'member.join',
   'member.role',
   'member.remove',
+  'member.link',
   'ownership.transfer',
   'steward.grant',
   'steward.revoke',

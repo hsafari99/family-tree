@@ -57,7 +57,13 @@ export const createInviteSchema = z.object({
 });
 export type CreateInviteInput = z.input<typeof createInviteSchema>;
 
-export const changeRoleSchema = z.object({ role: inviteRoleSchema });
+/** A member's role and/or the person card they are linked to (null: no card). */
+export const updateMemberSchema = z
+  .object({ role: inviteRoleSchema.optional(), personId: z.uuid().nullable().optional() })
+  .refine((v) => v.role !== undefined || v.personId !== undefined, 'Nothing to change');
+export type UpdateMemberInput = z.infer<typeof updateMemberSchema>;
+/** "This is me": a member with no card claims an unclaimed person. */
+export const claimPersonSchema = z.object({ personId: z.uuid() });
 export const transferSchema = z.object({ userId: z.uuid() });
 export const grantStewardSchema = z.object({ userId: z.uuid(), anchorPersonId: z.uuid() });
 export const inviteTokenSchema = z.object({ token: z.string().min(20).max(200) });
@@ -99,6 +105,11 @@ export const treeDetailSchema = z.object({
     invite: z.boolean(),
     grantStewardship: z.boolean(),
   }),
+  /**
+   * The person cards linked to a member's account, with the member's name (members only: the
+   * whole detail is). The caller's own card is in it too.
+   */
+  linkedMembers: z.array(z.object({ personId: z.uuid(), name: z.string() })),
 });
 export type TreeDetail = z.infer<typeof treeDetailSchema>;
 

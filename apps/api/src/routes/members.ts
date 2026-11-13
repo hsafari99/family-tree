@@ -1,11 +1,17 @@
-import { changeRoleSchema, type Member, ROLE_RANK, transferSchema } from '@family-tree/shared';
+import {
+  claimPersonSchema,
+  type Member,
+  ROLE_RANK,
+  transferSchema,
+  updateMemberSchema,
+} from '@family-tree/shared';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 import { createResetLink } from '../auth/reset-links.js';
 import { requireSession } from '../auth/session-guard.js';
 import type { Queryable } from '../db/client.js';
-import { branchStewards, invites, treeMembers, users } from '../db/schema.js';
-import { AppError, idParam, notFound, parseBody } from '../errors.js';
+import { branchStewards, invites, persons, treeMembers, users } from '../db/schema.js';
+import { AppError, idParam, isUniqueViolation, notFound, parseBody } from '../errors.js';
 import { can, TREE } from '../permissions/can.js';
 import { extraLimit } from '../security/limits.js';
 import { authorize, loadAccess } from '../trees/access.js';
@@ -21,12 +27,53 @@ const resetNotAllowed = () =>
     'A reset link can only be issued for a member without two-step verification who belongs only to trees you own',
   );
 
+const personClaimed = () =>
+  new AppError('PERSON_CLAIMED', 409, 'Another member is already linked to that person');
+
+/**
+ * Links `userId` to `personId` (or unlinks with null) inside `tx`: the person must be live in the
+ * tree and no other member's. Takes the per-tree accept lock, so it serialises with invite accepts
+ * that link a card; the unique index still backs it (a violation becomes PERSON_CLAIMED, not a 500).
+ */
+async function linkPerson(
+  tx: Queryable,
+  treeId: string,
+  userId: string,
+  personId: string | null,
+): Promise<void> {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${'accept:' + treeId}))`);
+  if (personId !== null) {
+    // FOR SHARE: the person can't be soft-deleted (which clears links) before the update lands.
+    const [p] = await tx
+      .select({ id: persons.id })
+      .from(persons)
+      .where(and(eq(persons.treeId, treeId), eq(persons.id, personId), isNull(persons.deletedAt)))
+      .for('share');
+    if (!p) throw notFound();
+    const [holder] = await tx
+      .select({ userId: treeMembers.userId })
+      .from(treeMembers)
+      .where(and(eq(treeMembers.treeId, treeId), eq(treeMembers.personId, personId)));
+    if (holder && holder.userId !== userId) throw personClaimed();
+  }
+  try {
+    await tx
+      .update(treeMembers)
+      .set({ personId })
+      .where(and(eq(treeMembers.treeId, treeId), eq(treeMembers.userId, userId)));
+  } catch (e) {
+    if (isUniqueViolation(e)) throw personClaimed();
+    throw e;
+  }
+}
+
 /** The member row of `userId` in `treeId`, with their 2FA status, or 404. */
 async function loadMember(db: Queryable, treeId: string, userId: string) {
   const [m] = await db
     .select({
       userId: treeMembers.userId,
       role: treeMembers.role,
+      personId: treeMembers.personId,
       invitedByUserId: treeMembers.invitedByUserId,
       twoFactorEnabled: users.twoFactorEnabled,
     })
@@ -71,20 +118,64 @@ export const membersRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
 
   app.patch('/api/v1/trees/:treeId/members/:userId', async (req, reply) => {
     const access = await loadAccess(db, idParam(req.params, 'treeId'), req.user!.id);
-    const { role } = parseBody(changeRoleSchema, req.body);
+    const { role, personId } = parseBody(updateMemberSchema, req.body);
     const target = await loadMember(db, access.treeId, idParam(req.params, 'userId'));
-    authorize(access, 'member.changeRole', { kind: 'member', ...target });
+    if (role !== undefined) authorize(access, 'member.changeRole', { kind: 'member', ...target });
+    if (personId !== undefined) authorize(access, 'member.link', TREE);
     await db.transaction(async (tx) => {
-      await tx
-        .update(treeMembers)
-        .set({ role })
-        .where(and(eq(treeMembers.treeId, access.treeId), eq(treeMembers.userId, target.userId)));
+      if (role !== undefined) {
+        await tx
+          .update(treeMembers)
+          .set({ role })
+          .where(and(eq(treeMembers.treeId, access.treeId), eq(treeMembers.userId, target.userId)));
+        await audit(tx, access, {
+          action: 'member.role',
+          entityType: 'member',
+          entityId: target.userId,
+          before: { role: target.role },
+          after: { role },
+        });
+      }
+      if (personId !== undefined && personId !== target.personId) {
+        await linkPerson(tx, access.treeId, target.userId, personId);
+        // Member changes never go in a person's History (audit.ts), so no personIds.
+        await audit(tx, access, {
+          action: 'member.link',
+          entityType: 'member',
+          entityId: target.userId,
+          before: { personId: target.personId },
+          after: { personId },
+        });
+      }
+    });
+    return reply.code(204).send();
+  });
+
+  // "This is me": a member with no card picks one nobody has claimed. Any role may; changing it
+  // afterwards is the owner's (PATCH above), so a wrong pick can be fixed but not hopped around.
+  app.post('/api/v1/trees/:treeId/me/person', async (req, reply) => {
+    const access = await loadAccess(db, idParam(req.params, 'treeId'), req.user!.id);
+    const { personId } = parseBody(claimPersonSchema, req.body);
+    const alreadyLinked = () =>
+      new AppError('ALREADY_LINKED', 409, 'You are already linked to a person in this tree');
+    if (access.personId !== null) throw alreadyLinked();
+    await db.transaction(async (tx) => {
+      // Re-check under the accept lock (linkPerson takes it again; it is re-entrant): an owner's
+      // link or an invite accept may have landed since loadAccess.
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${'accept:' + access.treeId}))`);
+      const [me] = await tx
+        .select({ personId: treeMembers.personId })
+        .from(treeMembers)
+        .where(and(eq(treeMembers.treeId, access.treeId), eq(treeMembers.userId, access.userId)));
+      if (!me) throw notFound();
+      if (me.personId !== null) throw alreadyLinked();
+      await linkPerson(tx, access.treeId, access.userId, personId);
       await audit(tx, access, {
-        action: 'member.role',
+        action: 'member.link',
         entityType: 'member',
-        entityId: target.userId,
-        before: { role: target.role },
-        after: { role },
+        entityId: access.userId,
+        before: { personId: null },
+        after: { personId, self: true },
       });
     });
     return reply.code(204).send();

@@ -67,6 +67,8 @@ export interface Targets {
   'steward.revoke': { kind: 'grant'; grantedByUserId: string | null };
   'member.changeRole': MemberTarget;
   'member.remove': MemberTarget;
+  /** Which person card a member (the owner included) is linked to. */
+  'member.link': TreeTarget;
 }
 export type Action = keyof Targets;
 
@@ -123,6 +125,9 @@ const RULES: { [A in Action]: (actor: Actor, target: Targets[A]) => boolean } = 
   'steward.revoke': (a, t) => isOwner(a) || (isSteward(a) && t.grantedByUserId === a.userId),
   'member.changeRole': manageMember,
   'member.remove': manageMember,
+  // Owner only: the link decides whose card says "You" and where the tree opens, and a steward
+  // can't see which cards are in their scope from the members page.
+  'member.link': ownerOnly,
 };
 
 /**

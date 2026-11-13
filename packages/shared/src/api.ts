@@ -34,6 +34,10 @@ export const ERROR_CODES = [
   'ACCOUNT_TEMPORARILY_LOCKED',
   'MOVE_NOT_STARTED',
   'MOVE_EXPIRED',
+  /** Another member is already linked to that person card. */
+  'PERSON_CLAIMED',
+  /** "This is me" from a member who already has a card. */
+  'ALREADY_LINKED',
   'INTERNAL',
 ] as const;
 

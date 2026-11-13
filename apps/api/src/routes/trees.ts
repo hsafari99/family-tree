@@ -13,7 +13,7 @@ import type { Auth } from '../auth/auth.js';
 import { requireSession } from '../auth/session-guard.js';
 import type { Config } from '../config.js';
 import type { Db } from '../db/client.js';
-import { persons, treeMembers, trees } from '../db/schema.js';
+import { persons, treeMembers, trees, users } from '../db/schema.js';
 import { AppError, idParam, notFound, parseBody } from '../errors.js';
 import { can, TREE } from '../permissions/can.js';
 import { authorize, loadAccess } from '../trees/access.js';
@@ -126,6 +126,22 @@ export const treesRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
 
   app.get('/api/v1/trees/:treeId', async (req) => {
     const access = await loadAccess(db, idParam(req.params, 'treeId'), req.user!.id);
+    // Members already see every member's name and card on the members page; this saves the tree
+    // page a second request to mark linked cards. Only live people (a deleted card has no link).
+    const linkedMembers = await db
+      .select({ personId: persons.id, name: users.name })
+      .from(treeMembers)
+      .innerJoin(users, eq(users.id, treeMembers.userId))
+      .innerJoin(
+        persons,
+        and(
+          eq(persons.id, treeMembers.personId),
+          eq(persons.treeId, treeMembers.treeId),
+          isNull(persons.deletedAt),
+        ),
+      )
+      .where(eq(treeMembers.treeId, access.treeId))
+      .orderBy(asc(users.name));
     const body: TreeDetail = {
       tree: { id: access.treeId, name: access.treeName, rootPersonId: access.rootPersonId },
       me: {
@@ -144,6 +160,7 @@ export const treesRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
         }),
         grantStewardship: access.role === 'owner' || access.grants.length > 0,
       },
+      linkedMembers,
     };
     return body;
   });

@@ -1,7 +1,15 @@
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { call, type CookieJar, signUp } from '../../test/auth-helpers.js';
-import { addGrant, addMember, ownerWithTree, userWith2fa } from '../../test/tree-helpers.js';
+import {
+  addGrant,
+  addMember,
+  addPerson,
+  auditRows,
+  ownerWithTree,
+  softDeleteBatch,
+  userWith2fa,
+} from '../../test/tree-helpers.js';
 import { buildApp } from '../app.js';
 import { createAuth } from '../auth/auth.js';
 import { loadConfig } from '../config.js';
@@ -311,5 +319,166 @@ describe('POST reset-link', () => {
       expect((await issue(owner.jar, treeId, V.userId)).statusCode).toBe(201);
     }
     expect((await issue(owner.jar, treeId, V.userId)).statusCode).toBe(429);
+  });
+});
+
+const personOf = async (treeId: string, userId: string) =>
+  (
+    await db
+      .select({ personId: treeMembers.personId })
+      .from(treeMembers)
+      .where(and(eq(treeMembers.treeId, treeId), eq(treeMembers.userId, userId)))
+  )[0]?.personId;
+
+describe('PATCH member person link', () => {
+  it('lets the owner set, change and clear a link, and records it', async () => {
+    const { owner, treeId, V } = await setup();
+    const ann = await addPerson(db, treeId, 'Ann');
+    const bob = await addPerson(db, treeId, 'Bob');
+    const link = (personId: string | null) =>
+      call(app, 'PATCH', `${members(treeId)}/${V.userId}`, {
+        jar: owner.jar,
+        body: { personId },
+      });
+    expect((await link(ann.id)).statusCode).toBe(204);
+    expect(await personOf(treeId, V.userId)).toBe(ann.id);
+    expect((await link(bob.id)).statusCode).toBe(204);
+    expect(await personOf(treeId, V.userId)).toBe(bob.id);
+    expect((await link(null)).statusCode).toBe(204);
+    expect(await personOf(treeId, V.userId)).toBeNull();
+    const rows = (await auditRows(db, treeId)).filter((r) => r.action === 'member.link');
+    expect(rows.map((r) => [r.before, r.after])).toEqual([
+      [{ personId: null }, { personId: ann.id }],
+      [{ personId: ann.id }, { personId: bob.id }],
+      [{ personId: bob.id }, { personId: null }],
+    ]);
+    expect(rows.every((r) => r.entityId === V.userId && r.personIds.length === 0)).toBe(true);
+  });
+
+  it('lets the owner relink their own card', async () => {
+    const { owner, treeId } = await setup();
+    const ann = await addPerson(db, treeId, 'Ann');
+    const res = await call(app, 'PATCH', `${members(treeId)}/${owner.userId}`, {
+      jar: owner.jar,
+      body: { personId: ann.id },
+    });
+    expect(res.statusCode).toBe(204);
+    expect(await personOf(treeId, owner.userId)).toBe(ann.id);
+  });
+
+  it('refuses a card another member has, with PERSON_CLAIMED', async () => {
+    const { owner, treeId, rootId, V } = await setup();
+    const res = await call(app, 'PATCH', `${members(treeId)}/${V.userId}`, {
+      jar: owner.jar,
+      body: { personId: rootId },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe('PERSON_CLAIMED');
+    expect(await personOf(treeId, V.userId)).toBeNull();
+  });
+
+  it('refuses a deleted person, a person of another tree and a bad id', async () => {
+    const { owner, treeId, V } = await setup();
+    const gone = await addPerson(db, treeId, 'Gone');
+    await softDeleteBatch(db, treeId, owner.userId, [gone.id]);
+    const other = await ownerWithTree(app, 'Other');
+    const otherRoot = (
+      await call(app, 'GET', `/api/v1/trees/${other.treeId}`, { jar: other.owner.jar })
+    ).json().tree.rootPersonId as string;
+    const link = (personId: unknown) =>
+      call(app, 'PATCH', `${members(treeId)}/${V.userId}`, {
+        jar: owner.jar,
+        body: { personId },
+      });
+    expect((await link(gone.id)).statusCode).toBe(404);
+    expect((await link(otherRoot)).statusCode).toBe(404);
+    expect((await link('nope')).statusCode).toBe(400);
+    expect(
+      (
+        await call(app, 'PATCH', `${members(treeId)}/${V.userId}`, {
+          jar: owner.jar,
+          body: {},
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(await personOf(treeId, V.userId)).toBeNull();
+  });
+
+  it('is the owner’s only', async () => {
+    const { treeId, E, S, W } = await setup();
+    const ann = await addPerson(db, treeId, 'Ann');
+    for (const jar of [E.jar, S.jar, W.jar]) {
+      const res = await call(app, 'PATCH', `${members(treeId)}/${W.userId}`, {
+        jar,
+        body: { personId: ann.id },
+      });
+      expect(res.statusCode).toBe(403);
+    }
+    expect(await personOf(treeId, W.userId)).toBeNull();
+  });
+});
+
+describe('POST me/person ("This is me")', () => {
+  const claim = (treeId: string, jar: CookieJar, personId: unknown) =>
+    call(app, 'POST', `/api/v1/trees/${treeId}/me/person`, { jar, body: { personId } });
+
+  it('links an unlinked member to an unclaimed person, once', async () => {
+    const { treeId, V } = await setup();
+    const ann = await addPerson(db, treeId, 'Ann');
+    const bob = await addPerson(db, treeId, 'Bob');
+    expect((await claim(treeId, V.jar, ann.id)).statusCode).toBe(204);
+    expect(await personOf(treeId, V.userId)).toBe(ann.id);
+    const d = (await call(app, 'GET', `/api/v1/trees/${treeId}`, { jar: V.jar })).json();
+    expect(d.me.personId).toBe(ann.id);
+    const again = await claim(treeId, V.jar, bob.id);
+    expect(again.statusCode).toBe(409);
+    expect(again.json().error.code).toBe('ALREADY_LINKED');
+    expect(await personOf(treeId, V.userId)).toBe(ann.id);
+    const [row] = (await auditRows(db, treeId)).filter((r) => r.action === 'member.link');
+    expect(row!.userId).toBe(V.userId);
+    expect(row!.after).toEqual({ personId: ann.id, self: true });
+  });
+
+  it('refuses a claimed or deleted person, and non-members', async () => {
+    const { owner, treeId, rootId, V } = await setup();
+    const taken = await claim(treeId, V.jar, rootId);
+    expect(taken.statusCode).toBe(409);
+    expect(taken.json().error.code).toBe('PERSON_CLAIMED');
+    const gone = await addPerson(db, treeId, 'Gone');
+    await softDeleteBatch(db, treeId, owner.userId, [gone.id]);
+    expect((await claim(treeId, V.jar, gone.id)).statusCode).toBe(404);
+    expect((await claim(treeId, V.jar, 'nope')).statusCode).toBe(400);
+    const stranger = await signUp(app, { name: 'Stranger' });
+    const ann = await addPerson(db, treeId, 'Ann');
+    expect((await claim(treeId, stranger.jar, ann.id)).statusCode).toBe(404);
+    expect(await personOf(treeId, V.userId)).toBeNull();
+  });
+
+  it('lets only one of two concurrent claims win', async () => {
+    const { treeId, V, E } = await setup();
+    const ann = await addPerson(db, treeId, 'Ann');
+    const results = await Promise.all([claim(treeId, V.jar, ann.id), claim(treeId, E.jar, ann.id)]);
+    expect(results.map((r) => r.statusCode).sort()).toEqual([204, 409]);
+  });
+});
+
+describe('GET tree detail linkedMembers', () => {
+  it('names the member linked to each live card', async () => {
+    const { treeId, rootId, V } = await setup();
+    const ann = await addPerson(db, treeId, 'Ann');
+    const gone = await addPerson(db, treeId, 'Gone');
+    await db
+      .update(treeMembers)
+      .set({ personId: ann.id })
+      .where(and(eq(treeMembers.treeId, treeId), eq(treeMembers.userId, V.userId)));
+    const d = (await call(app, 'GET', `/api/v1/trees/${treeId}`, { jar: V.jar })).json();
+    expect(d.linkedMembers).toEqual(
+      expect.arrayContaining([
+        { personId: rootId, name: 'Owner' },
+        { personId: ann.id, name: 'Vic' },
+      ]),
+    );
+    expect(d.linkedMembers).toHaveLength(2);
+    expect(d.linkedMembers.some((l: { personId: string }) => l.personId === gone.id)).toBe(false);
   });
 });

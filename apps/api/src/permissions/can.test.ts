@@ -125,6 +125,11 @@ describe('can: rules that depend on who made something', () => {
       expect(can({ ...steward, grants: [] }, action, invitedBySteward)).toBe(false);
     }
   });
+  it('member.link: the owner only', () => {
+    expect(can(owner, 'member.link', TREE)).toBe(true);
+    expect(can(steward, 'member.link', TREE)).toBe(false);
+    expect(can(editor, 'member.link', TREE)).toBe(false);
+  });
 });
 
 describe('link.reparent (brief #13, decision 3)', () => {
