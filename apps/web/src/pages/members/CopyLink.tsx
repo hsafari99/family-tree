@@ -22,25 +22,17 @@ export function CopyLink({
   return (
     <div className="link-box">
       <p>{children}</p>
-      <input
-        readOnly
-        aria-label={label}
-        value={url}
-        onFocus={(e) => e.currentTarget.select()}
-      />{' '}
-      <button type="button" onClick={() => void copy()}>
-        Copy
-      </button>
-      {copied === true && (
-        <span role="status" className="success">
-          Copied
-        </span>
-      )}
-      {copied === false && (
-        <span role="status" className="notice">
-          Couldn’t copy — select the link and copy it
-        </span>
-      )}
+      {/* The field and its button on one row; the result as a line of text under them. */}
+      <div className="link-box-row">
+        <input readOnly aria-label={label} value={url} onFocus={(e) => e.currentTarget.select()} />
+        <button type="button" onClick={() => void copy()}>
+          Copy
+        </button>
+      </div>
+      <p role="status" className={copied === false ? 'link-box-status' : 'link-box-status is-ok'}>
+        {copied === true && 'Copied'}
+        {copied === false && 'Couldn’t copy — select the link and copy it'}
+      </p>
     </div>
   );
 }

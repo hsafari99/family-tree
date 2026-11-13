@@ -542,6 +542,36 @@ button.google:hover:not(:disabled) {
   gap: 0.5rem;
 }
 
+/* CopyLink: the read-only link and its Copy button side by side (the field takes the room),
+   with Copied or the fallback as small text under them, never on top of either. */
+.link-box > p {
+  margin: 0 0 0.5rem;
+}
+.link-box-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.link-box-row input {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  margin: 0;
+}
+.link-box-row button {
+  flex: none;
+}
+.link-box > p.link-box-status {
+  min-height: 1.25rem;
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.link-box > p.link-box-status.is-ok {
+  color: var(--ok);
+}
+
 /* Fuzzy dates */
 .fuzzy-date {
   display: grid;
