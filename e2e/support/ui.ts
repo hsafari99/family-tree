@@ -9,6 +9,7 @@ export async function signUpViaUi(page: Page, name: string, path = '/sign-up'): 
   await page.getByLabel('Name', { exact: true }).fill(a.name);
   await page.getByLabel('Email', { exact: true }).fill(a.email);
   await page.getByLabel('Password', { exact: true }).fill(a.password);
+  await page.getByLabel('Confirm password', { exact: true }).fill(a.password);
   await page.getByRole('button', { name: 'Create account' }).click();
   await expect(page).not.toHaveURL(/\/sign-up/);
   return a;

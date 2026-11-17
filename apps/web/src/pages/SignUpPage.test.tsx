@@ -4,10 +4,11 @@ import { describe, expect, it } from 'vitest';
 import { FakeAuthApi } from '../test/fake-auth';
 import { renderAt } from '../test/render';
 
-function fill(name: string, email: string, password: string) {
+function fill(name: string, email: string, password: string, confirm = password) {
   fireEvent.change(screen.getByLabelText('Name'), { target: { value: name } });
   fireEvent.change(screen.getByLabelText('Email'), { target: { value: email } });
   fireEvent.change(screen.getByLabelText('Password'), { target: { value: password } });
+  fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: confirm } });
   fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
 }
 
@@ -18,6 +19,27 @@ describe('SignUpPage', () => {
     fill('Ada', 'ada@example.com', 'short');
     expect(await screen.findByText('Use at least 10 characters')).toBeInTheDocument();
     expect(screen.getByLabelText('Password')).toHaveAttribute('aria-invalid', 'true');
+    expect(api.callsTo('signUp')).toHaveLength(0);
+  });
+
+  it('refuses passwords that don’t match without calling the API', async () => {
+    const { api } = renderAt('/sign-up');
+    await screen.findByRole('heading', { name: 'Create an account' });
+    fill('Ada', 'ada@example.com', 'Correct-horse-battery1', 'Correct-horse-battery2');
+    expect(await screen.findByLabelText('Confirm password')).toHaveAccessibleDescription(
+      'The passwords don’t match',
+    );
+    expect(screen.getByLabelText('Confirm password')).toHaveAttribute('aria-invalid', 'true');
+    expect(api.callsTo('signUp')).toHaveLength(0);
+  });
+
+  it('asks for the password again when the confirmation is blank', async () => {
+    const { api } = renderAt('/sign-up');
+    await screen.findByRole('heading', { name: 'Create an account' });
+    fill('Ada', 'ada@example.com', 'Correct-horse-battery1', '');
+    expect(await screen.findByLabelText('Confirm password')).toHaveAccessibleDescription(
+      'Enter the password again',
+    );
     expect(api.callsTo('signUp')).toHaveLength(0);
   });
 
@@ -84,6 +106,10 @@ describe('SignUpPage', () => {
     renderAt('/sign-up');
     expect(await screen.findByLabelText('Email')).toHaveAttribute('autocomplete', 'email');
     expect(screen.getByLabelText('Password')).toHaveAttribute('autocomplete', 'new-password');
+    expect(screen.getByLabelText('Confirm password')).toHaveAttribute(
+      'autocomplete',
+      'new-password',
+    );
   });
 
   it('sends an already signed-in user home', async () => {

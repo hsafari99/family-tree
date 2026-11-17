@@ -11,8 +11,12 @@ export const NEW_PASSWORD_LABELS: Record<string, string> = {
 export const weakPasswordError = (error: { code: string }) =>
   error.code === 'WEAK_PASSWORD' ? PASSWORD_CLASSES_MESSAGE : undefined;
 
-export function confirmError(password: string, repeat: string): string | undefined {
-  if (repeat === '') return 'Enter the new password again';
+export function confirmError(
+  password: string,
+  repeat: string,
+  emptyMessage = 'Enter the new password again',
+): string | undefined {
+  if (repeat === '') return emptyMessage;
   if (repeat !== password) return 'The passwords don’t match';
   return undefined;
 }
