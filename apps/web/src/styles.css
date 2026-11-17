@@ -681,27 +681,27 @@ img.card-avatar {
 .person-card.is-deceased {
   background: var(--surface-2);
 }
-:is(.card-avatar, .panel-photo, .result-photo, .details-photo-img).tone-1 {
+:is(.card-avatar, .panel-photo, .result-photo, .details-photo-img, .today-avatar).tone-1 {
   background: var(--av1);
   color: var(--av-ink);
 }
-:is(.card-avatar, .panel-photo, .result-photo, .details-photo-img).tone-2 {
+:is(.card-avatar, .panel-photo, .result-photo, .details-photo-img, .today-avatar).tone-2 {
   background: var(--av2);
   color: var(--av-ink);
 }
-:is(.card-avatar, .panel-photo, .result-photo, .details-photo-img).tone-3 {
+:is(.card-avatar, .panel-photo, .result-photo, .details-photo-img, .today-avatar).tone-3 {
   background: var(--av3);
   color: var(--av-ink);
 }
-:is(.card-avatar, .panel-photo, .result-photo, .details-photo-img).tone-4 {
+:is(.card-avatar, .panel-photo, .result-photo, .details-photo-img, .today-avatar).tone-4 {
   background: var(--av4);
   color: var(--av-ink);
 }
-:is(.card-avatar, .panel-photo, .result-photo, .details-photo-img).tone-5 {
+:is(.card-avatar, .panel-photo, .result-photo, .details-photo-img, .today-avatar).tone-5 {
   background: var(--av5);
   color: var(--av-ink);
 }
-:is(.card-avatar, .panel-photo, .result-photo, .details-photo-img).tone-6 {
+:is(.card-avatar, .panel-photo, .result-photo, .details-photo-img, .today-avatar).tone-6 {
   background: var(--av6);
   color: var(--av-ink);
 }
@@ -3491,4 +3491,198 @@ a.app-header-support .icon {
   font-size: var(--text-s);
   color: var(--ink-2);
   cursor: pointer;
+}
+
+/* Home: today's birthdays and days of passing (feedback item 6). */
+.today-card {
+  /* Full width (a .card stops at 30rem), compact, so a long list adds columns before rows. */
+  max-width: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 2.5rem;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+}
+.today-card > div {
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+.today-card h2 {
+  flex-basis: 100%;
+  margin: 0;
+}
+.today-card h3 {
+  margin: 0 0 0.25rem;
+  font-size: var(--text-s);
+  color: var(--ink-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.today-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+/* One picture per person; the full name shows in a bubble on hover or keyboard focus. */
+.today-person {
+  position: relative;
+  display: block;
+  border-radius: 50%;
+  /* Initials are a picture, not link text: no underline. */
+  text-decoration: none;
+}
+.today-avatar {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--surface-2);
+  border: 2px solid var(--surface);
+  box-shadow: 0 0 0 1px var(--line-strong);
+  color: var(--av-ink);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-decoration: none;
+}
+.today-person:hover .today-avatar,
+.today-person:focus-visible .today-avatar {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.today-name {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  translate: -50% 0;
+  z-index: 2;
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius-s);
+  background: var(--ink);
+  color: var(--surface);
+  font-size: var(--text-s);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+}
+.today-person:hover .today-name,
+.today-person:focus-visible .today-name {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Photos as an album (feedback item 7): one photo, full size, Previous / Next on its sides. */
+.photo-viewer {
+  width: min(1100px, calc(100vw - 32px));
+  height: min(860px, calc(100vh - 32px));
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-3);
+}
+.photo-viewer[open] {
+  display: flex;
+  flex-direction: column;
+}
+.photo-viewer::backdrop {
+  background: rgb(10 16 14 / 0.75);
+  backdrop-filter: blur(2px);
+}
+.photo-viewer-head {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--line);
+}
+.photo-viewer-head h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  overflow-wrap: anywhere;
+}
+.photo-viewer-count {
+  margin: 0 0 0 auto;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.photo-viewer-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  padding: 0.75rem;
+  background: var(--surface-2);
+  /* Horizontal swipes turn the page; vertical ones still scroll. */
+  touch-action: pan-y;
+  user-select: none;
+}
+.photo-viewer-stage {
+  overflow: hidden;
+}
+/* The photo always fits the stage: positioned against the stage's own box (a grid row has no
+   fixed height for a percentage max-height to resolve against), centred by the auto margins,
+   shrunk to fit keeping its proportions, and never enlarged past its own size. */
+.photo-viewer-stage img {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  max-width: calc(100% - 1.5rem);
+  max-height: calc(100% - 1.5rem);
+  width: auto;
+  height: auto;
+  border-radius: var(--radius-s);
+}
+.photo-viewer-nav {
+  z-index: 1;
+}
+.photo-viewer-nav {
+  position: absolute;
+  top: 50%;
+  translate: 0 -50%;
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-1);
+}
+.photo-viewer-nav.is-prev {
+  left: 0.75rem;
+}
+.photo-viewer-nav.is-next {
+  right: 0.75rem;
+}
+.photo-viewer-nav:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.photo-viewer-foot {
+  margin: 0;
+  padding: 0.6rem 1.25rem;
+  border-top: 1px solid var(--line);
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+.photo-open {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
 }

@@ -1,9 +1,11 @@
-import type { ActivityEntry, HomeSummary, HomeTree } from '@family-tree/shared';
+import type { ActivityEntry, HomeSummary, HomeTree, Today, TodayPerson } from '@family-tree/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
 import { EmptyState, PeopleArt } from '../components/EmptyState';
+import { avatarTone } from '../canvas/avatar-tone';
 import { FormError } from '../components/forms';
+import { PersonPhoto } from '../components/PersonPhoto';
 import { Page } from '../components/Page';
 import { TreeCardsSkeleton } from '../components/Skeleton';
 import { ACTION_LABEL, countPeople, ROLE_LABEL, timeAgo } from '../trees/format';
@@ -12,6 +14,71 @@ import { hasSupport, SUPPORT_PATH } from '../support/config';
 import { useSupport } from '../support/SupportContext';
 
 const firstName = (name: string) => name.trim().split(/\s+/)[0] ?? name;
+
+/** The viewer's own calendar day as MM-DD (their time zone, not the server's). */
+export const localDay = (d = new Date()) =>
+  `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/**
+ * Today's birthdays and days of passing across the user's trees (feedback item 6): full names
+ * only, each linking to the person. Shows nothing when there is nobody today or the call fails.
+ */
+function TodayCard() {
+  const api = useTreesApi();
+  const [today, setToday] = useState<Today | null>(null);
+  useEffect(() => {
+    let live = true;
+    void api.today(localDay()).then((res) => {
+      if (live && res.ok) setToday(res.data);
+    });
+    return () => {
+      live = false;
+    };
+  }, [api]);
+  if (!today || (today.birthdays.length === 0 && today.remembering.length === 0)) return null;
+  // A picture per person (their photo, or initials on their own colour); the name shows on
+  // hover and focus, and is the link's accessible name.
+  const list = (people: TodayPerson[]) => (
+    <ul className="today-list">
+      {people.map((p) => (
+        <li key={`${p.treeId}:${p.personId}`}>
+          <Link
+            to={`/trees/${p.treeId}/people/${p.personId}`}
+            className="today-person"
+            aria-label={p.name}
+          >
+            <PersonPhoto
+              url={p.photoThumbUrl}
+              person={{ ...p, middleName: null }}
+              className="today-avatar"
+              tone={avatarTone(p.personId)}
+            />
+            <span className="today-name" aria-hidden="true">
+              {p.name}
+            </span>
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+  return (
+    <section className="card today-card" aria-labelledby="home-today">
+      <h2 id="home-today">Today</h2>
+      {today.birthdays.length > 0 && (
+        <div>
+          <h3>Birthdays</h3>
+          {list(today.birthdays)}
+        </div>
+      )}
+      {today.remembering.length > 0 && (
+        <div>
+          <h3>Remembering</h3>
+          {list(today.remembering)}
+        </div>
+      )}
+    </section>
+  );
+}
 
 /**
  * Home: a welcome, the user's trees as cards, recent changes across them, and the deleted trees
@@ -74,6 +141,7 @@ export function HomePage() {
       ) : (
         <>
           <p className="home-lead">Pick up where you left off, or start another tree.</p>
+          <TodayCard />
           <section aria-labelledby="home-trees">
             <div className="section-head">
               <h2 id="home-trees">Your trees</h2>

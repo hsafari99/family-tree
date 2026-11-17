@@ -4,6 +4,7 @@ import { MESSAGES } from '../auth/api';
 import { FakeAuthApi } from '../test/fake-auth';
 import { fakePerson, FakeTreesApi } from '../test/fake-trees';
 import { renderAt } from '../test/render';
+import { localDay } from './HomePage';
 
 function setup() {
   const auth = new FakeAuthApi();
@@ -17,6 +18,63 @@ const card = (name: string) =>
   screen.getByRole('heading', { level: 3, name }).closest('li') as HTMLElement;
 
 describe('HomePage', () => {
+  it('lists today’s birthdays and days of passing, asking for the local day', async () => {
+    const s = setup();
+    const treeId = s.trees.addTree({ name: 'Hale family' });
+    const [ann, cat] = [crypto.randomUUID(), crypto.randomUUID()];
+    s.trees.todayList = {
+      birthdays: [
+        {
+          treeId,
+          personId: ann,
+          name: 'Ann Hale',
+          givenName: 'Ann',
+          surname: 'Hale',
+          photoThumbUrl: 'https://photos.test/ann.webp',
+        },
+      ],
+      remembering: [
+        {
+          treeId,
+          personId: cat,
+          name: 'Cat Hale',
+          givenName: 'Cat',
+          surname: 'Hale',
+          photoThumbUrl: null,
+        },
+      ],
+    };
+    renderAt('/', s);
+    const today = await screen.findByRole('region', { name: 'Today' });
+    const birthdays = within(today).getByRole('heading', { name: 'Birthdays' }).parentElement!;
+    expect(within(birthdays).getByRole('link', { name: 'Ann Hale' })).toHaveAttribute(
+      'href',
+      `/trees/${treeId}/people/${ann}`,
+    );
+    const remembering = within(today).getByRole('heading', { name: 'Remembering' }).parentElement!;
+    const catLink = within(remembering).getByRole('link', { name: 'Cat Hale' });
+    // A picture each: the photo, or initials when there is none; the name shows on hover.
+    expect(within(catLink).getByText('Cat Hale')).toHaveClass('today-name');
+    expect(catLink).toHaveTextContent(/^CH/);
+    expect(
+      within(birthdays).getByRole('link', { name: 'Ann Hale' }).querySelector('img'),
+    ).toHaveAttribute('src', 'https://photos.test/ann.webp');
+    expect(s.trees.callsTo('today')).toEqual([{ day: localDay() }]);
+  });
+
+  it('shows no Today card when nobody has a birthday or anniversary today', async () => {
+    const s = setup();
+    s.trees.addTree({ name: 'Hale family' });
+    renderAt('/', s);
+    await screen.findByRole('heading', { name: 'Your trees' });
+    expect(screen.queryByRole('region', { name: 'Today' })).toBeNull();
+  });
+
+  it('formats the local day as MM-DD', () => {
+    expect(localDay(new Date(2026, 2, 5))).toBe('03-05');
+    expect(localDay(new Date(2026, 11, 31))).toBe('12-31');
+  });
+
   it('welcomes the user by first name', async () => {
     renderAt('/', setup());
     expect(await screen.findByRole('heading', { level: 1, name: 'Welcome, Ada' })).toBeVisible();

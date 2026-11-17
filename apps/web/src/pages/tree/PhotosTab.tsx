@@ -1,8 +1,10 @@
 import { PHOTO_MEDIA_TYPES } from '@family-tree/shared';
+import { useState } from 'react';
 import { ConfirmButton } from '../../components/ConfirmButton';
 import { FormError, Success } from '../../components/forms';
 import { PersonPhoto } from '../../components/PersonPhoto';
 import { PhotoCropper } from '../../photos/PhotoCropper';
+import { PhotoViewer } from '../../photos/PhotoViewer';
 import { usePhotoActions } from '../../photos/usePhotoActions';
 import { formatBytes, personName } from '../../trees/format';
 import type { TabProps } from './usePersonSave';
@@ -13,6 +15,8 @@ export function PhotosTab(props: TabProps) {
   const photos = usePhotoActions(props);
   const { file, busy, error, done, input } = photos;
   const name = personName(view.person);
+  // The album opens on the photo clicked (feedback item 7).
+  const [viewing, setViewing] = useState<number | null>(null);
 
   return (
     <div className="photos-tab">
@@ -24,14 +28,19 @@ export function PhotosTab(props: TabProps) {
         <ul className="photo-grid" aria-label={`Photos of ${name}`}>
           {view.photos.map((ph, i) => (
             <li key={ph.id} className={ph.isPrimary ? 'photo is-primary' : 'photo'}>
-              <a href={ph.fullUrl} target="_blank" rel="noopener noreferrer">
+              <button
+                type="button"
+                className="photo-open"
+                aria-haspopup="dialog"
+                onClick={() => setViewing(i)}
+              >
                 <PersonPhoto
                   url={ph.thumbUrl}
                   person={view.person}
                   className="photo-thumb"
-                  alt={`Photo ${i + 1} of ${name}${ph.isPrimary ? ', main photo' : ''} (opens full size)`}
+                  alt={`Photo ${i + 1} of ${name}${ph.isPrimary ? ', main photo' : ''} (opens the album)`}
                 />
-              </a>
+              </button>
               {/* Under the picture (clear of the main photo's outline): the badge or a small
                   Make main photo link, then Delete. */}
               {(ph.isPrimary || canEdit) && (
@@ -63,6 +72,14 @@ export function PhotosTab(props: TabProps) {
             </li>
           ))}
         </ul>
+      )}
+      {viewing !== null && (
+        <PhotoViewer
+          photos={view.photos}
+          start={viewing}
+          name={name}
+          onClose={() => setViewing(null)}
+        />
       )}
       <p className="hint">
         Photos use {formatBytes(view.photoUsage.usedBytes)} of this tree’s{' '}
