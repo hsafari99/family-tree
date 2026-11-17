@@ -14,6 +14,7 @@ import type { ObjectStore } from '../storage/objects.js';
 import { can } from '../permissions/can.js';
 import type { Access } from './access.js';
 import { isLivePerson, summaryColumns, toPersonDetail } from './people.js';
+import { loadVisibility, maskDetail, maskSummary, unionDatesVisible } from './privacy.js';
 
 type OrderedUnion = {
   id: string;
@@ -56,6 +57,8 @@ export async function loadPersonView(
     .leftJoin(users, eq(users.id, persons.createdBy))
     .where(isLivePerson(treeId, personId));
   if (!row) throw notFound();
+  const vis = await loadVisibility(db, access);
+  const full = vis.full(personId);
 
   const homes = await db
     .select({
@@ -80,7 +83,7 @@ export async function loadPersonView(
     .select({ ...summaryColumns, siblingOrder: persons.siblingOrder })
     .from(persons)
     .where(and(eq(persons.treeId, treeId), isNull(persons.deletedAt)))) {
-    people.set(summary.id, summary);
+    people.set(summary.id, maskSummary(summary, vis));
     order.set(summary.id, siblingOrder);
   }
   const bySibling = <T extends { childId: string }>(a: T, b: T) =>
@@ -157,8 +160,9 @@ export async function loadPersonView(
       id: u.id,
       type: u.type,
       status: u.status,
-      startDate: u.startDate,
-      endDate: u.endDate,
+      ...(unionDatesVisible(u, vis)
+        ? { startDate: u.startDate, endDate: u.endDate }
+        : { startDate: null, endDate: null }),
       partner: summary(u.partnerAId === personId ? u.partnerBId : u.partnerAId),
       children: links
         .filter((l) => l.unionId === u.id)
@@ -167,9 +171,10 @@ export async function loadPersonView(
     }));
 
   return {
-    person: toPersonDetail(row.p, row.createdByName),
-    residences: homes,
-    photos: await loadPhotos(db, store, treeId, personId),
+    person: maskDetail(toPersonDetail(row.p, row.createdByName), vis),
+    // R2: residences and photos are details too.
+    residences: full ? homes : [],
+    photos: full ? await loadPhotos(db, store, treeId, personId) : [],
     photoUsage: await photoUsage(db, treeId, limitBytes),
     relations: { parents, unions: own, siblings },
     capabilities: {

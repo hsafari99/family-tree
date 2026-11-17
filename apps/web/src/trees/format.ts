@@ -8,11 +8,11 @@ export function personName(p: NameParts): string {
   return [p.givenName, p.middleName, p.surname].filter(Boolean).join(' ');
 }
 
-/** "1930–1998", "b. 1990", "d. 1998", or an empty string when neither year is known. */
+/** "1930–1998", "b. 1990", "?–1998", or an empty string when neither year is known. */
 export function personYears(p: YearParts): string {
   if (p.birthYear != null && p.deathYear != null) return `${p.birthYear}–${p.deathYear}`;
   if (p.birthYear != null) return `b. ${p.birthYear}`;
-  if (p.deathYear != null) return `d. ${p.deathYear}`;
+  if (p.deathYear != null) return `?–${p.deathYear}`;
   return '';
 }
 
@@ -33,6 +33,12 @@ export const MONTHS = [
   'November',
   'December',
 ];
+
+/** A birthday whose year is hidden (privacy spec D8): "5 March", or "March". */
+export function formatBirthday(b: { month: number; day: number | null }): string {
+  const month = MONTHS[b.month - 1] ?? '';
+  return b.day === null ? month : `${b.day} ${month}`;
+}
 
 function partial(d: string): string {
   const [y, m, day] = d.split('-');
@@ -104,9 +110,9 @@ export const FIELD_LABEL: Record<string, string> = {
   sex: 'Sex',
   birthDate: 'Birth date',
   birthPlace: 'Birth place',
-  deathDate: 'Death date',
-  deathPlace: 'Death place',
-  causeOfDeath: 'Cause of death',
+  deathDate: 'Date of passing',
+  deathPlace: 'Place of passing',
+  causeOfDeath: 'Cause of passing',
   isLiving: 'Status',
   occupation: 'Occupation',
   education: 'Education',

@@ -28,6 +28,7 @@ test('desktop: the section list sits beside one section, each at its own URL', a
     'Profile',
     'Change password',
     'Two-step verification',
+    'Privacy',
     ...((await nav(page).getByRole('link', { name: 'Google sign-in' }).count()) > 0
       ? ['Google sign-in']
       : []),

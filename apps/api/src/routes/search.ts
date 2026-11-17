@@ -14,6 +14,7 @@ import { extraLimit } from '../security/limits.js';
 import { authorize, loadAccess } from '../trees/access.js';
 import { loadGraphRows } from '../trees/graph-rows.js';
 import { requireLivePerson } from '../trees/people.js';
+import { loadVisibility, maskGraphPerson, maskSummary } from '../trees/privacy.js';
 import { searchPersons } from '../trees/search.js';
 import type { TreeRouteOptions } from './trees.js';
 
@@ -34,7 +35,19 @@ export const searchRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
       authorize(access, 'tree.view', TREE);
       const q = parseBody(searchQuerySchema, req.query);
       if (q.branch) await requireLivePerson(db, access.treeId, q.branch);
-      const rows = await searchPersons(db, access.treeId, q);
+      const vis = await loadVisibility(db, access);
+      // R5: a filter on hidden data never matches the person it is hidden for. Only names
+      // stay searchable; the birth-year filters also skip people whose year is hidden.
+      const detailFilter =
+        q.diedFrom !== undefined || q.diedTo !== undefined || q.status !== undefined || !!q.place;
+      const yearFilter = q.bornFrom !== undefined || q.bornTo !== undefined;
+      const rows = (await searchPersons(db, access.treeId, q))
+        .filter((r) => !(detailFilter || yearFilter) || vis.full(r.id))
+        .filter((r) => !yearFilter || vis.birthYear(r.id))
+        .map((r) => {
+          const m: typeof r & { restricted?: boolean } = maskSummary(r, vis);
+          return m.restricted ? { ...m, photoThumbKey: null } : m;
+        });
       let pathTo: ((id: string) => KinStep[] | null) | null = null;
       if (access.personId && rows.length > 0) {
         const graph = await loadGraphRows(db, access.treeId);
@@ -73,7 +86,8 @@ export const searchRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
       authorize(access, 'tree.view', TREE);
       const { from, to } = parseBody(relationshipQuerySchema, req.query);
       const rows = await loadGraphRows(db, access.treeId);
-      const byId = new Map(rows.persons.map((p) => [p.id, p]));
+      const vis = await loadVisibility(db, access, rows);
+      const byId = new Map(rows.persons.map((p) => [p.id, maskGraphPerson(p, vis)]));
       if (!byId.has(from) || !byId.has(to)) throw notFound();
       const steps = relationshipPath(rows, from, to);
       // Virtual steps (a parents-unknown union, brief #11) name a union, not a person.
@@ -87,7 +101,10 @@ export const searchRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
       return {
         steps,
         persons: people.map(
-          ({ id, givenName, middleName, surname, birthYear, deathYear, isLiving, sex }, i) => ({
+          (
+            { id, givenName, middleName, surname, birthYear, deathYear, isLiving, sex, restricted },
+            i,
+          ) => ({
             id,
             givenName,
             middleName,
@@ -96,6 +113,7 @@ export const searchRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
             deathYear,
             isLiving,
             sex,
+            ...(restricted ? { restricted } : {}),
             photoThumbUrl: urls[i]!,
           }),
         ),

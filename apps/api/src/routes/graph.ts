@@ -22,6 +22,7 @@ import { audit } from '../trees/audit.js';
 import { loadLiveGraph, lockTreeGraph } from '../trees/graph.js';
 import { loadGraphRows } from '../trees/graph-rows.js';
 import { buildTreeGraph, withPhotoUrls } from '../trees/graph-view.js';
+import { loadVisibility, maskGraphRows, maskSummary } from '../trees/privacy.js';
 import { similarCandidates } from '../trees/search.js';
 import type { TreeRouteOptions } from './trees.js';
 
@@ -33,6 +34,7 @@ const toSummary = ({
   birthYear,
   deathYear,
   isLiving,
+  restricted,
 }: PersonSummary): PersonSummary => ({
   id,
   givenName,
@@ -41,6 +43,7 @@ const toSummary = ({
   birthYear,
   deathYear,
   isLiving,
+  ...(restricted ? { restricted } : {}),
 });
 const byName = (a: PersonSummary, b: PersonSummary) =>
   (a.surname ?? '').localeCompare(b.surname ?? '') || a.givenName.localeCompare(b.givenName);
@@ -56,7 +59,8 @@ export const graphRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
     const access = await loadAccess(db, idParam(req.params, 'treeId'), req.user!.id);
     authorize(access, 'tree.view', TREE);
     const query = parseBody(graphQuerySchema, req.query);
-    const rows = await loadGraphRows(db, access.treeId);
+    const raw = await loadGraphRows(db, access.treeId);
+    const rows = maskGraphRows(raw, await loadVisibility(db, access, raw));
     return withPhotoUrls(buildTreeGraph(rows, access, query), rows, storage);
   });
 
@@ -65,11 +69,12 @@ export const graphRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
     const access = await loadAccess(db, idParam(req.params, 'treeId'), req.user!.id);
     authorize(access, 'tree.view', TREE);
     const rows = await loadGraphRows(db, access.treeId);
+    const vis = await loadVisibility(db, access, rows);
     const reached = connectedTo(kinIndex(rows), access.rootPersonId);
     return {
       persons: rows.persons
         .filter((p) => !reached.has(p.id))
-        .map(toSummary)
+        .map((p) => toSummary(maskSummary(p, vis)))
         .sort(byName),
     };
   });
@@ -84,7 +89,11 @@ export const graphRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
       const access = await loadAccess(db, idParam(req.params, 'treeId'), req.user!.id);
       authorize(access, 'tree.view', TREE);
       const q = parseBody(similarQuerySchema, req.query);
-      const candidates = await similarCandidates(db, access.treeId, q);
+      const vis = await loadVisibility(db, access);
+      // Masked before matching, so a hidden birth year never decides a match (R5).
+      const candidates = (await similarCandidates(db, access.treeId, q)).map((p) =>
+        maskSummary(p, vis),
+      );
       return { persons: findSimilar(candidates, q, SIMILAR_LIMIT).map(toSummary) };
     },
   );

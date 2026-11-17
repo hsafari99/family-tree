@@ -28,6 +28,8 @@ export const unionStatusEnum = pgEnum('union_status', [
   'separated',
   'widowed',
 ]);
+/** Who in the tree sees a person's details (feedback round, privacy spec D1). */
+export const privacyLevelEnum = pgEnum('privacy_level', ['public', 'branch', 'private']);
 export const parentChildKindEnum = pgEnum('parent_child_kind', [
   'biological',
   'adoptive',
@@ -94,6 +96,13 @@ export const persons = pgTable(
     biography: text('biography'),
     notes: text('notes'),
     siblingOrder: integer('sibling_order'),
+    /**
+     * Set only by the member linked to this person (privacy spec D3, R8); applies only while a
+     * member is linked. `privacySteps` is the reach of the 'branch' level.
+     */
+    privacyLevel: privacyLevelEnum('privacy_level').notNull().default('public'),
+    privacySteps: integer('privacy_steps'),
+    hideBirthYear: boolean('hide_birth_year').notNull().default(false),
     /** Every name, lower case without accents, for pg_trgm search (decision 18). */
     searchName: text('search_name').generatedAlwaysAs(
       sql`lower(family_unaccent(given_name || ' ' || coalesce(middle_name, '') || ' ' || coalesce(surname, '') || ' ' || coalesce(maiden_name, '') || ' ' || coalesce(nickname, '')))`,
@@ -107,6 +116,10 @@ export const persons = pgTable(
   },
   (t) => [
     index('persons_tree_idx').on(t.treeId),
+    check(
+      'persons_privacy_steps',
+      sql`(${t.privacyLevel} = 'branch') = (${t.privacySteps} is not null) and coalesce(${t.privacySteps} between 1 and 10, true)`,
+    ),
     index('persons_created_by_idx').on(t.treeId, t.createdBy),
     // A UNIQUE constraint (not just an index) so it is created inside CREATE TABLE, before the
     // composite FKs that target it.

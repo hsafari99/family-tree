@@ -1,5 +1,6 @@
 import type { Ref } from 'react';
 import { useState } from 'react';
+import { Link } from 'react-router';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { FormError } from '../../components/forms';
 import { UserIcon } from '../../components/icons';
@@ -18,6 +19,7 @@ export function PersonAccount({
   linkedName,
   invite,
   canClaim,
+  isMe = false,
   onInvite,
   inviteRef,
   onClaimed,
@@ -31,6 +33,8 @@ export function PersonAccount({
   invite: InviteState;
   /** The signed-in member has no card and this person is no one's. */
   canClaim: boolean;
+  /** This card is the signed-in member's own: link to their privacy settings (spec R8). */
+  isMe?: boolean;
   onInvite: () => void;
   inviteRef?: Ref<HTMLButtonElement>;
   onClaimed: () => void;
@@ -54,6 +58,13 @@ export function PersonAccount({
     return (
       <p className="person-account">
         <UserIcon /> Linked to {linkedName}’s account
+      </p>
+    );
+  }
+  if (isMe) {
+    return (
+      <p className="person-account">
+        <Link to="/account/privacy">Your privacy settings</Link>
       </p>
     );
   }

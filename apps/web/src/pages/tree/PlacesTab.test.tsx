@@ -133,7 +133,7 @@ describe('PlacesTab (brief #7)', () => {
     expect([...kind.querySelectorAll('option')].map((o) => o.textContent)).toEqual([
       'Lived here',
       'Birth place',
-      'Death place',
+      'Place of passing',
     ]);
   });
 
@@ -194,7 +194,7 @@ describe('PlacesTab (brief #7)', () => {
 
   describe('the death place of a living person (brief #8)', () => {
     const LIVING_MSG =
-      'This person is marked as living. To add a death place, tick the box below to mark them as deceased.';
+      'This person is marked as living. To add a place of passing, tick the box below to mark them as deceased.';
     const living = () => {
       const s = setup();
       Object.assign(s.view.person, { isLiving: true, deathDate: null, deathPlace: null });
@@ -219,7 +219,7 @@ describe('PlacesTab (brief #7)', () => {
       expect(screen.getByRole('checkbox', { name: 'Mark Ada as deceased' })).not.toBeChecked();
       submit();
       const summary = await screen.findByRole('alert');
-      const link = within(summary).getByRole('button', { name: `Death place: ${LIVING_MSG}` });
+      const link = within(summary).getByRole('button', { name: `Place of passing: ${LIVING_MSG}` });
       expect(screen.getByLabelText('Place')).toHaveAccessibleDescription(LIVING_MSG);
       expect(s.trees.callsTo('updatePerson')).toEqual([]);
       fireEvent.click(link);

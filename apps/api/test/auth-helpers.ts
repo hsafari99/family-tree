@@ -38,7 +38,7 @@ type Payload = Record<string, unknown>;
 /** Sends a request the way the web app does (same origin, JSON) and stores any cookies. */
 export async function call(
   app: FastifyInstance,
-  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   url: string,
   {
     jar,

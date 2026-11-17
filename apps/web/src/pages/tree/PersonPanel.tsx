@@ -1,4 +1,4 @@
-import type { PersonSummary, PersonView } from '@family-tree/shared';
+import { type PersonSummary, type PersonView, RESTRICTED_NOTE } from '@family-tree/shared';
 import { Fragment, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { FormError } from '../../components/forms';
@@ -161,27 +161,31 @@ export function PersonPanel({
               </>
             )}
           </h2>
+          {p.restricted && <p className="restricted-note">{RESTRICTED_NOTE}.</p>}
           {p.nickname && <p>“{p.nickname}”</p>}
           {p.maidenName && <p>Maiden name: {p.maidenName}</p>}
           {account?.(view)}
         </div>
         <ul className="section-list" aria-label={`Sections for ${name}`}>
-          {SECTIONS.map((s) => (
-            <li key={s.id}>
-              <button
-                type="button"
-                className="section-row"
-                aria-haspopup="dialog"
-                ref={(el) => {
-                  if (el) rows.current.set(s.id, el);
-                  else rows.current.delete(s.id);
-                }}
-                onClick={() => setSection(s.id)}
-              >
-                <RowContent title={s.label} count={sectionCount(s.id, view)} lead={<s.Lead />} />
-              </button>
-            </li>
-          ))}
+          {/* A restricted person: their place in the family, nothing more (privacy spec R2). */}
+          {SECTIONS.filter((s) => !p.restricted || s.id === 'info' || s.id === 'relations').map(
+            (s) => (
+              <li key={s.id}>
+                <button
+                  type="button"
+                  className="section-row"
+                  aria-haspopup="dialog"
+                  ref={(el) => {
+                    if (el) rows.current.set(s.id, el);
+                    else rows.current.delete(s.id);
+                  }}
+                  onClick={() => setSection(s.id)}
+                >
+                  <RowContent title={s.label} count={sectionCount(s.id, view)} lead={<s.Lead />} />
+                </button>
+              </li>
+            ),
+          )}
         </ul>
         {open && (
           <SectionDialog title={`${open.label} — ${name}`} onClose={close}>

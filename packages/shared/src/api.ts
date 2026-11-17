@@ -38,6 +38,7 @@ export const ERROR_CODES = [
   'PERSON_CLAIMED',
   /** "This is me" from a member who already has a card. */
   'ALREADY_LINKED',
+  'NOT_LINKED',
   'INTERNAL',
 ] as const;
 

@@ -1,6 +1,8 @@
 import {
   personConsistencyErrors,
   type PersonView,
+  PRIVACY_STEPS_MAX,
+  RESTRICTED_NOTE,
   SEXES,
   updatePersonSchema,
 } from '@family-tree/shared';
@@ -22,7 +24,14 @@ import {
   type FieldErrors,
 } from '../../components/forms';
 import { EditIcon, TrashIcon } from '../../components/icons';
-import { formatFuzzyDate, lifeStatus, personName, SEX_LABEL } from '../../trees/format';
+import {
+  formatBirthday,
+  formatFuzzyDate,
+  lifeStatus,
+  personName,
+  SEX_LABEL,
+} from '../../trees/format';
+import { type MyPrivacyState, useMyPrivacy } from './useMyPrivacy';
 import { DeletePerson } from './DeletePerson';
 import { MainPhoto } from './MainPhoto';
 import { type TabProps, usePersonSave } from './usePersonSave';
@@ -36,14 +45,95 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-function Details({ person }: { person: PersonView['person'] }) {
+const LEVEL_LABEL = { public: 'Everyone', branch: 'My branch', private: 'Only me' } as const;
+
+const LEVEL_TEXT = (level: keyof typeof LEVEL_LABEL, steps: number | null) =>
+  level === 'branch'
+    ? `My branch (within ${steps ?? 2} ${steps === 1 ? 'step' : 'steps'})`
+    : LEVEL_LABEL[level];
+
+/** Who sees my details and whether the year shows, as one editable choice (privacy spec R8). */
+function PrivacyFields({
+  value,
+  onChange,
+}: {
+  value: MyPrivacyState['settings'];
+  onChange: (v: MyPrivacyState['settings']) => void;
+}) {
+  const uid = useId();
+  const { level, steps } = value;
+  return (
+    <fieldset className="field status-field" role="radiogroup">
+      <legend>Who can see my details</legend>
+      <div className="my-privacy">
+        <div className="segmented">
+          {(['public', 'branch', 'private'] as const).map((l) => (
+            <label key={l} className="segment">
+              <input
+                type="radio"
+                name={`${uid}-level`}
+                checked={level === l}
+                onChange={() =>
+                  onChange({ ...value, level: l, steps: l === 'branch' ? (steps ?? 2) : null })
+                }
+              />
+              {LEVEL_LABEL[l]}
+            </label>
+          ))}
+        </div>
+        {level === 'branch' && (
+          <select
+            aria-label="How close"
+            value={steps ?? 2}
+            onChange={(e) => onChange({ ...value, steps: Number(e.target.value) })}
+          >
+            {Array.from({ length: PRIVACY_STEPS_MAX }, (_, i) => i + 1).map((n) => (
+              <option key={n} value={n}>
+                Within {n} {n === 1 ? 'step' : 'steps'}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+      <p className="hint">Your name always shows. Tree owners and editors always see everything.</p>
+    </fieldset>
+  );
+}
+
+function Details({
+  person,
+  privacy,
+}: {
+  person: PersonView['person'];
+  /** Set on the signed-in member's own card only. */
+  privacy: MyPrivacyState | null;
+}) {
+  // The person's privacy hides everything but the names from this viewer (privacy spec R2).
+  if (person.restricted) {
+    return (
+      <dl>
+        <Row label="Name">{personName(person)}</Row>
+        <Row label="Details">
+          <span className="restricted-note">{RESTRICTED_NOTE}.</span>
+        </Row>
+      </dl>
+    );
+  }
   return (
     <dl>
       <Row label="Name">{personName(person)}</Row>
       <Row label="Sex">{SEX_LABEL[person.sex]}</Row>
-      {person.birthDate && <Row label="Born">{formatFuzzyDate(person.birthDate)}</Row>}
+      {person.birthDate && (
+        <Row label="Born">
+          {formatFuzzyDate(person.birthDate)}
+          {privacy?.settings.hideBirthYear && (
+            <span className="hint"> (the year is hidden from others)</span>
+          )}
+        </Row>
+      )}
+      {person.birthday && <Row label="Born">{formatBirthday(person.birthday)}</Row>}
       <Row label="Status">{lifeStatus(person.isLiving, person.deathDate)}</Row>
-      {person.causeOfDeath && <Row label="Cause of death">{person.causeOfDeath}</Row>}
+      {person.causeOfDeath && <Row label="Cause of passing">{person.causeOfDeath}</Row>}
       {person.occupation && <Row label="Occupation">{person.occupation}</Row>}
       {person.education && <Row label="Education">{person.education}</Row>}
       {person.biography && (
@@ -57,6 +147,11 @@ function Details({ person }: { person: PersonView['person'] }) {
         </Row>
       )}
       {person.createdByName && <Row label="Added by">{person.createdByName}</Row>}
+      {privacy && (
+        <Row label="Who can see my details">
+          {LEVEL_TEXT(privacy.settings.level, privacy.settings.steps)}
+        </Row>
+      )}
     </dl>
   );
 }
@@ -68,6 +163,7 @@ export function InfoTab(props: TabProps) {
   const [deleting, setDeleting] = useState(false);
   const deleteButton = useRef<HTMLButtonElement>(null);
   const { edit, delete: canDelete } = view.capabilities;
+  const privacy = useMyPrivacy(treeId, view.person.id);
 
   return (
     <div className="info-tab">
@@ -76,7 +172,7 @@ export function InfoTab(props: TabProps) {
           instead of above them; in the narrow side panel it stays on top. */}
       <div className="info-top">
         <MainPhoto {...props} />
-        <Details person={view.person} />
+        <Details person={view.person} privacy={privacy} />
       </div>
       {/* One row: Edit on the left, Delete… on the right; each only when allowed. */}
       {!editing && (edit || canDelete) && (
@@ -109,7 +205,9 @@ export function InfoTab(props: TabProps) {
           )}
         </p>
       )}
-      {editing && <InfoForm view={view} s={s} onClose={() => setEditing(false)} />}
+      {editing && (
+        <InfoForm view={view} s={s} privacy={privacy} onClose={() => setEditing(false)} />
+      )}
       {canDelete && deleting && !editing && (
         <DeletePerson
           treeId={treeId}
@@ -165,9 +263,9 @@ const INFO_LABELS: Record<string, string> = {
   nickname: 'Nickname',
   sex: 'Sex',
   birthDate: 'Born',
-  deathDate: 'Date of death',
+  deathDate: 'Date of passing',
   isLiving: 'Status',
-  causeOfDeath: 'Cause of death',
+  causeOfDeath: 'Cause of passing',
   occupation: 'Occupation',
   education: 'Education',
   biography: 'Biography',
@@ -182,12 +280,15 @@ const INFO_FIELDS: Record<string, { field: string; message: string }> = {
   ...Object.fromEntries(
     Object.keys(INFO_LABELS).map((k) => [k, { field: k, message: 'Check this and try again' }]),
   ),
-  isLiving: { field: 'isLiving', message: 'Someone with death details can’t be marked as living' },
+  isLiving: {
+    field: 'isLiving',
+    message: 'Someone with details of passing can’t be marked as living',
+  },
   // The server names only the field, so the text covers each rule a date can break.
   birthDate: { field: 'birthDate', message: 'Check the birth date. It can’t be in the future.' },
   deathDate: {
     field: 'deathDate',
-    message: 'Check the death date. It can’t be before birth or in the future.',
+    message: 'Check the date of passing. It can’t be before birth or in the future.',
   },
 };
 
@@ -229,15 +330,21 @@ function changedKeys(form: Form, p: Person): FormKey[] {
 function InfoForm({
   view,
   s,
+  privacy,
   onClose,
 }: {
   view: PersonView;
   s: ReturnType<typeof usePersonSave>;
+  /** Set on the signed-in member's own card: their privacy is edited here too. */
+  privacy: MyPrivacyState | null;
   onClose: () => void;
 }) {
   const uid = useId();
   const p = view.person;
   const [form, setForm] = useState<Form>(() => toForm(p));
+  const [pv, setPv] = useState(() => privacy?.settings ?? null);
+  const privacyChanged =
+    privacy !== null && pv !== null && JSON.stringify(pv) !== JSON.stringify(privacy.settings);
   const base = useRef(p);
   const [errors, setErrors] = useState<FieldErrors>({});
 
@@ -267,6 +374,9 @@ function InfoForm({
   async function submit(e: FormEvent) {
     e.preventDefault();
     const changed = changedKeys(form, p);
+    if (changed.length === 0 && !privacyChanged) return onClose();
+    // Privacy first: it never conflicts with the person's version.
+    if (privacyChanged && !(await privacy.save(pv))) return;
     if (changed.length === 0) return onClose();
     const out = effective(form);
     const incomplete = draftErrors({ birthDate: out.birth, deathDate: out.death });
@@ -329,6 +439,8 @@ function InfoForm({
           </button>
         </div>
       )}
+      {pv && <PrivacyFields value={pv} onChange={setPv} />}
+      {privacy?.error && <FormError>{privacy.error}</FormError>}
       {field('givenName', 'First name')}
       {field('middleName', 'Middle name')}
       {field('surname', 'Last name')}
@@ -386,16 +498,26 @@ function InfoForm({
         onChange={set('birth')}
         error={errors.birthDate}
       />
+      {pv && (
+        <label className="inline-check">
+          <input
+            type="checkbox"
+            checked={pv.hideBirthYear}
+            onChange={(e) => setPv({ ...pv, hideBirthYear: e.target.checked })}
+          />
+          Hide my birth year from others (they see only the day and month)
+        </label>
+      )}
       {!isLiving && (
         <>
           <FuzzyDateField
-            label="Date of death (optional)"
+            label="Date of passing (optional)"
             name="deathDate"
             value={death}
             onChange={set('death')}
             error={errors.deathDate}
           />
-          {field('causeOfDeath', 'Cause of death (optional)')}
+          {field('causeOfDeath', 'Cause of passing (optional)')}
         </>
       )}
       {field('occupation', 'Occupation')}

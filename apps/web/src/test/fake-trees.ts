@@ -1,4 +1,6 @@
 import {
+  type MyPrivacy,
+  type PrivacySettingsInput,
   type ActivityEntry,
   type AddRelativeInput,
   type ChildKind,
@@ -53,6 +55,8 @@ type Method = keyof TreesApi;
 
 export interface FakeTree {
   detail: TreeDetail;
+  /** The signed-in member's own privacy settings (getMyPrivacy). */
+  privacy: MyPrivacy['settings'];
   persons: PersonSummary[];
   members: Member[];
   stewards: StewardGrant[];
@@ -236,6 +240,7 @@ export class FakeTreesApi implements TreesApi {
     };
     this.trees.set(id, {
       detail,
+      privacy: { level: 'public', steps: null, hideBirthYear: false },
       persons,
       members: partial.members ?? [],
       stewards: partial.stewards ?? [],
@@ -490,6 +495,26 @@ export class FakeTreesApi implements TreesApi {
     t.detail.me = { ...t.detail.me, personId };
     const mine = t.members.find((m) => m.userId === this.meUserId);
     if (mine) mine.personId = personId;
+    return ok(undefined);
+  }
+
+  async getMyPrivacy(treeId: string) {
+    const forced = await this.enter('getMyPrivacy', { treeId });
+    if (forced) return { ok: false as const, error: forced };
+    const t = this.find(treeId);
+    if (!t) return notFound();
+    const body: MyPrivacy = { personId: t.detail.me.personId, settings: t.privacy };
+    return ok(body);
+  }
+
+  async setMyPrivacy(treeId: string, settings: PrivacySettingsInput) {
+    const forced = await this.enter('setMyPrivacy', { treeId, settings });
+    if (forced) return { ok: false as const, error: forced };
+    const t = this.find(treeId);
+    if (!t) return notFound();
+    if (!t.detail.me.personId)
+      return fail('NOT_LINKED', 'Link yourself to a person in this tree first');
+    t.privacy = { ...settings, steps: settings.level === 'branch' ? settings.steps : null };
     return ok(undefined);
   }
 

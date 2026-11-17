@@ -121,6 +121,9 @@ export const personSummarySchema = z.object({
   birthYear: z.number().int().nullable(),
   deathYear: z.number().int().nullable(),
   isLiving: z.boolean(),
+  /** The person's privacy hides their details from this viewer (privacy spec R2): only the
+   *  names are real; years are null and isLiving means nothing. */
+  restricted: z.boolean().optional(),
 });
 export type PersonSummary = z.infer<typeof personSummarySchema>;
 export const personListSchema = z.object({ persons: z.array(personSummarySchema) });

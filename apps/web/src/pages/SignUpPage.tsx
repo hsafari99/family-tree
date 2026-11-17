@@ -4,7 +4,7 @@ import { Link, Navigate, useNavigate, useSearchParams } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
 import { safeNext } from '../auth/RequireAuth';
 import { ErrorSummary, Field, type FieldErrors, FormError, validate } from '../components/forms';
-import { weakPasswordError } from '../components/NewPasswordFields';
+import { confirmError, weakPasswordError } from '../components/NewPasswordFields';
 import { GoogleSignIn } from '../components/GoogleSignIn';
 import { Page } from '../components/Page';
 
@@ -12,6 +12,7 @@ const SIGN_UP_LABELS: Record<string, string> = {
   name: 'Name',
   email: 'Email',
   password: 'Password',
+  confirmPassword: 'Confirm password',
 };
 
 export function SignUpPage() {
@@ -20,6 +21,7 @@ export function SignUpPage() {
   const [params] = useSearchParams();
   const next = safeNext(params.get('next'));
   const [values, setValues] = useState({ name: '', email: '', password: '' });
+  const [confirm, setConfirm] = useState('');
   const [errors, setErrors] = useState<FieldErrors>({});
   const [serverError, setServerError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -30,8 +32,10 @@ export function SignUpPage() {
     e.preventDefault();
     setServerError(null);
     const checked = validate(signUpSchema, values);
-    setErrors(checked.ok ? {} : checked.errors);
-    if (!checked.ok) return;
+    // The confirmation is checked here only and never sent.
+    const confirmPassword = confirmError(values.password, confirm, 'Enter the password again');
+    setErrors({ ...(checked.ok ? {} : checked.errors), confirmPassword });
+    if (!checked.ok || confirmPassword) return;
     setPending(true);
     const res = await api.signUp(checked.data);
     if (!res.ok) {
@@ -78,6 +82,15 @@ export function SignUpPage() {
           value={values.password}
           onChange={set('password')}
           error={errors.password}
+        />
+        <Field
+          label="Confirm password"
+          name="confirmPassword"
+          type="password"
+          autoComplete="new-password"
+          value={confirm}
+          onChange={setConfirm}
+          error={errors.confirmPassword}
         />
         <FormError>{serverError}</FormError>
         <button type="submit" disabled={pending}>

@@ -21,6 +21,7 @@ import { audit } from '../trees/audit.js';
 import { lockTreeGraph } from '../trees/graph.js';
 import { personFieldsOf } from '../trees/people.js';
 import type { ObjectStore } from '../storage/objects.js';
+import { loadVisibility, maskSummary } from '../trees/privacy.js';
 import { lockUserTrees, ownedLiveTreeCount } from '../trees/quota.js';
 
 export interface TreeRouteOptions {
@@ -283,6 +284,7 @@ export const treesRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
       .from(persons)
       .where(and(eq(persons.treeId, access.treeId), isNull(persons.deletedAt)))
       .orderBy(asc(persons.surname), asc(persons.givenName));
-    return { persons: rows };
+    const vis = await loadVisibility(db, access);
+    return { persons: rows.map((p) => maskSummary(p, vis)) };
   });
 };

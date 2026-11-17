@@ -1,6 +1,8 @@
 import {
   claimPersonSchema,
   type Member,
+  type MyPrivacy,
+  privacySettingsSchema,
   ROLE_RANK,
   transferSchema,
   updateMemberSchema,
@@ -178,6 +180,52 @@ export const membersRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
         after: { personId, self: true },
       });
     });
+    return reply.code(204).send();
+  });
+
+  // Privacy (spec D3, R8): only the member linked to a person sets it, never an owner or editor
+  // on their behalf. Not audited: a person.update entry would show in their History.
+  app.get('/api/v1/trees/:treeId/me/privacy', async (req) => {
+    const access = await loadAccess(db, idParam(req.params, 'treeId'), req.user!.id);
+    const body: MyPrivacy = {
+      personId: access.personId,
+      settings: { level: 'public', steps: null, hideBirthYear: false },
+    };
+    if (access.personId === null) return body;
+    const [row] = await db
+      .select({
+        level: persons.privacyLevel,
+        steps: persons.privacySteps,
+        hideBirthYear: persons.hideBirthYear,
+      })
+      .from(persons)
+      .where(and(eq(persons.treeId, access.treeId), eq(persons.id, access.personId)));
+    if (row) body.settings = row;
+    return body;
+  });
+
+  app.put('/api/v1/trees/:treeId/me/privacy', async (req, reply) => {
+    const access = await loadAccess(db, idParam(req.params, 'treeId'), req.user!.id);
+    const input = parseBody(privacySettingsSchema, req.body);
+    if (access.personId === null) {
+      throw new AppError('NOT_LINKED', 409, 'Link yourself to a person in this tree first');
+    }
+    const updated = await db
+      .update(persons)
+      .set({
+        privacyLevel: input.level,
+        privacySteps: input.steps,
+        hideBirthYear: input.hideBirthYear,
+      })
+      .where(
+        and(
+          eq(persons.treeId, access.treeId),
+          eq(persons.id, access.personId),
+          isNull(persons.deletedAt),
+        ),
+      )
+      .returning({ id: persons.id });
+    if (updated.length === 0) throw notFound();
     return reply.code(204).send();
   });
 

@@ -677,6 +677,10 @@ img.card-avatar {
 .person-card.is-deceased .card-avatar {
   filter: saturate(0.55);
 }
+/* Deceased: a quieter, inset-coloured box instead of a symbol (feedback round). */
+.person-card.is-deceased {
+  background: var(--surface-2);
+}
 :is(.card-avatar, .panel-photo, .result-photo, .details-photo-img).tone-1 {
   background: var(--av1);
   color: var(--av-ink);
@@ -3442,4 +3446,49 @@ a.app-header-support .icon {
 .home-support {
   margin-top: 2rem;
   text-align: center;
+}
+
+/* Account > Privacy: a radio or checkbox with its label beside it and the hint below. */
+.choice {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.5rem;
+  align-items: baseline;
+  margin: 0.5rem 0;
+}
+.choice .hint {
+  grid-column: 2;
+  margin: 0;
+}
+.privacy-tree {
+  margin-top: 1.5rem;
+}
+.privacy-tree form {
+  display: grid;
+  gap: 0.75rem;
+}
+.privacy-tree fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.restricted-note {
+  color: var(--muted, inherit);
+  font-style: italic;
+}
+/* Your own Details: the privacy button group, its step list and "Saved" on one wrapping line. */
+.my-privacy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+.inline-check {
+  display: inline-flex;
+  justify-self: start;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: var(--text-s);
+  color: var(--ink-2);
+  cursor: pointer;
 }

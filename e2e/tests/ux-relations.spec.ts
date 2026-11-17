@@ -1,4 +1,4 @@
-import { expect, type Page, test } from '@playwright/test';
+import { expect, type Locator, type Page, test } from '@playwright/test';
 import { PROD_LOCAL } from '../support/env';
 import { addRelative, card, openSection, signUpViaUi, startTreeViaUi } from '../support/ui';
 
@@ -23,6 +23,27 @@ async function openPanel(page: Page, name: string, section: 'Relations' | 'Place
   await card(page, name).click();
   await expect(page.getByRole('heading', { name: new RegExp(`^${name}`) })).toBeVisible();
   return openSection(page, section);
+}
+
+/**
+ * The element's box once it stops moving: the canvas lays out and pans after each change, and
+ * a slow runner can read a box mid-animation, so a drag would land beside its target.
+ */
+async function settledBox(locator: Locator) {
+  let last = '';
+  await expect
+    .poll(
+      async () => {
+        const box = await locator.boundingBox();
+        const now = JSON.stringify(box);
+        const same = box !== null && now === last;
+        last = now;
+        return same;
+      },
+      { intervals: [200], timeout: 10_000 },
+    )
+    .toBe(true);
+  return (await locator.boundingBox())!;
 }
 
 /** Root + partner Pat, and Kid with "Unknown other parent" (a single-parent union of Rae). */
@@ -88,10 +109,10 @@ test('dragging a child’s line onto the couple’s dot re-links them', async ({
   await coupleAndKid(page);
   const edge = page.locator('.react-flow__edge[aria-label="Kid Root, child of Rae Root"]');
   const handle = edge.locator('.react-flow__edgeupdater-source');
-  const from = (await handle.boundingBox())!;
   const couple = dot(page, /^Relationship of (Rae Root and Pat Root|Pat Root and Rae Root)/);
   const node = page.locator('.react-flow__node-union').filter({ has: couple });
-  const target = (await node.locator('.react-flow__handle-bottom').boundingBox())!;
+  const target = await settledBox(node.locator('.react-flow__handle-bottom'));
+  const from = await settledBox(handle);
   await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
   await page.mouse.down();
   await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 15 });
