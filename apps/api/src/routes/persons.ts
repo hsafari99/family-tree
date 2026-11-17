@@ -20,6 +20,7 @@ import { loadLiveGraph, lockTreeGraph } from '../trees/graph.js';
 import { personColumns, personFieldsOf, requireLivePerson } from '../trees/people.js';
 import { loadPersonView } from '../trees/person-view.js';
 import { attachRelative, relativeEnds, targetUnion } from '../trees/relatives.js';
+import { loadVisibility } from '../trees/privacy.js';
 import type { TreeRouteOptions } from './trees.js';
 
 export const personsRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
@@ -200,6 +201,10 @@ export const personsRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
       )
       .orderBy(desc(auditLog.createdAt), desc(auditLog.id))
       .limit(HISTORY_LIMIT);
+    const vis = await loadVisibility(db, access);
+    // R2: a hidden person's history is a detail; R3: so is a hidden birth year.
+    if (!vis.full(person.id)) return { entries: [] };
+    const shown = (field: string) => field !== 'birthDate' || vis.birthYear(person.id);
     const entries: HistoryEntry[] = rows.map((r) => ({
       id: r.id,
       action: r.action,
@@ -207,11 +212,13 @@ export const personsRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
       by: r.by,
       changes:
         r.action === 'person.update' && r.entityId === person.id
-          ? Object.keys((r.after ?? {}) as object).map((field) => ({
-              field,
-              before: (r.before as Record<string, unknown> | null)?.[field] ?? null,
-              after: (r.after as Record<string, unknown>)[field],
-            }))
+          ? Object.keys((r.after ?? {}) as object)
+              .filter(shown)
+              .map((field) => ({
+                field,
+                before: (r.before as Record<string, unknown> | null)?.[field] ?? null,
+                after: (r.after as Record<string, unknown>)[field],
+              }))
           : [],
     }));
     return { entries };

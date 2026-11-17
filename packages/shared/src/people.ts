@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { type FuzzyDate, fuzzyDateSchema, pastFuzzyDateSchema, sortYear } from './fuzzy-date.js';
 import { photoSchema, photoUsageSchema } from './photos.js';
+import { birthdaySchema } from './privacy.js';
 import { NAME_MAX, personSummarySchema, SEXES } from './trees.js';
 
 export const PLACE_MAX = 200;
@@ -234,6 +235,10 @@ export const personDetailSchema = z.object({
   version: z.number().int(),
   createdByName: text,
   updatedAt: z.string(),
+  /** Hidden from this viewer by the person's privacy (spec R2): only the names are real. */
+  restricted: z.boolean().optional(),
+  /** Set when the birth year is hidden from this viewer (spec D8); birthDate is then null. */
+  birthday: birthdaySchema.nullable().optional(),
 });
 export type PersonDetail = z.infer<typeof personDetailSchema>;
 

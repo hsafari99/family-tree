@@ -678,6 +678,7 @@ export function TreeWorkspace({
                           canAddRelative: view.capabilities.addRelative,
                         })}
                         canClaim={detail.me.personId === null && !linkedNames.has(p.id)}
+                        isMe={detail.me.personId === p.id}
                         onInvite={() => setInvite(true)}
                         inviteRef={inviteRow}
                         onClaimed={() => {

@@ -5,6 +5,7 @@ import { useAuth } from '../auth/AuthContext';
 import { useGoogleAvailability } from '../components/GoogleSignIn';
 import { Page } from '../components/Page';
 import { AccountNav } from './account/AccountNav';
+import { PrivacySection } from './account/PrivacySection';
 import {
   DeleteSection,
   GoogleAccountSection,
@@ -13,7 +14,7 @@ import {
   TwoStepSection,
 } from './account/sections';
 
-const SECTIONS = ['profile', 'password', 'two-step', 'google', 'delete'] as const;
+const SECTIONS = ['profile', 'password', 'two-step', 'privacy', 'google', 'delete'] as const;
 export type AccountSection = (typeof SECTIONS)[number];
 
 const isSection = (id: string): id is AccountSection =>
@@ -86,6 +87,8 @@ function SectionBody({
       return <PasswordSection user={user} refresh={refresh} />;
     case 'two-step':
       return <TwoStepSection user={user} refresh={refresh} />;
+    case 'privacy':
+      return <PrivacySection />;
     case 'google':
       return <GoogleAccountSection user={user} refresh={refresh} enabled={googleEnabled} />;
     case 'delete':

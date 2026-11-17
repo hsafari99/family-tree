@@ -34,6 +34,12 @@ export const MONTHS = [
   'December',
 ];
 
+/** A birthday whose year is hidden (privacy spec D8): "5 March", or "March". */
+export function formatBirthday(b: { month: number; day: number | null }): string {
+  const month = MONTHS[b.month - 1] ?? '';
+  return b.day === null ? month : `${b.day} ${month}`;
+}
+
 function partial(d: string): string {
   const [y, m, day] = d.split('-');
   const year = String(Number(y));

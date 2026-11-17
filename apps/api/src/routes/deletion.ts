@@ -19,6 +19,7 @@ import { audit } from '../trees/audit.js';
 import { applyPlan, createBatch } from '../trees/deletion.js';
 import { loadLiveGraph, lockTreeGraph } from '../trees/graph.js';
 import { fullName, requireLivePerson, summaryColumns } from '../trees/people.js';
+import { loadVisibility, maskSummary } from '../trees/privacy.js';
 import type { TreeRouteOptions } from './trees.js';
 
 async function personPlan(db: Queryable, access: Access, personId: string, mode: DeleteMode) {
@@ -74,9 +75,10 @@ export const deletionRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, 
     people.sort((a, b) => order.get(a.id)! - order.get(b.id)!);
     const blockedByRoot =
       access.rootPersonId !== null && plan.personIds.includes(access.rootPersonId);
+    const vis = await loadVisibility(db, access);
     const body: DeletePreview = {
       mode,
-      people,
+      people: people.map((p) => maskSummary(p, vis)),
       unions: plan.unionIds.length + new Set(plan.slots.map((s) => s.unionId)).size,
       links: plan.parentChildIds.length,
       outsideScope:

@@ -53,6 +53,9 @@ import {
   treeGraphSchema,
   type TreeList,
   treeListSchema,
+  type MyPrivacy,
+  myPrivacySchema,
+  type PrivacySettingsInput,
   type UpdatePersonInput,
   type UpdateTreeInput,
   type UpdateUnionInput,
@@ -78,6 +81,9 @@ export interface TreesApi {
   setMemberPerson(treeId: string, userId: string, personId: string | null): Promise<Result<void>>;
   /** "This is me": links the signed-in member, who has no card yet, to an unclaimed person. */
   claimPerson(treeId: string, personId: string): Promise<Result<void>>;
+  /** The signed-in member's own privacy in a tree (privacy spec R8). */
+  getMyPrivacy(treeId: string): Promise<Result<MyPrivacy>>;
+  setMyPrivacy(treeId: string, settings: PrivacySettingsInput): Promise<Result<void>>;
   transferOwnership(treeId: string, userId: string): Promise<Result<void>>;
   createResetLink(treeId: string, userId: string): Promise<Result<ResetLinkCreated>>;
   listStewards(treeId: string): Promise<Result<StewardGrant[]>>;
@@ -162,6 +168,8 @@ export const TREES_API_METHODS = Object.keys({
   removeMember: true,
   setMemberPerson: true,
   claimPerson: true,
+  getMyPrivacy: true,
+  setMyPrivacy: true,
   transferOwnership: true,
   createResetLink: true,
   listStewards: true,
@@ -210,7 +218,7 @@ interface Parser<T> {
   safeParse(v: unknown): { success: true; data: T } | { success: false };
 }
 
-type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
+type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 /** `?a=1&b=2`, leaving out undefined and blank values; '' when nothing is left. */
 function qs(q: Record<string, string | number | undefined>): string {
@@ -324,6 +332,8 @@ export function createTreesApi({ baseUrl }: { baseUrl: string }): TreesApi {
       request('POST', `${t(id)}/me/person`, { personId }, undefined, 'session', {
         NOT_FOUND: MESSAGES.personNotFound,
       }),
+    getMyPrivacy: (id) => request('GET', `${t(id)}/me/privacy`, undefined, myPrivacySchema),
+    setMyPrivacy: (id, settings) => request('PUT', `${t(id)}/me/privacy`, settings),
     transferOwnership: (id, userId) => request('POST', `${t(id)}/transfer`, { userId }),
     createResetLink: (id, userId) =>
       request('POST', `${t(id)}/members/${enc(userId)}/reset-link`, {}, resetLinkCreatedSchema),

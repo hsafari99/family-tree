@@ -39,7 +39,7 @@ describe('AccountPage', () => {
       within(nav)
         .getAllByRole('link')
         .map((a) => a.textContent),
-    ).toEqual(['Profile', 'Change password', 'Two-step verification', 'Delete account']);
+    ).toEqual(['Profile', 'Change password', 'Two-step verification', 'Privacy', 'Delete account']);
   });
 
   it('gives each nav item a decorative icon before its label', async () => {

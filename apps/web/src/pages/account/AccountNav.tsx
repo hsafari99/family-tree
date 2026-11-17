@@ -2,7 +2,14 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import type { SessionUser } from '../../auth/api';
 import type { AccountSection } from '../AccountPage';
-import { KeyIcon, LinkIcon, ShieldIcon, TrashIcon, UserIcon } from '../../components/icons';
+import {
+  EyeIcon,
+  KeyIcon,
+  LinkIcon,
+  ShieldIcon,
+  TrashIcon,
+  UserIcon,
+} from '../../components/icons';
 import { passwordLabel } from './sections';
 
 type NavItem = { id: AccountSection; label: string; icon: ReactNode; danger?: boolean };
@@ -21,6 +28,7 @@ export function AccountNav({
     { id: 'profile', label: 'Profile', icon: <UserIcon /> },
     { id: 'password', label: passwordLabel(user), icon: <KeyIcon /> },
     { id: 'two-step', label: 'Two-step verification', icon: <ShieldIcon /> },
+    { id: 'privacy', label: 'Privacy', icon: <EyeIcon crossed /> },
     ...(googleShown
       ? [{ id: 'google' as const, label: 'Google sign-in', icon: <LinkIcon /> }]
       : []),

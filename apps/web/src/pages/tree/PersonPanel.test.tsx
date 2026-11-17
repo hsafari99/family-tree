@@ -39,6 +39,65 @@ function setup(
 const at = (s: { id: string }, query = '') => `/trees/${s.id}/people/${ada.id}${query}`;
 
 describe('PersonPanel', () => {
+  it('shows only the name and a note for a person whose privacy hides them', async () => {
+    const s = setup({}, 'viewer');
+    s.view.person.restricted = true;
+    renderAt(at(s), s);
+    expect(await screen.findByRole('heading', { name: /^Ada King/ })).toBeInTheDocument();
+    expect(screen.getByText('Data access is restricted.')).toBeInTheDocument();
+    const sections = screen.getByRole('list', { name: 'Sections for Ada King' });
+    expect(
+      within(sections)
+        .getAllByRole('button')
+        .map((b) => b.textContent),
+    ).toEqual(['Details', 'Relations']);
+  });
+
+  it('edits my privacy with my details: a button group and a birth-year checkbox', async () => {
+    const s = setup();
+    s.view.person.birthDate = { qualifier: 'exact', date1: '1815-12-10' };
+    s.trees.trees.get(s.id)!.detail.me.personId = ada.id;
+    renderAt(at(s, '?tab=info'), s);
+    // Read mode: a plain line, no controls.
+    expect(await screen.findByText('Everyone')).toBeInTheDocument();
+    expect(screen.queryByRole('radiogroup', { name: 'Who can see my details' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit details' }));
+    const group = screen.getByRole('radiogroup', { name: 'Who can see my details' });
+    expect(within(group).getByLabelText('Everyone')).toBeChecked();
+    fireEvent.click(within(group).getByLabelText('My branch'));
+    fireEvent.change(within(group).getByLabelText('How close'), { target: { value: '3' } });
+    fireEvent.click(screen.getByLabelText(/Hide my birth year from others/));
+    expect(s.trees.callsTo('setMyPrivacy')).toEqual([]);
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByText('My branch (within 3 steps)')).toBeInTheDocument();
+    expect(screen.getByText('(the year is hidden from others)')).toBeInTheDocument();
+    expect(s.trees.callsTo('setMyPrivacy')).toEqual([
+      { treeId: s.id, settings: { level: 'branch', steps: 3, hideBirthYear: true } },
+    ]);
+    expect(s.trees.callsTo('updatePerson')).toEqual([]);
+  });
+
+  it('has no privacy controls on someone else’s Details', async () => {
+    const s = setup();
+    s.view.person.birthDate = { qualifier: 'exact', date1: '1815-12-10' };
+    renderAt(at(s, '?tab=info'), s);
+    await screen.findByRole('button', { name: 'Edit details' });
+    await waitFor(() => expect(s.trees.callsTo('getMyPrivacy')).toHaveLength(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit details' }));
+    expect(screen.queryByRole('radiogroup', { name: 'Who can see my details' })).toBeNull();
+    expect(screen.queryByLabelText(/Hide my birth year/)).toBeNull();
+  });
+
+  it('shows a birthday without its year when the year is hidden', async () => {
+    const s = setup({}, 'viewer');
+    s.view.person.birthDate = null;
+    s.view.person.birthday = { month: 3, day: 5 };
+    renderAt(at(s, '?tab=info'), s);
+    expect(await screen.findByText('5 March')).toBeInTheDocument();
+  });
+
   it('shows the name, fuzzy dates and the biography as plain text with line breaks', async () => {
     const s = setup();
     s.view.person.birthDate = { qualifier: 'about', date1: '1815' };
@@ -82,7 +141,9 @@ describe('PersonPanel', () => {
     fireEvent.change(died.getByLabelText('Precision'), { target: { value: 'year' } });
     fireEvent.change(died.getByLabelText('Year'), { target: { value: '1800' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    expect(await screen.findByText('The date of passing can’t be before birth')).toBeInTheDocument();
+    expect(
+      await screen.findByText('The date of passing can’t be before birth'),
+    ).toBeInTheDocument();
     expect(s.trees.callsTo('updatePerson')).toEqual([]);
     // Living, while a death place is still recorded (on the Places tab).
     fireEvent.click(screen.getByRole('radio', { name: 'Living' }));
@@ -145,7 +206,9 @@ describe('PersonPanel', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Save' }));
       const summary = await screen.findByRole('alert');
       expect(
-        within(summary).getByRole('button', { name: 'Date of passing: That date is in the future' }),
+        within(summary).getByRole('button', {
+          name: 'Date of passing: That date is in the future',
+        }),
       ).toBeInTheDocument();
       expect(s.trees.callsTo('updatePerson')).toEqual([]);
     });
@@ -160,7 +223,9 @@ describe('PersonPanel', () => {
       });
       fireEvent.click(screen.getByRole('button', { name: 'Save' }));
       expect(
-        await screen.findByText('Check the date of passing. It can’t be before birth or in the future.'),
+        await screen.findByText(
+          'Check the date of passing. It can’t be before birth or in the future.',
+        ),
       ).toBeInTheDocument();
     });
 
@@ -206,7 +271,9 @@ describe('PersonPanel', () => {
     expect(await screen.findByText('Choose a month')).toBeInTheDocument();
     expect(s.trees.callsTo('updatePerson')).toEqual([]);
     const summary = screen.getByRole('alert');
-    fireEvent.click(within(summary).getByRole('button', { name: 'Date of passing: Choose a month' }));
+    fireEvent.click(
+      within(summary).getByRole('button', { name: 'Date of passing: Choose a month' }),
+    );
     expect(died.getByLabelText('Year')).toHaveFocus();
   });
 
