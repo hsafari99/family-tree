@@ -91,15 +91,9 @@ export function PersonCardView({
     .filter(Boolean)
     .join(' ');
   const tone = avatarTone(person.id);
+  // No religious symbol (feedback round): the years say it, and "Deceased" when none are known.
   const yearsLine = (years || deceased) && (
-    <span className="card-years">
-      {deceased && (
-        <span className="card-dagger" aria-hidden="true">
-          †{' '}
-        </span>
-      )}
-      {years}
-    </span>
+    <span className="card-years">{years || 'Deceased'}</span>
   );
   return (
     <div

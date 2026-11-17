@@ -136,10 +136,10 @@ test('dates with a calendar and a precision, and a death place on a living perso
   await placeForm.getByLabel('Place').fill('Leeds');
   await placeForm.getByRole('button', { name: 'Add place' }).click();
   const message =
-    'This person is marked as living. To add a death place, tick the box below to mark them as deceased.';
+    'This person is marked as living. To add a place of passing, tick the box below to mark them as deceased.';
   await expect(placeForm.getByLabel('Place')).toHaveAccessibleDescription(message);
-  await expect(page.getByRole('alert')).toContainText(`Death place: ${message}`);
-  await page.getByRole('button', { name: `Death place: ${message}` }).click();
+  await expect(page.getByRole('alert')).toContainText(`Place of passing: ${message}`);
+  await page.getByRole('button', { name: `Place of passing: ${message}` }).click();
   await expect(page.getByRole('checkbox', { name: 'Mark Dora as deceased' })).toBeFocused();
   await page.getByRole('checkbox', { name: 'Mark Dora as deceased' }).check();
   await placeForm.getByRole('button', { name: 'Add place' }).click();
@@ -150,7 +150,7 @@ test('dates with a calendar and a precision, and a death place on a living perso
 
   // #4: the date of death at month precision.
   await page.getByRole('button', { name: 'Edit details' }).click();
-  const died = page.getByRole('group', { name: 'Date of death (optional)' });
+  const died = page.getByRole('group', { name: 'Date of passing (optional)' });
   await died.getByLabel('Precision').selectOption('month');
   await died.getByLabel('Year').fill('2001');
   await died.getByLabel('Month').selectOption({ label: 'March' });

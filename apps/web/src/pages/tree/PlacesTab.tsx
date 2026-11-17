@@ -30,13 +30,13 @@ import { SelectField } from './RelationSelects';
 import { type TabProps, usePersonSave } from './usePersonSave';
 
 const LIVING_DEATH_PLACE =
-  'This person is marked as living. To add a death place, tick the box below to mark them as deceased.';
+  'This person is marked as living. To add a place of passing, tick the box below to mark them as deceased.';
 /** The "mark as deceased" error is about the death place, but its fix is the box: it is shown
  *  at the place field and its summary link focuses the box. */
 const PLACE_LABELS: Record<string, string> = {
   birthPlace: 'Birth place',
-  deathPlace: 'Death place',
-  markDeceased: 'Death place',
+  deathPlace: 'Place of passing',
+  markDeceased: 'Place of passing',
   place: 'Place',
   fromDate: 'From',
   toDate: 'To',
@@ -46,7 +46,7 @@ const PLACE_LABELS: Record<string, string> = {
 const placeFields = (box: boolean): Record<string, { field: string; message: string }> => ({
   isLiving: { field: box ? 'markDeceased' : 'deathPlace', message: LIVING_DEATH_PLACE },
   birthPlace: { field: 'birthPlace', message: 'Check the birth place' },
-  deathPlace: { field: 'deathPlace', message: 'Check the death place' },
+  deathPlace: { field: 'deathPlace', message: 'Check the place of passing' },
 });
 
 type Kind = 'birth' | 'lived' | 'death';
@@ -263,7 +263,7 @@ function useAlive() {
 const KIND_OPTION: Record<Kind, string> = {
   lived: 'Lived here',
   birth: 'Birth place',
-  death: 'Death place',
+  death: 'Place of passing',
 };
 
 /** One form for adding or editing a place. Its first field takes focus when it opens. */

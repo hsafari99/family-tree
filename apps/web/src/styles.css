@@ -677,6 +677,10 @@ img.card-avatar {
 .person-card.is-deceased .card-avatar {
   filter: saturate(0.55);
 }
+/* Deceased: a quieter, inset-coloured box instead of a symbol (feedback round). */
+.person-card.is-deceased {
+  background: var(--surface-2);
+}
 :is(.card-avatar, .panel-photo, .result-photo, .details-photo-img).tone-1 {
   background: var(--av1);
   color: var(--av-ink);

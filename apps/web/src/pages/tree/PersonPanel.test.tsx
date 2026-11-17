@@ -78,17 +78,17 @@ describe('PersonPanel', () => {
     s.view.person.deathPlace = 'Leeds';
     renderAt(at(s, '?tab=info'), s);
     fireEvent.click(await screen.findByRole('button', { name: 'Edit details' }));
-    const died = within(screen.getByRole('group', { name: 'Date of death (optional)' }));
+    const died = within(screen.getByRole('group', { name: 'Date of passing (optional)' }));
     fireEvent.change(died.getByLabelText('Precision'), { target: { value: 'year' } });
     fireEvent.change(died.getByLabelText('Year'), { target: { value: '1800' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    expect(await screen.findByText('Death can’t be before birth')).toBeInTheDocument();
+    expect(await screen.findByText('The date of passing can’t be before birth')).toBeInTheDocument();
     expect(s.trees.callsTo('updatePerson')).toEqual([]);
     // Living, while a death place is still recorded (on the Places tab).
     fireEvent.click(screen.getByRole('radio', { name: 'Living' }));
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect(
-      await screen.findByText('Someone with death details can’t be marked as living'),
+      await screen.findByText('Someone with details of passing can’t be marked as living'),
     ).toBeInTheDocument();
     expect(s.trees.callsTo('updatePerson')).toEqual([]);
   });
@@ -108,12 +108,12 @@ describe('PersonPanel', () => {
     // Before the dates.
     const born = screen.getByRole('group', { name: 'Born' });
     expect(status.compareDocumentPosition(born) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.getByRole('group', { name: 'Date of death (optional)' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Cause of death (optional)')).toHaveValue('Illness');
+    expect(screen.getByRole('group', { name: 'Date of passing (optional)' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Cause of passing (optional)')).toHaveValue('Illness');
     // Living hides the death fields, and clears them on save.
     fireEvent.click(within(status).getByRole('radio', { name: 'Living' }));
-    expect(screen.queryByRole('group', { name: 'Date of death (optional)' })).toBeNull();
-    expect(screen.queryByLabelText('Cause of death (optional)')).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Date of passing (optional)' })).toBeNull();
+    expect(screen.queryByLabelText('Cause of passing (optional)')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect(await screen.findByText('Saved')).toBeInTheDocument();
     expect(s.trees.callsTo('updatePerson')).toMatchObject([
@@ -134,7 +134,7 @@ describe('PersonPanel', () => {
     const editDeathYear = async (s: ReturnType<typeof setup>, year: string) => {
       renderAt(at(s, '?tab=info'), s);
       fireEvent.click(await screen.findByRole('button', { name: 'Edit details' }));
-      const died = within(screen.getByRole('group', { name: 'Date of death (optional)' }));
+      const died = within(screen.getByRole('group', { name: 'Date of passing (optional)' }));
       fireEvent.change(died.getByLabelText('Precision'), { target: { value: 'year' } });
       fireEvent.change(died.getByLabelText('Year'), { target: { value: year } });
     };
@@ -145,7 +145,7 @@ describe('PersonPanel', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Save' }));
       const summary = await screen.findByRole('alert');
       expect(
-        within(summary).getByRole('button', { name: 'Date of death: That date is in the future' }),
+        within(summary).getByRole('button', { name: 'Date of passing: That date is in the future' }),
       ).toBeInTheDocument();
       expect(s.trees.callsTo('updatePerson')).toEqual([]);
     });
@@ -160,7 +160,7 @@ describe('PersonPanel', () => {
       });
       fireEvent.click(screen.getByRole('button', { name: 'Save' }));
       expect(
-        await screen.findByText('Check the death date. It can’t be before birth or in the future.'),
+        await screen.findByText('Check the date of passing. It can’t be before birth or in the future.'),
       ).toBeInTheDocument();
     });
 
@@ -199,14 +199,14 @@ describe('PersonPanel', () => {
     const s = setup();
     renderAt(at(s, '?tab=info'), s);
     fireEvent.click(await screen.findByRole('button', { name: 'Edit details' }));
-    const died = within(screen.getByRole('group', { name: 'Date of death (optional)' }));
+    const died = within(screen.getByRole('group', { name: 'Date of passing (optional)' }));
     fireEvent.change(died.getByLabelText('Precision'), { target: { value: 'month' } });
     fireEvent.change(died.getByLabelText('Year'), { target: { value: '2001' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect(await screen.findByText('Choose a month')).toBeInTheDocument();
     expect(s.trees.callsTo('updatePerson')).toEqual([]);
     const summary = screen.getByRole('alert');
-    fireEvent.click(within(summary).getByRole('button', { name: 'Date of death: Choose a month' }));
+    fireEvent.click(within(summary).getByRole('button', { name: 'Date of passing: Choose a month' }));
     expect(died.getByLabelText('Year')).toHaveFocus();
   });
 

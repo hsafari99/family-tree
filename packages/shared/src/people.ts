@@ -79,10 +79,10 @@ const hasDeathDetails = (p: ConsistencyFields) =>
 export function personConsistencyErrors(p: ConsistencyFields): Record<string, string[]> {
   const errors: Record<string, string[]> = {};
   if (p.isLiving === true && hasDeathDetails(p)) {
-    errors.isLiving = ['Someone with death details can’t be marked as living'];
+    errors.isLiving = ['Someone with details of passing can’t be marked as living'];
   }
   if (p.birthDate && p.deathDate && sortYear(p.deathDate) < sortYear(p.birthDate)) {
-    errors.deathDate = ['Death can’t be before birth'];
+    errors.deathDate = ['The date of passing can’t be before birth'];
   }
   return errors;
 }

@@ -43,7 +43,7 @@ function Details({ person }: { person: PersonView['person'] }) {
       <Row label="Sex">{SEX_LABEL[person.sex]}</Row>
       {person.birthDate && <Row label="Born">{formatFuzzyDate(person.birthDate)}</Row>}
       <Row label="Status">{lifeStatus(person.isLiving, person.deathDate)}</Row>
-      {person.causeOfDeath && <Row label="Cause of death">{person.causeOfDeath}</Row>}
+      {person.causeOfDeath && <Row label="Cause of passing">{person.causeOfDeath}</Row>}
       {person.occupation && <Row label="Occupation">{person.occupation}</Row>}
       {person.education && <Row label="Education">{person.education}</Row>}
       {person.biography && (
@@ -165,9 +165,9 @@ const INFO_LABELS: Record<string, string> = {
   nickname: 'Nickname',
   sex: 'Sex',
   birthDate: 'Born',
-  deathDate: 'Date of death',
+  deathDate: 'Date of passing',
   isLiving: 'Status',
-  causeOfDeath: 'Cause of death',
+  causeOfDeath: 'Cause of passing',
   occupation: 'Occupation',
   education: 'Education',
   biography: 'Biography',
@@ -182,12 +182,12 @@ const INFO_FIELDS: Record<string, { field: string; message: string }> = {
   ...Object.fromEntries(
     Object.keys(INFO_LABELS).map((k) => [k, { field: k, message: 'Check this and try again' }]),
   ),
-  isLiving: { field: 'isLiving', message: 'Someone with death details can’t be marked as living' },
+  isLiving: { field: 'isLiving', message: 'Someone with details of passing can’t be marked as living' },
   // The server names only the field, so the text covers each rule a date can break.
   birthDate: { field: 'birthDate', message: 'Check the birth date. It can’t be in the future.' },
   deathDate: {
     field: 'deathDate',
-    message: 'Check the death date. It can’t be before birth or in the future.',
+    message: 'Check the date of passing. It can’t be before birth or in the future.',
   },
 };
 
@@ -389,13 +389,13 @@ function InfoForm({
       {!isLiving && (
         <>
           <FuzzyDateField
-            label="Date of death (optional)"
+            label="Date of passing (optional)"
             name="deathDate"
             value={death}
             onChange={set('death')}
             error={errors.deathDate}
           />
-          {field('causeOfDeath', 'Cause of death (optional)')}
+          {field('causeOfDeath', 'Cause of passing (optional)')}
         </>
       )}
       {field('occupation', 'Occupation')}

@@ -65,7 +65,7 @@ describe('PersonCardView', () => {
     const { onOpen, container } = view();
     expect(screen.getByText('RH')).toHaveAttribute('aria-hidden', 'true');
     expect(screen.getByText('Robert Hale')).toBeInTheDocument();
-    expect(container.querySelector('.card-years')).toHaveTextContent('† 1930–1998');
+    expect(container.querySelector('.card-years')).toHaveTextContent('1930–1998');
     expect(container.firstElementChild).toHaveClass('is-deceased');
     fireEvent.click(screen.getByRole('button', { name: 'Robert Hale, 1930–1998, deceased' }));
     expect(onOpen).toHaveBeenCalled();
@@ -162,10 +162,10 @@ describe('PersonCardView', () => {
   });
 
   it.each([
-    [{ birthYear: 1902, deathYear: 1978, isLiving: false }, '† 1902–1978'],
+    [{ birthYear: 1902, deathYear: 1978, isLiving: false }, '1902–1978'],
     [{ birthYear: 1986, deathYear: null, isLiving: true }, 'b. 1986'],
-    [{ birthYear: null, deathYear: 1950, isLiving: false }, '† d. 1950'],
-    [{ birthYear: null, deathYear: null, isLiving: false }, '†'],
+    [{ birthYear: null, deathYear: 1950, isLiving: false }, '?–1950'],
+    [{ birthYear: null, deathYear: null, isLiving: false }, 'Deceased'],
   ])('formats the years %o as %s', (over, text) => {
     const { container } = view({ person: { ...robert, ...over } });
     expect(container.querySelector('.card-years')!.textContent!.trim()).toBe(text);

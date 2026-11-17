@@ -199,11 +199,12 @@ export function SearchBox({
           </label>
           <br />
           <label>
-            Died from{' '}
+            Passed away from{' '}
             <input inputMode="numeric" value={filters.diedFrom} onChange={set('diedFrom')} />
           </label>{' '}
           <label>
-            Died to <input inputMode="numeric" value={filters.diedTo} onChange={set('diedTo')} />
+            Passed away to{' '}
+            <input inputMode="numeric" value={filters.diedTo} onChange={set('diedTo')} />
           </label>
           <br />
           <label>
