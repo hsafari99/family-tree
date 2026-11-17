@@ -60,6 +60,18 @@ const choose = (f: File) =>
 afterEach(() => vi.clearAllMocks());
 
 describe('PhotosTab', () => {
+  it('opens the album on the photo clicked', async () => {
+    const s = setup();
+    await seedPhotos(s, 3);
+    renderAt(at(s), s);
+    const thumbs = await screen.findAllByRole('button', { name: /Photo \d of Ada King/ });
+    fireEvent.click(thumbs[1]!);
+    const album = await screen.findByRole('dialog', { name: 'Photos of Ada King' });
+    expect(within(album).getByText('2 of 3')).toBeInTheDocument();
+    fireEvent.click(within(album).getByRole('button', { name: 'Close photos' }));
+    expect(screen.queryByRole('dialog', { name: 'Photos of Ada King' })).toBeNull();
+  });
+
   it('starts empty with the usage line and a file input', async () => {
     const s = setup();
     renderAt(at(s), s);
@@ -84,9 +96,8 @@ describe('PhotosTab', () => {
       personId: ada.id,
       type: 'image/png',
     });
-    const link = screen.getByRole('link', { name: /Photo 1 of Ada King/ });
-    expect(link).toHaveAttribute('target', '_blank');
-    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    const open = screen.getByRole('button', { name: /Photo 1 of Ada King/ });
+    expect(open).toHaveAttribute('aria-haspopup', 'dialog');
     expect(screen.getByText('Main photo')).toBeInTheDocument();
     expect(document.querySelector('img.panel-photo')).toBeInTheDocument();
     expect(cropToBlob).toHaveBeenCalledWith(f, null);
@@ -183,7 +194,7 @@ describe('PhotosTab', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete photo' }));
     await screen.findByText('Photo removed');
     expect(s.trees.callsTo('deletePhoto')).toHaveLength(1);
-    expect(screen.getAllByRole('link', { name: /Photo \d of Ada King/ })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: /Photo \d of Ada King/ })).toHaveLength(1);
   });
 
   it('cancelling the delete confirm with Esc leaves the Photos dialog open', async () => {

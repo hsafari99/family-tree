@@ -3576,3 +3576,113 @@ a.app-header-support .icon {
   opacity: 1;
   visibility: visible;
 }
+
+/* Photos as an album (feedback item 7): one photo, full size, Previous / Next on its sides. */
+.photo-viewer {
+  width: min(1100px, calc(100vw - 32px));
+  height: min(860px, calc(100vh - 32px));
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-3);
+}
+.photo-viewer[open] {
+  display: flex;
+  flex-direction: column;
+}
+.photo-viewer::backdrop {
+  background: rgb(10 16 14 / 0.75);
+  backdrop-filter: blur(2px);
+}
+.photo-viewer-head {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--line);
+}
+.photo-viewer-head h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  overflow-wrap: anywhere;
+}
+.photo-viewer-count {
+  margin: 0 0 0 auto;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.photo-viewer-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  padding: 0.75rem;
+  background: var(--surface-2);
+  /* Horizontal swipes turn the page; vertical ones still scroll. */
+  touch-action: pan-y;
+  user-select: none;
+}
+.photo-viewer-stage {
+  overflow: hidden;
+}
+/* The photo always fits the stage: positioned against the stage's own box (a grid row has no
+   fixed height for a percentage max-height to resolve against), centred by the auto margins,
+   shrunk to fit keeping its proportions, and never enlarged past its own size. */
+.photo-viewer-stage img {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  max-width: calc(100% - 1.5rem);
+  max-height: calc(100% - 1.5rem);
+  width: auto;
+  height: auto;
+  border-radius: var(--radius-s);
+}
+.photo-viewer-nav {
+  z-index: 1;
+}
+.photo-viewer-nav {
+  position: absolute;
+  top: 50%;
+  translate: 0 -50%;
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-1);
+}
+.photo-viewer-nav.is-prev {
+  left: 0.75rem;
+}
+.photo-viewer-nav.is-next {
+  right: 0.75rem;
+}
+.photo-viewer-nav:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.photo-viewer-foot {
+  margin: 0;
+  padding: 0.6rem 1.25rem;
+  border-top: 1px solid var(--line);
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+.photo-open {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+}
