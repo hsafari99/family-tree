@@ -53,6 +53,8 @@ import {
   treeGraphSchema,
   type TreeList,
   treeListSchema,
+  type Today,
+  todaySchema,
   type MyPrivacy,
   myPrivacySchema,
   type PrivacySettingsInput,
@@ -68,6 +70,8 @@ export interface TreesApi {
   listTrees(): Promise<Result<TreeList>>;
   /** The home dashboard: tree cards, deleted trees and recent activity. */
   homeSummary(): Promise<Result<HomeSummary>>;
+  /** Today's birthdays and days of passing; `day` is the caller's local MM-DD. */
+  today(day: string): Promise<Result<Today>>;
   createTree(input: CreateTreeInput): Promise<Result<{ id: string }>>;
   getTree(treeId: string): Promise<Result<TreeDetail>>;
   updateTree(treeId: string, input: UpdateTreeInput): Promise<Result<void>>;
@@ -157,6 +161,7 @@ export interface TreesApi {
 export const TREES_API_METHODS = Object.keys({
   listTrees: true,
   homeSummary: true,
+  today: true,
   createTree: true,
   getTree: true,
   updateTree: true,
@@ -315,6 +320,7 @@ export function createTreesApi({ baseUrl }: { baseUrl: string }): TreesApi {
   return {
     listTrees: () => request('GET', '/trees', undefined, treeListSchema),
     homeSummary: () => request('GET', '/home', undefined, homeSummarySchema),
+    today: (day) => request('GET', `/home/today?day=${enc(day)}`, undefined, todaySchema),
     createTree: (input) => map(request('POST', '/trees', input, createdTreeSchema), (d) => d.tree),
     getTree: (id) => request('GET', t(id), undefined, treeDetailSchema),
     updateTree: (id, input) => request('PATCH', t(id), input),

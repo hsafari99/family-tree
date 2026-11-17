@@ -43,3 +43,31 @@ export const homeSummarySchema = z.object({
   activity: z.array(activityEntrySchema),
 });
 export type HomeSummary = z.infer<typeof homeSummarySchema>;
+
+/** GET /api/v1/home/today: the caller's local day as MM-DD (the server's day may differ). */
+export const todayQuerySchema = z.object({
+  day: z.string().regex(/^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/, 'Use MM-DD'),
+});
+export type TodayQuery = z.infer<typeof todayQuerySchema>;
+
+/** Someone whose birthday or day of passing is today (feedback item 6). */
+export const todayPersonSchema = z.object({
+  treeId: z.uuid(),
+  personId: z.uuid(),
+  /** The full name, shown when hovering the picture. */
+  name: z.string(),
+  /** For the initials when there is no photo. */
+  givenName: z.string(),
+  surname: z.string().nullable(),
+  /** The main photo's signed thumbnail, or null. */
+  photoThumbUrl: z.string().nullable(),
+});
+export type TodayPerson = z.infer<typeof todayPersonSchema>;
+
+export const todaySchema = z.object({
+  /** Living people born on this day and month. */
+  birthdays: z.array(todayPersonSchema),
+  /** Deceased people who passed on this day and month. */
+  remembering: z.array(todayPersonSchema),
+});
+export type Today = z.infer<typeof todaySchema>;

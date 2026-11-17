@@ -1,4 +1,5 @@
 import {
+  type Today,
   type MyPrivacy,
   type PrivacySettingsInput,
   type ActivityEntry,
@@ -202,6 +203,8 @@ export class FakeTreesApi implements TreesApi {
   restoreConflicts = new Set<string>();
   /** The signed-in user's id, so permission checks can tell "members I invited" from others. */
   meUserId: string | null = null;
+  /** What today() returns (the day asked for is in `calls`). */
+  todayList: Today = { birthdays: [], remembering: [] };
   /** What homeSummary returns as recent activity, newest first. */
   activity: ActivityEntry[] = [];
   calls: { method: Method; input: unknown }[] = [];
@@ -315,6 +318,12 @@ export class FakeTreesApi implements TreesApi {
       ),
     };
     return ok(list);
+  }
+
+  async today(day: string) {
+    const forced = await this.enter('today', { day });
+    if (forced) return { ok: false as const, error: forced };
+    return ok(this.todayList);
   }
 
   async homeSummary() {

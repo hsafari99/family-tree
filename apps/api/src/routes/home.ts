@@ -5,15 +5,29 @@ import {
   HISTORY_ACTION_PREFIXES,
   homeQuerySchema,
   type HomeSummary,
+  type Today,
+  type TodayPerson,
+  todayQuerySchema,
   TREE_RESTORE_DAYS,
 } from '@family-tree/shared';
 import { and, asc, count, eq, inArray, isNull, like, max, or, sql } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 import { requireSession } from '../auth/session-guard.js';
-import { auditLog, branchStewards, invites, persons, treeMembers, trees } from '../db/schema.js';
+import {
+  auditLog,
+  branchStewards,
+  invites,
+  persons,
+  photos,
+  treeMembers,
+  trees,
+} from '../db/schema.js';
+import { signThumbs } from '../photos/photos.js';
 import { parseBody } from '../errors.js';
 import { extraLimit } from '../security/limits.js';
 import { loadAccess } from '../trees/access.js';
+import { fullName } from '../trees/people.js';
+import { loadVisibility } from '../trees/privacy.js';
 import type { TreeRouteOptions } from './trees.js';
 
 const RESTORE_MS = TREE_RESTORE_DAYS * 86_400_000;
@@ -30,7 +44,10 @@ const usableInvite = () =>
  * across their trees. Every row is reached through the caller's own tree_members rows, so other
  * trees never appear; `?treeId=` narrows it to one tree and is a 404 for anyone outside it.
  */
-export const homeRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, { auth, db }) => {
+export const homeRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
+  app,
+  { auth, db, storage },
+) => {
   app.addHook('preHandler', requireSession(auth));
 
   app.get(
@@ -138,6 +155,79 @@ export const homeRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, { au
         deletedTrees,
         activity,
       };
+      return body;
+    },
+  );
+
+  /**
+   * Today's birthdays and days of passing across the caller's live trees (feedback item 6). Only
+   * dates known to the exact day count; the day is the caller's own (`?day=MM-DD`). People whose
+   * privacy hides them from the caller are left out (privacy spec R2); a hidden birth year
+   * doesn't matter here, since only the day and month are used.
+   */
+  app.get(
+    '/api/v1/home/today',
+    { preHandler: extraLimit(app, { name: 'today', max: 60, timeWindow: '1 minute', by: 'user' }) },
+    async (req) => {
+      const user = req.user!;
+      const { day } = parseBody(todayQuerySchema, req.query);
+      const exactOn = (col: typeof persons.birthDate) =>
+        sql`(${col} ->> 'qualifier' = 'exact' and length(${col} ->> 'date1') = 10
+          and substr(${col} ->> 'date1', 6, 5) = ${day})`;
+      const rows = await db
+        .select({
+          treeId: persons.treeId,
+          personId: persons.id,
+          givenName: persons.givenName,
+          middleName: persons.middleName,
+          surname: persons.surname,
+          isLiving: persons.isLiving,
+          photoThumbKey: photos.storageKeyThumb,
+          born: exactOn(persons.birthDate),
+          passed: exactOn(persons.deathDate),
+        })
+        .from(persons)
+        .innerJoin(treeMembers, eq(treeMembers.treeId, persons.treeId))
+        .innerJoin(trees, eq(trees.id, persons.treeId))
+        .leftJoin(photos, and(eq(photos.personId, persons.id), eq(photos.isPrimary, true)))
+        .where(
+          and(
+            eq(treeMembers.userId, user.id),
+            isNull(trees.deletedAt),
+            isNull(persons.deletedAt),
+            or(
+              and(eq(persons.isLiving, true), exactOn(persons.birthDate)),
+              and(eq(persons.isLiving, false), exactOn(persons.deathDate)),
+            ),
+          ),
+        )
+        .orderBy(asc(persons.givenName), asc(persons.surname), asc(persons.id));
+
+      const shown: (typeof rows)[number][] = [];
+      const byTree = new Map<string, typeof rows>();
+      for (const r of rows) byTree.set(r.treeId, [...(byTree.get(r.treeId) ?? []), r]);
+      for (const [treeId, list] of byTree) {
+        const vis = await loadVisibility(db, await loadAccess(db, treeId, user.id));
+        shown.push(...list.filter((r) => vis.full(r.personId)));
+      }
+      // Membership and privacy were checked above: the signed-URL cache is shared across users.
+      const urls = await signThumbs(
+        storage,
+        shown.map((r) => r.photoThumbKey),
+      );
+      const body: Today = { birthdays: [], remembering: [] };
+      shown.forEach((r, i) => {
+        const entry: TodayPerson = {
+          treeId: r.treeId,
+          personId: r.personId,
+          name: fullName(r),
+          givenName: r.givenName,
+          surname: r.surname,
+          photoThumbUrl: urls[i]!,
+        };
+        if (r.isLiving && r.born) body.birthdays.push(entry);
+        else if (!r.isLiving && r.passed) body.remembering.push(entry);
+      });
       return body;
     },
   );
