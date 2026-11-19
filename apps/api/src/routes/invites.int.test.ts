@@ -331,11 +331,20 @@ describe('review fixes', () => {
 
   it('does not touch the owner row on accept', async () => {
     const { owner, treeId, S, leo } = await setup();
-    const token = (await create(treeId, S.jar, { role: 'editor', targetPersonId: leo.id })).json()
+    const token = (await create(treeId, S.jar, { role: 'viewer', targetPersonId: leo.id })).json()
       .token as string;
     const before = await memberOf(treeId, owner.userId);
     expect((await accept(owner.jar, token)).statusCode).toBe(200);
     expect(await memberOf(treeId, owner.userId)).toEqual(before);
+  });
+
+  it('a viewer-steward cannot hand out editor access', async () => {
+    const { treeId, S, leo } = await setup();
+    expect((await create(treeId, S.jar, { role: 'editor' })).statusCode).toBe(403);
+    expect(
+      (await create(treeId, S.jar, { role: 'editor', targetPersonId: leo.id })).statusCode,
+    ).toBe(403);
+    expect((await create(treeId, S.jar, { role: 'viewer' })).statusCode).toBe(201);
   });
 
   it('limits a steward to targets in their scope', async () => {

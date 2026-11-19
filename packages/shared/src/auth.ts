@@ -23,7 +23,14 @@ export const passwordSchema = z
   .min(PASSWORD_MIN, `Use at least ${PASSWORD_MIN} characters`)
   .max(PASSWORD_MAX, `Use at most ${PASSWORD_MAX} characters`)
   .refine(hasPasswordClasses, PASSWORD_CLASSES_MESSAGE);
-export const nameSchema = z.string().trim().min(1, 'Enter your name').max(100);
+/** Control characters and the bidirectional overrides/isolates that can disguise a name. */
+const HIDDEN_CHARS = /[\p{Cc}\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/u;
+export const nameSchema = z
+  .string()
+  .trim()
+  .min(1, 'Enter your name')
+  .max(100, 'Use at most 100 characters')
+  .refine((s) => !HIDDEN_CHARS.test(s), 'Remove hidden or control characters from your name');
 // Authenticator apps often show the code as "123 456"; accept it with any whitespace.
 export const totpCodeSchema = z
   .string()

@@ -170,7 +170,43 @@ describe('branch', () => {
   });
 });
 
+describe('Home activity', () => {
+  it('leaves out changes to a person whose privacy hides them, like History', async () => {
+    const c = await setup();
+    const edit = await call(app, 'PATCH', `${c.T}/persons/${c.p.Ben!.id}`, {
+      jar: c.jars.owner,
+      body: { version: 1, occupation: 'Baker' },
+    });
+    expect(edit.statusCode).toBe(200);
+    const benIn = async (jar: CookieJar) =>
+      (await call(app, 'GET', '/api/v1/home', { jar }))
+        .json()
+        .activity.some((e: { person: { id: string } }) => e.person.id === c.p.Ben!.id) as boolean;
+    expect(await benIn(c.jars.vic)).toBe(true);
+    await setPrivacy(c, { level: 'private', steps: null, hideBirthYear: false });
+    expect(await benIn(c.jars.vic)).toBe(false);
+    expect(await benIn(c.jars.editor)).toBe(true);
+    expect(await benIn(c.jars.ben)).toBe(true);
+  });
+});
+
 describe('hidden birth year (D8)', () => {
+  it('the duplicate check finds Ben the same way whatever birth year is asked', async () => {
+    const c = await setup();
+    await setPrivacy(c, { level: 'public', steps: null, hideBirthYear: true });
+    const found = async (year: number) =>
+      (
+        await call(app, 'GET', `${c.T}/persons/similar?givenName=Ben&birthYear=${year}`, {
+          jar: c.jars.vic,
+        })
+      )
+        .json()
+        .persons.some((x: { id: string }) => x.id === c.p.Ben!.id) as boolean;
+    expect(await found(1961)).toBe(true);
+    expect(await found(1800)).toBe(true);
+    expect(await found(2020)).toBe(true);
+  });
+
   it('keeps the day and month and drops the year everywhere', async () => {
     const c = await setup();
     await setPrivacy(c, { level: 'public', steps: null, hideBirthYear: true });

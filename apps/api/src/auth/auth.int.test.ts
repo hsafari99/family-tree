@@ -131,6 +131,17 @@ describe('adapter hardening', () => {
     expect((await me({ jar: signedIn.jar })).statusCode).toBe(200);
   });
 
+  it('strips every token from list-sessions', async () => {
+    const { jar, email, password } = await signUp(app);
+    await signIn(app, { email, password });
+    const list = await call(app, 'GET', '/api/auth/list-sessions', { jar });
+    expect(list.statusCode).toBe(200);
+    const sessions = list.json() as Record<string, unknown>[];
+    expect(sessions.length).toBeGreaterThanOrEqual(2);
+    for (const s of sessions) expect(s).not.toHaveProperty('token');
+    expect(list.headers['content-length']).toBe(String(Buffer.byteLength(list.body)));
+  });
+
   it('strips the token from two-factor verify responses', async () => {
     const { jar, email, password } = await signUp(app);
     const { rawSecret } = await enableTwoFactor(app, jar, password);

@@ -1,4 +1,4 @@
-import type { InviteRole, Role } from '@family-tree/shared';
+import { type InviteRole, type Role, ROLE_RANK } from '@family-tree/shared';
 
 /** An effective steward grant: only loaded for stewards with 2FA (spec §4). */
 export interface Grant {
@@ -23,7 +23,13 @@ type ReparentTarget = {
   fromParents: readonly string[];
   toParents: readonly string[];
 };
-type MemberTarget = { kind: 'member'; role: Role; invitedByUserId: string | null };
+type MemberTarget = {
+  kind: 'member';
+  role: Role;
+  invitedByUserId: string | null;
+  /** For member.changeRole: the role being given. */
+  newRole?: Role;
+};
 
 /** What each action is checked against. */
 export interface Targets {
@@ -84,8 +90,15 @@ const addOrEdit = (a: Actor, t: RelationTarget) =>
   editsAnywhere(a) || t.ends.some((e) => inScope(a, e));
 const deletePeople = (a: Actor, t: PeopleTarget) =>
   isOwner(a) || (t.personIds.length > 0 && t.personIds.every((p) => inScope(a, p)));
+/** Nobody but the owner can pass on more than they hold: a steward grants up to their base role. */
+const withinOwnRole = (a: Actor, role: Role) => ROLE_RANK[role] <= ROLE_RANK[a.role];
 const manageMember = (a: Actor, t: MemberTarget) =>
-  t.role !== 'owner' && (isOwner(a) || (isSteward(a) && t.invitedByUserId === a.userId));
+  t.role !== 'owner' &&
+  (isOwner(a) ||
+    (isSteward(a) &&
+      t.invitedByUserId === a.userId &&
+      withinOwnRole(a, t.role) &&
+      (t.newRole === undefined || withinOwnRole(a, t.newRole))));
 
 const RULES: { [A in Action]: (actor: Actor, target: Targets[A]) => boolean } = {
   'tree.view': () => true,
@@ -118,6 +131,7 @@ const RULES: { [A in Action]: (actor: Actor, target: Targets[A]) => boolean } = 
   'invite.create': (a, t) =>
     isOwner(a) ||
     (isSteward(a) &&
+      withinOwnRole(a, t.role) &&
       (t.stewardAnchorPersonId === null || inScope(a, t.stewardAnchorPersonId)) &&
       (t.targetPersonId === null || inScope(a, t.targetPersonId))),
   'invite.revoke': (a, t) => isOwner(a) || (isSteward(a) && t.createdByUserId === a.userId),

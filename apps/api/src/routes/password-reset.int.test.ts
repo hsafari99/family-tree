@@ -318,6 +318,52 @@ describe('password reset and the 2FA account lockout', () => {
     expect((await twoFactorRow(userId)).failedVerificationCount).toBe(2);
   });
 
+  it('locks resets for a day after 5 wrong codes, even past the rate limit', async () => {
+    const { email, userId, rawSecret } = await userWith2fa();
+    const bad = wrongCode(await totpNow(rawSecret));
+    for (let i = 0; i < 5; i++) {
+      expect((await resetTotp({ email, code: bad, newPassword: NEW_PASSWORD })).statusCode).toBe(
+        400,
+      );
+    }
+    const row = await twoFactorRow(userId);
+    expect(row.resetFailedCount).toBe(5);
+    expect(row.resetLockedUntil!.getTime()).toBeGreaterThan(Date.now() + 23 * 3600_000);
+
+    // A fresh app has fresh rate-limit counters (a restart, or another IP): the lock still holds.
+    const other = newApp();
+    try {
+      const res = await resetTotp(
+        { email, code: await totpNow(rawSecret), newPassword: NEW_PASSWORD },
+        { target: other },
+      );
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toEqual({ error: INVALID });
+    } finally {
+      await other.close();
+    }
+    expect((await signIn(app, { email, password: NEW_PASSWORD })).res.statusCode).toBe(401);
+    // Sign-in itself is not locked.
+    expect((await twoFactorRow(userId)).lockedUntil).toBeNull();
+  });
+
+  it('clears the reset count after a successful reset and once its lock has run out', async () => {
+    const { email, userId, rawSecret } = await userWith2fa();
+    await deps.db
+      .update(twoFactors)
+      .set({ resetFailedCount: 5, resetLockedUntil: new Date(Date.now() - 1000) })
+      .where(eq(twoFactors.userId, userId));
+    const ok = await resetTotp({
+      email,
+      code: await totpNow(rawSecret),
+      newPassword: NEW_PASSWORD,
+    });
+    expect(ok.statusCode).toBe(204);
+    const row = await twoFactorRow(userId);
+    expect(row.resetFailedCount).toBe(0);
+    expect(row.resetLockedUntil).toBeNull();
+  });
+
   it('accepts a correct code once an earlier lock has expired', async () => {
     const { email, userId, rawSecret } = await userWith2fa();
     await deps.db

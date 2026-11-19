@@ -3,13 +3,18 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
 import { FormError } from '../components/forms';
+import { forgetLinkToken, takeLinkToken } from '../auth/link-token';
 import { GoogleSignIn } from '../components/GoogleSignIn';
 import { Page } from '../components/Page';
 import { useTreesApi } from '../trees/TreesApiContext';
 
-/** Public landing page for an invite link. The token comes from the URL and goes only to the API. */
+/**
+ * Public landing page for an invite link. The token comes from the link (link-token.ts) and goes
+ * only to the API; sign-in hand-offs come back to the bare /invite and never carry it.
+ */
 export function InvitePage() {
-  const { token = '' } = useParams();
+  const params = useParams();
+  const [token] = useState(() => takeLinkToken('invite', params.token));
   const api = useTreesApi();
   const { user, refresh } = useAuth();
   const navigate = useNavigate();
@@ -39,6 +44,7 @@ export function InvitePage() {
       setJoinError(res.error.message);
       return;
     }
+    forgetLinkToken('invite');
     // Joining can make this user an owner or steward, which changes what the account page allows.
     await refresh();
     void navigate(`/trees/${res.data.treeId}`, { replace: true });
@@ -63,7 +69,7 @@ export function InvitePage() {
     );
   }
 
-  const next = encodeURIComponent(`/invite/${token}`);
+  const next = encodeURIComponent('/invite');
   return (
     <Page title={title}>
       <p>
@@ -93,7 +99,7 @@ export function InvitePage() {
             <Link to={`/sign-in?next=${next}`}>Sign in</Link>
             <Link to={`/sign-up?next=${next}`}>Create an account</Link>
           </div>
-          <GoogleSignIn next={`/invite/${encodeURIComponent(token)}`} />
+          <GoogleSignIn next="/invite" />
         </>
       )}
     </Page>

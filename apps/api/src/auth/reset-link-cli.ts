@@ -41,7 +41,7 @@ try {
       createdByUserId: null,
       ttlHours: 24,
     });
-    console.log(`${config.WEB_ORIGIN}/reset/${token}`);
+    console.log(`${config.WEB_ORIGIN}/reset#${token}`);
     console.log(`Valid once, until ${expiresAt.toISOString()}.`);
   }
 } finally {

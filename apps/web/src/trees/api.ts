@@ -469,7 +469,11 @@ export function createTreesApi({ baseUrl }: { baseUrl: string }): TreesApi {
         file,
         uploadedPhotoSchema,
         'session',
-        { QUOTA_EXCEEDED: MESSAGES.photoQuota, NOT_FOUND: MESSAGES.personNotFound },
+        {
+          QUOTA_EXCEEDED: MESSAGES.photoQuota,
+          STORAGE_FULL: MESSAGES.storageFull,
+          NOT_FOUND: MESSAGES.personNotFound,
+        },
         undefined,
         {
           type: MESSAGES.photoType,

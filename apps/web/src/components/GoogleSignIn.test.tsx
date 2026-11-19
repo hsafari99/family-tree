@@ -77,7 +77,8 @@ describe('Continue with Google', () => {
     });
     const { api } = renderAt(`/invite/${token}`, { auth, trees });
     fireEvent.click(await google());
-    expect(api.callsTo('startGoogleSignIn')).toEqual([{ next: `/invite/${token}` }]);
+    // The token waits in this tab's storage; the round trip through Google never carries it.
+    expect(api.callsTo('startGoogleSignIn')).toEqual([{ next: '/invite' }]);
   });
 
   it('is not offered on an invite once signed in', async () => {

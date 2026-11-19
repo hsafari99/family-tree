@@ -9,7 +9,7 @@ import {
 } from '@family-tree/shared';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
-import { createResetLink } from '../auth/reset-links.js';
+import { createResetLink, hasGoogle } from '../auth/reset-links.js';
 import { requireSession } from '../auth/session-guard.js';
 import type { Queryable } from '../db/client.js';
 import { branchStewards, invites, persons, treeMembers, users } from '../db/schema.js';
@@ -26,7 +26,7 @@ const resetNotAllowed = () =>
   new AppError(
     'RESET_LINK_NOT_ALLOWED',
     403,
-    'A reset link can only be issued for a member without two-step verification who belongs only to trees you own',
+    'A reset link can only be issued for a member without two-step verification or Google sign-in who belongs only to trees you own',
   );
 
 const personClaimed = () =>
@@ -122,7 +122,9 @@ export const membersRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
     const access = await loadAccess(db, idParam(req.params, 'treeId'), req.user!.id);
     const { role, personId } = parseBody(updateMemberSchema, req.body);
     const target = await loadMember(db, access.treeId, idParam(req.params, 'userId'));
-    if (role !== undefined) authorize(access, 'member.changeRole', { kind: 'member', ...target });
+    if (role !== undefined) {
+      authorize(access, 'member.changeRole', { kind: 'member', ...target, newRole: role });
+    }
     if (personId !== undefined) authorize(access, 'member.link', TREE);
     await db.transaction(async (tx) => {
       if (role !== undefined) {
@@ -395,6 +397,9 @@ export const membersRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
         limit 1
       `)) as unknown as unknown[];
       if (foreign.length > 0) throw resetNotAllowed();
+      // Someone who signs in with Google never chose a password here; one must not be set for
+      // them by someone else.
+      if (await hasGoogle(db, target.userId)) throw resetNotAllowed();
       const { token, expiresAt } = await createResetLink(db, {
         userId: target.userId,
         createdByUserId: access.userId,

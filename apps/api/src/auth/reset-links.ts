@@ -1,6 +1,6 @@
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
-import type { Db } from '../db/client.js';
-import { resetLinks, treeMembers, users } from '../db/schema.js';
+import type { Db, Queryable } from '../db/client.js';
+import { accounts, resetLinks, treeMembers, users } from '../db/schema.js';
 import { hashToken, newToken } from '../security/tokens.js';
 
 /** Only this hash is stored; the raw token exists only in the link given to the user. */
@@ -23,13 +23,23 @@ export async function createResetLink(
   return { token, expiresAt };
 }
 
+/** Whether the user has a Google account connected. */
+export async function hasGoogle(db: Queryable, userId: string): Promise<boolean> {
+  const rows = await db
+    .select({ id: accounts.id })
+    .from(accounts)
+    .where(and(eq(accounts.userId, userId), eq(accounts.providerId, 'google')))
+    .limit(1);
+  return rows.length > 0;
+}
+
 const INVALID = Symbol('invalid reset link');
 
 /**
  * Atomically marks the link used; returns the user id, or null if invalid, expired or already
  * used. A link an owner issued (tree_id set) is re-checked in the same transaction against the
  * issue-time rule: the issuer still owns the tree, the target has no 2FA, and the target belongs
- * to no tree the issuer doesn't own. If it fails, the transaction rolls back and the link is invalid.
+ * to no tree the issuer doesn't own, and has no Google account connected. If it fails, the transaction rolls back and the link is invalid.
  */
 export async function consumeResetLink(db: Db, token: string): Promise<string | null> {
   try {
@@ -60,6 +70,10 @@ export async function consumeResetLink(db: Db, token: string): Promise<string | 
             )
             and exists (
               select 1 from ${users} u where u.id = ${row.userId} and not u.two_factor_enabled
+            )
+            and not exists (
+              select 1 from ${accounts} a
+              where a.user_id = ${row.userId} and a.provider_id = 'google'
             )
             and not exists (
               select 1 from ${treeMembers} m

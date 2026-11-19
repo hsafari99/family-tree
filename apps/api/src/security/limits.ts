@@ -5,6 +5,14 @@ import { AppError } from '../errors.js';
 /** IPv6 collapses to its /64 (as @fastify/rate-limit's default key does). */
 export const clientKey = (req: FastifyRequest) => normalizeIP(req.ip);
 
+/** The account a request names: its body's email, normalised, or the client IP if it has none. */
+export function emailOrIpKey(req: FastifyRequest): string {
+  const email = (req.body as { email?: unknown } | undefined)?.email;
+  return typeof email === 'string' && email.trim() !== ''
+    ? `email:${email.trim().toLowerCase()}`
+    : `ip:${clientKey(req)}`;
+}
+
 export const rateLimited = () =>
   new AppError('RATE_LIMITED', 429, 'Too many requests, try again later');
 
@@ -12,7 +20,8 @@ export const rateLimited = () =>
  * A preHandler enforcing an extra limit on top of the global one. Built with createRateLimit,
  * not app.rateLimit: handlers from app.rateLimit share a "limit already ran" flag with the
  * route-level limit, so whichever ran first would silently disable the other.
- * `by` picks the bucket: the client IP (default) or the signed-in user.
+ * `by` picks the bucket: the client IP (default), the signed-in user, or the account named by
+ * the body's email (for routes used before signing in).
  */
 declare module 'fastify' {
   interface FastifyInstance {
@@ -33,7 +42,7 @@ export function extraLimit(
     name: string;
     max: number;
     timeWindow: string;
-    by?: 'ip' | 'user';
+    by?: 'ip' | 'user' | 'email';
     /** Also turned off by AUTH_RATE_LIMIT_ENABLED=false (the invite limiters, for E2E). */
     devSwitch?: boolean;
   },
@@ -44,7 +53,13 @@ export function extraLimit(
     // by: 'user' falls back to the per-IP bucket when there is no req.user, so routes using it
     // must require a session first.
     keyGenerator: (req) =>
-      `${name}:${by === 'user' && req.user ? `u:${req.user.id}` : `ip:${clientKey(req)}`}`,
+      `${name}:${
+        by === 'email'
+          ? emailOrIpKey(req)
+          : by === 'user' && req.user
+            ? `u:${req.user.id}`
+            : `ip:${clientKey(req)}`
+      }`,
   });
   return async (req: FastifyRequest) => {
     if (devSwitch && app.devLimitsOff) return;

@@ -26,6 +26,14 @@ export async function photoBytesUsed(db: Queryable, treeId: string): Promise<num
   return Number(r?.n ?? 0);
 }
 
+/** Bytes of every photo in the app, for the global ceiling (MAX_TOTAL_PHOTO_BYTES). */
+export async function totalPhotoBytes(db: Queryable): Promise<number> {
+  const [r] = await db
+    .select({ n: sql<string>`coalesce(sum(${photos.bytes}), 0)::bigint` })
+    .from(photos);
+  return Number(r?.n ?? 0);
+}
+
 export const photoUsage = async (
   db: Queryable,
   treeId: string,

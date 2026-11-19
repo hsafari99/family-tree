@@ -1,23 +1,15 @@
 import { resetWithCodeSchema, resetWithLinkSchema } from '@family-tree/shared';
 import { and, eq, isNull, sql } from 'drizzle-orm';
-import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
+import type { FastifyPluginAsync } from 'fastify';
 import type { Auth } from '../auth/auth.js';
 import { consumeResetLink } from '../auth/reset-links.js';
 import { verifyAndConsumeSecondFactor } from '../auth/totp-reset.js';
 import type { Db } from '../db/client.js';
 import { resetLinks, users } from '../db/schema.js';
 import { AppError, parseBody } from '../errors.js';
-import { clientKey, extraLimit } from '../security/limits.js';
+import { emailOrIpKey, extraLimit } from '../security/limits.js';
 
 const invalidReset = () => new AppError('INVALID_RESET', 400, 'Email or code is incorrect');
-
-/** Rate-limit key for one account: the normalised email, or the IP if there is none. */
-function normalisedEmailOrIp(req: FastifyRequest): string {
-  const email = (req.body as { email?: unknown } | undefined)?.email;
-  return typeof email === 'string' && email.trim() !== ''
-    ? `email:${email.trim().toLowerCase()}`
-    : `ip:${clientKey(req)}`;
-}
 
 export const passwordResetRoutes: FastifyPluginAsync<{ auth: Auth; db: Db }> = async (
   app,
@@ -47,7 +39,7 @@ export const passwordResetRoutes: FastifyPluginAsync<{ auth: Auth; db: Db }> = a
           max: 5,
           timeWindow: '15 minutes',
           hook: 'preHandler',
-          keyGenerator: (req) => `reset-code:${normalisedEmailOrIp(req)}`,
+          keyGenerator: (req) => `reset-code:${emailOrIpKey(req)}`,
         },
       },
       preHandler: extraLimit(app, {

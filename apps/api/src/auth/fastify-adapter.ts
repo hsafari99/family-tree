@@ -1,20 +1,31 @@
 import type { ApiError } from '@family-tree/shared';
 import { fromNodeHeaders } from 'better-auth/node';
-import type { FastifyPluginAsync } from 'fastify';
+import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
+import { extraLimit } from '../security/limits.js';
 import type { Auth } from './auth.js';
 
 /** Carries Fastify's request.ip to Better Auth; any client-sent value is overwritten. */
 export const CLIENT_IP_HEADER = 'x-ft-client-ip';
 
 /**
- * Removes the session token from a JSON body. The browser gets the token only as an HttpOnly
+ * Removes session tokens from a JSON body. The browser gets the token only as an HttpOnly
  * cookie; echoing it in the body would hand it to any script on the page. Applied to every
- * Better Auth object response (sign-in, sign-up, get-session, two-factor verify, change-password
- * and any path spelling that reaches them). Arrays such as list-sessions are left alone, because
- * revoke-session needs those tokens.
+ * Better Auth JSON response (sign-in, sign-up, get-session, two-factor verify, change-password
+ * and any path spelling that reaches them), and to each item of an array such as list-sessions,
+ * so a script can't collect every session of the user. Revoking one session by its token is
+ * therefore not offered to the browser; revoke-other-sessions and revoke-sessions still work.
  */
 export function stripSessionToken(body: unknown): { body: unknown; changed: boolean } {
-  if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+  if (Array.isArray(body)) {
+    let changed = false;
+    const items = body.map((item) => {
+      const r = stripSessionToken(item);
+      changed ||= r.changed;
+      return r.body;
+    });
+    return { body: changed ? items : body, changed };
+  }
+  if (body === null || typeof body !== 'object') {
     return { body, changed: false };
   }
   const copy: Record<string, unknown> = { ...body };
@@ -35,11 +46,29 @@ export function stripSessionToken(body: unknown): { body: unknown; changed: bool
 
 const notFound: ApiError = { error: { code: 'NOT_FOUND', message: 'Not found' } };
 
+/** The Better Auth path a request reaches, however it is spelled (encoding, double slashes). */
+const authPath = (req: FastifyRequest) =>
+  `/${(req.params as { '*'?: string })['*'] ?? ''}`.replace(/\/+/g, '/').replace(/(.)\/$/, '$1');
+
 /** Mounts Better Auth's handler at /api/auth/*. */
 export const authRoutes: FastifyPluginAsync<{ auth: Auth }> = async (app, { auth }) => {
+  // Better Auth limits sign-in per IP only. This caps password guesses per account too, so
+  // credential stuffing spread over many IPs is still slowed.
+  const signInPerAccount = extraLimit(app, {
+    name: 'sign-in-account',
+    max: 10,
+    timeWindow: '15 minutes',
+    by: 'email',
+    devSwitch: true,
+  });
   app.route({
     method: ['GET', 'POST'],
     url: '/api/auth/*',
+    async preHandler(request) {
+      if (request.method === 'POST' && authPath(request) === '/sign-in/email') {
+        await signInPerAccount(request);
+      }
+    },
     async handler(request, reply) {
       const headers = fromNodeHeaders(request.headers);
       headers.set(CLIENT_IP_HEADER, request.ip);

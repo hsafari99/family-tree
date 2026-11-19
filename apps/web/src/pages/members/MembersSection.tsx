@@ -1,4 +1,5 @@
 import { type InviteRole, type StewardGrant } from '@family-tree/shared';
+import { linkUrl } from '../../auth/link-token';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { AuthError } from '../../auth/api';
 import { ConfirmButton } from '../../components/ConfirmButton';
@@ -47,8 +48,16 @@ export function MembersSection({
   const captionId = useId();
   const linkSelectId = useId();
 
+  // Mirrors can.ts: a steward manages people they invited, up to their own base role.
   const canManage = (m: (typeof members)[number]) =>
-    m.role !== 'owner' && (isOwner || (activeSteward && m.invitedByUserId === me));
+    m.role !== 'owner' &&
+    (isOwner ||
+      (activeSteward &&
+        m.invitedByUserId === me &&
+        (detail.me.role === 'editor' || m.role === 'viewer')));
+  // Only an owner or an editor-steward has a role choice to make (viewer-stewards give "viewer").
+  const canChangeRole = (m: (typeof members)[number]) =>
+    canManage(m) && detail.me.role !== 'viewer';
   const personLabel = (id: string | null) => {
     const p = persons.find((x) => x.id === id);
     return p ? personName(p) : '—';
@@ -70,7 +79,7 @@ export function MembersSection({
     setLink(null);
     const res = await api.createResetLink(treeId, userId);
     if (!res.ok) return setError(actionMessage(res.error));
-    setLink({ name, url: `${window.location.origin}/reset/${res.data.token}` });
+    setLink({ name, url: linkUrl('reset', res.data.token) });
     onActed('reset');
   }
 
@@ -166,7 +175,7 @@ export function MembersSection({
                   </td>
                   <td data-label={COLUMNS[1]}>
                     <div className="cell">
-                      {canManage(m) ? (
+                      {canChangeRole(m) ? (
                         <select
                           aria-label={`Role for ${m.name}`}
                           value={m.role}

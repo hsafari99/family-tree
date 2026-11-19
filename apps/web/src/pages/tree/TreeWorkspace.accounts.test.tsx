@@ -104,7 +104,7 @@ describe('invite from a person', () => {
       ]),
     );
     expect(await within(dialog).findByLabelText('Invite link')).toHaveValue(
-      `${window.location.origin}/invite/fake-token-1`,
+      `${window.location.origin}/invite#fake-token-1`,
     );
     fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());

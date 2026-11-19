@@ -13,6 +13,7 @@ import { AppError, idParam, notFound, safeError } from '../errors.js';
 import {
   lockTreePhotos,
   photoBytesUsed,
+  totalPhotoBytes,
   photoKeys,
   requireLivePhoto,
   toPhoto,
@@ -36,6 +37,8 @@ const busy = () =>
 
 export const photoRejected = (reason: PhotoRejectReason) =>
   new AppError('VALIDATION', 400, 'The photo was not accepted', { reason });
+const storageFull = () =>
+  new AppError('STORAGE_FULL', 507, 'Photo storage is full for now. Please try again later.');
 const quotaFull = (limitBytes: number) =>
   new AppError('QUOTA_EXCEEDED', 403, 'This tree has used its photo storage', { limitBytes });
 
@@ -110,6 +113,10 @@ export const photosRoutes: FastifyPluginAsync<
       if (!Buffer.isBuffer(req.body)) throw photoRejected('type');
       const limitBytes = config.MAX_PHOTO_BYTES_PER_TREE;
       if ((await photoBytesUsed(db, treeId)) >= limitBytes) throw quotaFull(limitBytes);
+      if ((await totalPhotoBytes(db)) >= config.MAX_TOTAL_PHOTO_BYTES) {
+        req.log.warn('photo upload refused: MAX_TOTAL_PHOTO_BYTES reached');
+        throw storageFull();
+      }
 
       let processed;
       try {

@@ -28,12 +28,13 @@ function setup({
 }
 
 describe('InvitePage', () => {
-  it('previews the invite for a signed-out visitor with sign-in links that keep the invite', async () => {
+  it('previews the invite for a signed-out visitor with sign-in links that keep the invite out of the URL', async () => {
     renderAt(`/invite/${TOKEN}`, setup({ targetPersonName: 'Cy Hale' }));
     expect(await screen.findByRole('heading', { name: 'You’re invited' })).toBeInTheDocument();
     expect(screen.getByText('Bob invited you to Hale family as an editor.')).toBeInTheDocument();
     expect(screen.getByText('The invite says you are Cy Hale in the tree.')).toBeInTheDocument();
-    const next = encodeURIComponent(`/invite/${TOKEN}`);
+    // The token waits in sessionStorage (link-token.ts); the hand-off URL never carries it.
+    const next = encodeURIComponent('/invite');
     expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute(
       'href',
       `/sign-in?next=${next}`,

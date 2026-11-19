@@ -16,6 +16,8 @@ export const ERROR_CODES = [
   'CONFLICT',
   'RATE_LIMITED',
   'QUOTA_EXCEEDED',
+  /** The app-wide photo ceiling (MAX_TOTAL_PHOTO_BYTES) is reached. */
+  'STORAGE_FULL',
   'BAD_REQUEST',
   'UNAUTHENTICATED',
   'INVALID_RESET',

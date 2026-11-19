@@ -6,7 +6,7 @@ test.skip(PROD_LOCAL, 'dev stack only');
 
 /** Opens an invite link in a fresh page, signs up through it and joins the tree. */
 async function joinVia(page: Page, link: string, name: string, treeId: string) {
-  await page.goto(new URL(link).pathname);
+  await page.goto(new URL(link).pathname + new URL(link).hash);
   await page.getByRole('link', { name: 'Create an account' }).click();
   await expect(page).toHaveURL(/\/sign-up\?next=/);
   const url = new URL(page.url());
@@ -33,7 +33,8 @@ test('invite from a card, join as that person; "This is me" for an unlinked memb
   await dialog.getByRole('radio', { name: 'Can add and edit' }).check();
   await dialog.getByRole('button', { name: 'Create invite link' }).click();
   const link = await dialog.getByLabel('Invite link').inputValue();
-  expect(link).toMatch(/\/invite\/[A-Za-z0-9_-]{20,}$/);
+  // The token is after #, so it never reaches a server.
+  expect(link).toMatch(/\/invite#[A-Za-z0-9_-]{20,}$/);
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(
     owner.getByRole('complementary', { name: 'Details' }).getByText('Invite pending'),

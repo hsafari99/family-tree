@@ -5,6 +5,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { requireSession } from '../auth/session-guard.js';
 import { branchStewards, persons, treeMembers, users } from '../db/schema.js';
 import { AppError, forbidden, idParam, notFound, parseBody } from '../errors.js';
+import { can, TREE } from '../permissions/can.js';
 import { authorize, grantCovering, loadAccess } from '../trees/access.js';
 import { audit } from '../trees/audit.js';
 import { grantClosure } from '../trees/grants.js';
@@ -36,7 +37,13 @@ export const stewardsRoutes: FastifyPluginAsync<TreeRouteOptions> = async (app, 
       .leftJoin(granter, eq(granter.id, branchStewards.grantedByUserId))
       .where(eq(branchStewards.treeId, access.treeId))
       .orderBy(branchStewards.createdAt);
-    const stewards: StewardGrant[] = rows;
+    // A grant waiting for 2FA tells whose account has no 2FA. Only the owner (who sees members'
+    // 2FA anyway), the grantee and the granter see those; everyone else sees grants in effect.
+    const details = can(access, 'members.viewDetails', TREE);
+    const stewards: StewardGrant[] = rows.filter(
+      (r) =>
+        details || r.active || r.userId === access.userId || r.grantedByUserId === access.userId,
+    );
     return { stewards };
   });
 

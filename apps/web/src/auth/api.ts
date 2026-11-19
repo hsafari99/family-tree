@@ -122,6 +122,7 @@ export const MESSAGES = {
   avatarTooLarge: 'Profile pictures can be at most 5 MB.',
   avatarBusy: 'Too many photos are being processed, try again shortly.',
   photoQuota: 'This tree has used all of its photo storage. Remove some photos first.',
+  storageFull: 'Photo storage is full for now. Please try again later.',
   searchFailed: 'Search isn’t available right now. Try again.',
   noRelationship: 'They aren’t connected in this tree.',
   personNotFound: 'This person doesn’t exist or has been deleted',

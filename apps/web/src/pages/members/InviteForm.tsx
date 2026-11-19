@@ -1,5 +1,6 @@
 import type { CreatedInvite, Invite, PersonSummary, TreeDetail } from '@family-tree/shared';
 import { type FormEvent, useId, useState } from 'react';
+import { linkUrl } from '../../auth/link-token';
 import { FormError } from '../../components/forms';
 import { personName } from '../../trees/format';
 import { useTreesApi } from '../../trees/TreesApiContext';
@@ -34,8 +35,10 @@ export function InviteForm({
 }) {
   const api = useTreesApi();
   const canSteward = detail.capabilities.grantStewardship;
+  // Nobody can hand out more than they hold: a viewer-steward invites viewers only.
+  const canInviteEditor = detail.me.role !== 'viewer';
   const [choice, setChoice] = useState<Choice>(
-    target ? (canSteward ? 'steward' : 'editor') : 'viewer',
+    target ? (canSteward ? 'steward' : canInviteEditor ? 'editor' : 'viewer') : 'viewer',
   );
   const [anchorId, setAnchorId] = useState('');
   const [targetId, setTargetId] = useState('');
@@ -109,11 +112,11 @@ export function InviteForm({
         {target && canSteward && <>{radio('steward', `Steward of ${given}’s branch`)} </>}
         {target ? (
           <>
-            {radio('editor', 'Can add and edit')} {radio('viewer', 'Can view')}
+            {canInviteEditor && radio('editor', 'Can add and edit')} {radio('viewer', 'Can view')}
           </>
         ) : (
           <>
-            {radio('viewer', 'Can view')} {radio('editor', 'Can add and edit')}
+            {radio('viewer', 'Can view')} {canInviteEditor && radio('editor', 'Can add and edit')}
           </>
         )}
         {target && canSteward && (
@@ -174,7 +177,7 @@ export function InviteForm({
 /** The link of an invite just made: shown once, so it says so. */
 export function InviteLink({ created }: { created: CreatedInvite }) {
   return (
-    <CopyLink label="Invite link" url={`${window.location.origin}/invite/${created.token}`}>
+    <CopyLink label="Invite link" url={linkUrl('invite', created.token)}>
       Send this link to them yourself, by message or email. It works once and expires on{' '}
       {new Date(created.expiresAt).toLocaleDateString()}. You won&apos;t be able to see this link
       again.

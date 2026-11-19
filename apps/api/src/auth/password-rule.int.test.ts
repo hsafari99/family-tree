@@ -109,3 +109,51 @@ describe('the new-password rule', () => {
     expect((await signIn(app, { email, password: WEAK })).res.statusCode).toBe(200);
   });
 });
+
+describe('the display-name rule', () => {
+  it.each([
+    ['empty', '   '],
+    ['too long', 'a'.repeat(101)],
+    ['a control character', 'Ann\u0007'],
+    ['a right-to-left override', 'Ann‮eno'],
+  ])('sign-up refuses a name that is %s', async (_label, name) => {
+    const res = await call(app, 'POST', '/api/auth/sign-up/email', {
+      body: { email: uniqueEmail(), password: TEST_PASSWORD, name },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ code: 'INVALID_NAME' });
+  });
+
+  it('sign-up refuses an image URL', async () => {
+    const res = await call(app, 'POST', '/api/auth/sign-up/email', {
+      body: {
+        email: uniqueEmail(),
+        password: TEST_PASSWORD,
+        name: 'Ann',
+        image: 'https://x.test/a.png',
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ code: 'IMAGE_NOT_ALLOWED' });
+  });
+
+  it('update-user checks the name and refuses an image', async () => {
+    const user = await signUp(app);
+    const bad = await call(app, 'POST', '/api/auth/update-user', {
+      jar: user.jar,
+      body: { name: 'x'.repeat(5000) },
+    });
+    expect(bad.statusCode).toBe(400);
+    expect(bad.json()).toMatchObject({ code: 'INVALID_NAME' });
+    const image = await call(app, 'POST', '/api/auth/update-user', {
+      jar: user.jar,
+      body: { image: 'https://x.test/a.png' },
+    });
+    expect(image.statusCode).toBe(400);
+    const ok = await call(app, 'POST', '/api/auth/update-user', {
+      jar: user.jar,
+      body: { name: 'Ann Smith' },
+    });
+    expect(ok.statusCode).toBe(200);
+  });
+});

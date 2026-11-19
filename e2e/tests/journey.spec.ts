@@ -43,14 +43,16 @@ test('spec §9: family, steward invite, steward edits and deletes, owner restore
   await owner.getByLabel('Make them a steward of').selectOption({ label: 'Pete Partner' });
   await owner.getByRole('button', { name: 'Create invite link' }).click();
   const link = await owner.getByLabel('Invite link').inputValue();
-  expect(link).toMatch(/\/invite\/[A-Za-z0-9_-]{20,}$/);
+  // The token is after #, so it never reaches a server.
+  expect(link).toMatch(/\/invite#[A-Za-z0-9_-]{20,}$/);
 
   // 4. A second user opens the link, signs up, joins and turns on 2FA (the grant needs it).
   const stewardCtx = await browser.newContext();
   const steward = await stewardCtx.newPage();
-  await steward.goto(new URL(link).pathname);
+  await steward.goto(new URL(link).pathname + new URL(link).hash);
   await steward.getByRole('link', { name: 'Create an account' }).click();
-  await expect(steward).toHaveURL(/\/sign-up\?next=/);
+  // The hand-off carries only /invite; the token waits in the tab's storage.
+  await expect(steward).toHaveURL(/\/sign-up\?next=%2Finvite$/);
   const signUpPath = new URL(steward.url()).pathname + new URL(steward.url()).search;
   const sam = await signUpViaUi(steward, 'Sam Steward', signUpPath);
   await steward.getByRole('button', { name: /^Join / }).click();

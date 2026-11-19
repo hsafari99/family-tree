@@ -16,3 +16,7 @@ coverage/
 /e2e/.state/
 /e2e/test-results/
 /e2e/playwright-report/
+
+# Private operations notes and internal review notes. The repo is public: never commit these.
+/.claude/skills/guiding-third-party-ops/
+/docs/security/

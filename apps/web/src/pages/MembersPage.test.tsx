@@ -334,7 +334,7 @@ describe('MembersPage', () => {
     await screen.findByText('a@example.com');
     pick(rowOf('Invited By Me'), 'Invited By Me', 'Reset link');
     const input = (await screen.findByLabelText('Reset link')) as HTMLInputElement;
-    expect(input.value).toBe(`${window.location.origin}/reset/fake-reset-1`);
+    expect(input.value).toBe(`${window.location.origin}/reset#fake-reset-1`);
     expect(
       screen.getByText(/Send this link to Invited By Me yourself. It works once, for 24 hours./),
     ).toBeInTheDocument();
@@ -364,9 +364,10 @@ describe('MembersPage', () => {
     const s = setup('steward');
     renderAt(`/trees/${s.id}/members`, s);
     await screen.findByText('Other Person', { selector: '.member-name' });
+    // A viewer-steward can only give "viewer", so there is no role choice.
     expect(
-      within(rowOf('Invited By Me')).getByLabelText('Role for Invited By Me'),
-    ).toBeInTheDocument();
+      within(rowOf('Invited By Me')).queryByLabelText('Role for Invited By Me'),
+    ).not.toBeInTheDocument();
     expect(
       within(rowOf('Invited By Me')).getByRole('button', { name: 'Remove' }),
     ).toBeInTheDocument();
@@ -376,6 +377,7 @@ describe('MembersPage', () => {
     expect(screen.queryByRole('button', { name: /More actions for/ })).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Invite someone' })).toBeInTheDocument();
     openInviteForm();
+    expect(screen.queryByLabelText('Can add and edit')).not.toBeInTheDocument();
     // A steward may only anchor stewardship in their own branch.
     const anchors = within(screen.getByLabelText('Make them a steward of'));
     expect(anchors.getByRole('option', { name: 'Bob Hale' })).toBeInTheDocument();
@@ -403,7 +405,7 @@ describe('MembersPage', () => {
     fireEvent.change(screen.getByLabelText('This invite is for'), { target: { value: cy.id } });
     fireEvent.click(screen.getByRole('button', { name: 'Create invite link' }));
     const input = (await screen.findByLabelText('Invite link')) as HTMLInputElement;
-    expect(input.value).toBe(`${window.location.origin}/invite/fake-token-1`);
+    expect(input.value).toBe(`${window.location.origin}/invite#fake-token-1`);
     expect(screen.getByText(/You won't be able to see this link again/)).toBeInTheDocument();
     // The form closes once its link is made (nothing left as a draft); the next one starts over.
     expect(screen.queryByRole('button', { name: 'Create invite link' })).not.toBeInTheDocument();

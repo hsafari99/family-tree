@@ -22,6 +22,14 @@ export const TWO_FACTOR_MAX_FAILED_ATTEMPTS = 5;
 /** Better Auth's default lock duration (accountLockout.durationSeconds), stated explicitly. */
 export const TWO_FACTOR_LOCK_SECONDS = 15 * 60;
 
+/**
+ * The budget of the unsigned-in checks (verifyAndConsumeSecondFactor): this many wrong codes in a
+ * row, then those checks are refused for RESET_LOCK_SECONDS. About 5 guesses a day per account
+ * keeps a 6-digit code out of reach of brute force.
+ */
+export const RESET_MAX_FAILED_ATTEMPTS = 5;
+export const RESET_LOCK_SECONDS = 24 * 60 * 60;
+
 /** totp/index.mjs decryptTOTPSecret: secrets may be stored as "base32:<encoded>". */
 export async function decryptTotpSecret(
   key: TwoFactorKey,
@@ -84,6 +92,21 @@ export async function recordFailure(tx: Tx, twoFactorId: string): Promise<void> 
   }
 }
 
+/** One more wrong code on an unsigned-in check, and the reset lock once the budget is spent. */
+async function recordResetFailure(tx: Tx, twoFactorId: string): Promise<void> {
+  const [row] = await tx
+    .update(twoFactors)
+    .set({ resetFailedCount: sql`${twoFactors.resetFailedCount} + 1` })
+    .where(eq(twoFactors.id, twoFactorId))
+    .returning({ failed: twoFactors.resetFailedCount });
+  if ((row?.failed ?? 0) >= RESET_MAX_FAILED_ATTEMPTS) {
+    await tx
+      .update(twoFactors)
+      .set({ resetLockedUntil: new Date(Date.now() + RESET_LOCK_SECONDS * 1000) })
+      .where(eq(twoFactors.id, twoFactorId));
+  }
+}
+
 function writeBackupCodes(key: TwoFactorKey, codes: string[]): Promise<string> {
   return symmetricEncrypt({ key, data: JSON.stringify(codes) });
 }
@@ -104,7 +127,7 @@ export async function checkSecondFactor(
   key: TwoFactorKey,
   userId: string,
   code: string,
-  { countFailures }: { countFailures: boolean },
+  { countFailures, resetBudget = false }: { countFailures: boolean; resetBudget?: boolean },
 ): Promise<{ result: SecondFactorCheck; via?: 'totp' | 'recovery_code' }> {
   return db.transaction(async (tx) => {
     const [row] = await tx
@@ -118,6 +141,13 @@ export async function checkSecondFactor(
       if ((await checkLockout(tx, row)) === 'locked') return { result: 'locked' };
     } else if (row.lockedUntil && row.lockedUntil.getTime() > Date.now()) {
       return { result: 'locked' };
+    }
+    if (resetBudget && row.resetLockedUntil) {
+      if (row.resetLockedUntil.getTime() > Date.now()) return { result: 'locked' };
+      await tx
+        .update(twoFactors)
+        .set({ resetFailedCount: 0, resetLockedUntil: null })
+        .where(eq(twoFactors.id, row.id));
     }
 
     let updatedBackupCodes: string | undefined;
@@ -138,6 +168,7 @@ export async function checkSecondFactor(
 
     if (!valid) {
       if (countFailures) await recordFailure(tx, row.id);
+      if (resetBudget) await recordResetFailure(tx, row.id);
       return { result: 'invalid' };
     }
 
@@ -146,6 +177,8 @@ export async function checkSecondFactor(
       .set({
         failedVerificationCount: 0,
         lockedUntil: null,
+        resetFailedCount: 0,
+        resetLockedUntil: null,
         ...(updatedBackupCodes === undefined ? {} : { backupCodes: updatedBackupCodes }),
       })
       .where(eq(twoFactors.id, row.id));
@@ -154,10 +187,11 @@ export async function checkSecondFactor(
 }
 
 /**
- * checkSecondFactor without counting failures, for the email-only reset route and for Connect or
- * Disconnect Google. A failure there does NOT count toward the lock: the reset route needs only
- * an email, so counting would let anyone lock a user out of sign-in. Guessing stays bounded by
- * the routes' rate limits (5 per email and 20 per IP per 15 minutes).
+ * checkSecondFactor for the email-only reset route and for Connect or Disconnect Google. A failure
+ * there does NOT count toward the sign-in lock: the reset route needs only an email, so counting
+ * would let anyone lock a user out of sign-in. It counts toward the separate reset budget
+ * instead: after RESET_MAX_FAILED_ATTEMPTS wrong codes these checks are refused for a day, so the
+ * code can't be brute-forced however many IPs are used. A success clears both counters.
  *
  * Like Better Auth, an authenticator code stays valid for its whole window (±1 step), so it can
  * be replayed within ~90 seconds. Accepted: the attacker would also need the email, and the
@@ -170,6 +204,7 @@ export async function verifyAndConsumeSecondFactor(
   code: string,
 ): Promise<boolean> {
   return (
-    (await checkSecondFactor(db, key, userId, code, { countFailures: false })).result === 'valid'
+    (await checkSecondFactor(db, key, userId, code, { countFailures: false, resetBudget: true }))
+      .result === 'valid'
   );
 }

@@ -47,7 +47,13 @@ const ROWS: Row[] = [
   ['relation.delete', { kind: 'people', personIds: [IN] }, [true, false, false, true, true]],
   [
     'invite.create',
+    // A viewer-steward can't hand out more than they hold.
     { kind: 'invite', role: 'editor', stewardAnchorPersonId: null, targetPersonId: null },
+    [true, false, false, false, true],
+  ],
+  [
+    'invite.create',
+    { kind: 'invite', role: 'viewer', stewardAnchorPersonId: null, targetPersonId: null },
     [true, false, false, true, true],
   ],
   [
@@ -124,6 +130,19 @@ describe('can: rules that depend on who made something', () => {
       // A former steward (no grants left) no longer manages the people they invited.
       expect(can({ ...steward, grants: [] }, action, invitedBySteward)).toBe(false);
     }
+  });
+  it('member.changeRole: a steward gives at most their own base role', () => {
+    const t = { kind: 'member', role: 'viewer', invitedByUserId: 'steward' } as const;
+    expect(can(steward, 'member.changeRole', { ...t, newRole: 'viewer' })).toBe(true);
+    expect(can(steward, 'member.changeRole', { ...t, newRole: 'editor' })).toBe(false);
+    const es = { kind: 'member', role: 'viewer', invitedByUserId: 'es' } as const;
+    expect(can(editorSteward, 'member.changeRole', { ...es, newRole: 'editor' })).toBe(true);
+    expect(can(owner, 'member.changeRole', { ...t, newRole: 'editor' })).toBe(true);
+  });
+  it('member.changeRole / member.remove: a viewer-steward cannot manage an editor', () => {
+    const t = { kind: 'member', role: 'editor', invitedByUserId: 'steward' } as const;
+    expect(can(steward, 'member.changeRole', { ...t, newRole: 'viewer' })).toBe(false);
+    expect(can(steward, 'member.remove', t)).toBe(false);
   });
   it('member.link: the owner only', () => {
     expect(can(owner, 'member.link', TREE)).toBe(true);

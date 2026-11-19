@@ -135,7 +135,7 @@ export const homeRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
               )
               .groupBy(invites.treeId)
           : Promise.resolve([]),
-        recentActivity(db, ids),
+        recentActivity(db, ids, user.id),
       ]);
 
       const peopleOf = new Map(people.map((r) => [r.treeId, r.n]));
@@ -233,14 +233,19 @@ export const homeRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
   );
 };
 
+/** Rows read before privacy filtering, so hidden people rarely leave the feed short. */
+const ACTIVITY_FETCH = ACTIVITY_LIMIT * 4;
+
 /**
  * The newest changes in these trees that a member could also find in someone's History: only
  * people and relation rows (decision 13), and only those that still concern a live person, who
- * names the entry (the first live one in the row's person list).
+ * names the entry (the first live one in the row's person list). Like History, an entry is left
+ * out when its person's privacy hides them from the caller (privacy spec R2).
  */
 async function recentActivity(
   db: TreeRouteOptions['db'],
   treeIds: string[],
+  userId: string,
 ): Promise<ActivityEntry[]> {
   const prefixes = sql.join(
     HISTORY_ACTION_PREFIXES.map((p) => sql`a.action like ${`${p}%`}`),
@@ -276,9 +281,15 @@ async function recentActivity(
     ) p on true
     where a.tree_id in (${ids}) and (${prefixes})
     order by a.created_at desc, a.id desc
-    limit ${ACTIVITY_LIMIT}
+    limit ${ACTIVITY_FETCH}
   `);
-  return rows.map((r) => ({
+  const visible = new Map<string, (personId: string) => boolean>();
+  for (const treeId of new Set(rows.map((r) => r.tree_id))) {
+    const vis = await loadVisibility(db, await loadAccess(db, treeId, userId));
+    visible.set(treeId, (id) => vis.full(id));
+  }
+  const shown = rows.filter((r) => visible.get(r.tree_id)!(r.person_id)).slice(0, ACTIVITY_LIMIT);
+  return shown.map((r) => ({
     id: r.id,
     treeId: r.tree_id,
     treeName: r.tree_name,

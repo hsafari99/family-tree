@@ -2,6 +2,7 @@ import { resetWithLinkSchema } from '@family-tree/shared';
 import { type FormEvent, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
+import { forgetLinkToken, takeLinkToken } from '../auth/link-token';
 import { ErrorSummary, type FieldErrors, FormError, validate } from '../components/forms';
 import {
   confirmError,
@@ -16,7 +17,8 @@ export const INVALID_LINK = 'This reset link is invalid or has already been used
 
 export function ResetLinkPage() {
   const { api } = useAuth();
-  const { token = '' } = useParams();
+  const params = useParams();
+  const [token] = useState(() => takeLinkToken('reset', params.token));
   const [newPassword, setNewPassword] = useState('');
   const [repeat, setRepeat] = useState('');
   const [errors, setErrors] = useState<FieldErrors>({});
@@ -44,6 +46,7 @@ export function ResetLinkPage() {
       else setServerError(res.error.code === 'INVALID_RESET' ? INVALID_LINK : res.error.message);
       return;
     }
+    forgetLinkToken('reset');
     setDone(true);
   }
 

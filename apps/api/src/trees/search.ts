@@ -1,5 +1,5 @@
-import { BIRTH_YEAR_SLACK, type ParsedSearchQuery, SEARCH_WORDS_MAX } from '@family-tree/shared';
-import { and, asc, between, desc, eq, gte, isNull, lte, or, type SQL, sql } from 'drizzle-orm';
+import { type ParsedSearchQuery, SEARCH_WORDS_MAX } from '@family-tree/shared';
+import { and, asc, desc, eq, gte, isNull, lte, or, type SQL, sql } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import type { Db } from '../db/client.js';
 import { persons, photos, residences } from '../db/schema.js';
@@ -88,18 +88,16 @@ export function searchPersons(db: Db, treeId: string, q: ParsedSearchQuery) {
 export function similarCandidates(
   db: Db,
   treeId: string,
-  q: { givenName: string; surname?: string | undefined; birthYear?: number | undefined },
+  q: { givenName: string; surname?: string | undefined },
 ) {
   const given = norm(q.givenName);
-  // Given-name plus surname similarity, then the closest birth year, so the 200-row cap never
-  // drops the best match in a tree full of one first name.
+  // Given-name plus surname similarity, so the 200-row cap keeps the best name matches. The birth
+  // year is deliberately not used here: it may be hidden from the viewer (R3), and filtering or
+  // ordering on it before masking would let repeated calls narrow it down.
+  // findSimilar applies the year rule to the masked rows.
   const nameScore = q.surname
     ? sql`word_similarity(${given}, ${persons.searchName}) + word_similarity(${norm(q.surname)}, ${persons.searchName})`
     : sql`word_similarity(${given}, ${persons.searchName})`;
-  const yearGap =
-    q.birthYear === undefined
-      ? sql`0::int`
-      : sql`abs(${persons.birthSortYear} - ${q.birthYear}) nulls last`;
   return db.transaction(
     async (tx) => {
       await tx.execute(threshold(SIMILAR_THRESHOLD));
@@ -111,19 +109,9 @@ export function similarCandidates(
             eq(persons.treeId, treeId),
             isNull(persons.deletedAt),
             sql`${given} <% ${persons.searchName}`,
-            q.birthYear === undefined
-              ? undefined
-              : or(
-                  isNull(persons.birthSortYear),
-                  between(
-                    persons.birthSortYear,
-                    q.birthYear - BIRTH_YEAR_SLACK,
-                    q.birthYear + BIRTH_YEAR_SLACK,
-                  ),
-                ),
           ),
         )
-        .orderBy(desc(nameScore), yearGap, asc(persons.id))
+        .orderBy(desc(nameScore), asc(persons.id))
         .limit(SIMILAR_CANDIDATES);
     },
     { accessMode: 'read only' },

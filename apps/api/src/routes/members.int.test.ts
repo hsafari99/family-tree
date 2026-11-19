@@ -13,7 +13,15 @@ import {
 import { buildApp } from '../app.js';
 import { createAuth } from '../auth/auth.js';
 import { loadConfig } from '../config.js';
-import { branchStewards, invites, resetLinks, treeMembers, trees, users } from '../db/schema.js';
+import {
+  accounts,
+  branchStewards,
+  invites,
+  resetLinks,
+  treeMembers,
+  trees,
+  users,
+} from '../db/schema.js';
 import { createDeps } from '../deps.js';
 import { hashToken, newToken } from '../security/tokens.js';
 
@@ -89,6 +97,14 @@ describe('PATCH member role', () => {
     const { owner, treeId, E, V, S, W } = await setup();
     const patch = (jar: CookieJar, id: string, role: string) =>
       call(app, 'PATCH', `${members(treeId)}/${id}`, { jar, body: { role } });
+    // A viewer-steward can't give more than they hold.
+    expect((await patch(S.jar, W.userId, 'editor')).statusCode).toBe(403);
+    expect(await roleOf(treeId, W.userId)).toBe('viewer');
+    expect((await patch(S.jar, W.userId, 'viewer')).statusCode).toBe(204);
+    await db
+      .update(treeMembers)
+      .set({ role: 'editor' })
+      .where(and(eq(treeMembers.treeId, treeId), eq(treeMembers.userId, S.userId)));
     expect((await patch(S.jar, W.userId, 'editor')).statusCode).toBe(204);
     expect(await roleOf(treeId, W.userId)).toBe('editor');
     expect((await patch(S.jar, V.userId, 'editor')).statusCode).toBe(403);
@@ -282,6 +298,21 @@ describe('POST reset-link', () => {
       body: { token, newPassword: 'A brand new passphrase1' },
     });
     expect(use.statusCode).toBe(204);
+  });
+
+  it('refuses a member with Google connected, at issue and at use', async () => {
+    const { owner, treeId, V, W } = await setup();
+    const early = (await issue(owner.jar, treeId, W.userId)).json().token as string;
+    for (const userId of [V.userId, W.userId]) {
+      await db.insert(accounts).values({ userId, providerId: 'google', accountId: `g-${userId}` });
+    }
+    const res = await issue(owner.jar, treeId, V.userId);
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe('RESET_LINK_NOT_ALLOWED');
+    const use = await call(app, 'POST', '/api/v1/password-reset/link', {
+      body: { token: early, newPassword: 'A brand new passphrase1' },
+    });
+    expect(use.statusCode).toBe(400);
   });
 
   it('refuses 2FA members, foreign trees, yourself, and non-owners', async () => {

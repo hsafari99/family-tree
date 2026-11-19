@@ -68,6 +68,17 @@ export const configSchema = z
       .min(1)
       .max(1_099_511_627_776)
       .default(1_073_741_824),
+    // Photo storage across the whole app, in bytes (default 50 GiB): a ceiling on cost and backup
+    // size however many accounts are made.
+    MAX_TOTAL_PHOTO_BYTES: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(1_099_511_627_776 * 100)
+      .default(53_687_091_200),
+    // New accounts across the whole app in any 24 hours (email and Google), against scripted
+    // sign-ups from many IPs.
+    MAX_SIGNUPS_PER_DAY: z.coerce.number().int().min(1).max(1_000_000).default(200),
     // Google sign-in (spec §5): on only when both are set. Never logged.
     GOOGLE_CLIENT_ID: optionalSecret(),
     GOOGLE_CLIENT_SECRET: optionalSecret(),

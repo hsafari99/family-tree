@@ -37,6 +37,7 @@ export function AppRoutes() {
         <Route path="/sign-in" element={<SignInPage />} />
         <Route path="/sign-in/verify" element={<VerifyTwoFactorPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset" element={<ResetLinkPage />} />
         <Route path="/reset/:token" element={<ResetLinkPage />} />
         <Route
           path="/account"
@@ -119,6 +120,7 @@ export function AppRoutes() {
             </RequireAuth>
           }
         />
+        <Route path="/invite" element={<InvitePage />} />
         <Route path="/invite/:token" element={<InvitePage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>

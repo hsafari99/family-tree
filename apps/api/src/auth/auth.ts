@@ -2,10 +2,11 @@ import {
   PASSWORD_CLASSES_MESSAGE,
   PASSWORD_MAX,
   PASSWORD_MIN,
+  nameSchema,
   passwordSchema,
 } from '@family-tree/shared';
 import { betterAuth } from 'better-auth';
-import { eq } from 'drizzle-orm';
+import { count, eq, gt } from 'drizzle-orm';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { APIError, createAuthMiddleware, getSessionFromCtx } from 'better-auth/api';
 import { twoFactor } from 'better-auth/plugins';
@@ -191,6 +192,7 @@ export function createAuth({ config, db, rateLimitEnabled, log, storage }: AuthO
         blockUnlinkEndpoint(ctx);
         await confirmLink(ctx, db);
         checkNewPassword(ctx);
+        checkName(ctx);
         // Without a password Better Auth deletes any session younger than a day unchecked.
         if (ctx.path === '/delete-user' || ctx.path === '/delete-user/callback') {
           const password = (ctx.body as { password?: unknown } | undefined)?.password;
@@ -215,6 +217,29 @@ export function createAuth({ config, db, rateLimitEnabled, log, storage }: AuthO
       after: createAuthMiddleware(async (ctx) => {
         await challengeSocialSignIn(ctx, config.WEB_ORIGIN);
       }),
+    },
+    // A ceiling on new accounts across the app in any 24 hours, for email and Google sign-ups
+    // alike, so a script spread over many IPs can't make accounts without end.
+    databaseHooks: {
+      user: {
+        create: {
+          before: async () => {
+            const [row] = await db
+              .select({ n: count() })
+              .from(users)
+              .where(gt(users.createdAt, new Date(Date.now() - 86_400_000)));
+            // The dev/E2E switch lifts it, like the other limits (production refuses that switch).
+            if (!config.AUTH_RATE_LIMIT_ENABLED) return;
+            if ((row?.n ?? 0) >= config.MAX_SIGNUPS_PER_DAY) {
+              log?.warn({}, 'sign-up refused: MAX_SIGNUPS_PER_DAY reached');
+              throw APIError.from('FORBIDDEN', {
+                code: 'SIGN_UPS_PAUSED',
+                message: 'New sign-ups are paused for now. Please try again tomorrow.',
+              });
+            }
+          },
+        },
+      },
     },
     emailVerification: { sendOnSignUp: false },
     // cookieCache stays off: with it, a revoked session would keep working until the cache expires.
@@ -282,6 +307,30 @@ function checkNewPassword(ctx: { path: string; body?: unknown }) {
     throw APIError.from('BAD_REQUEST', {
       code: 'WEAK_PASSWORD',
       message: PASSWORD_CLASSES_MESSAGE,
+    });
+  }
+}
+
+/**
+ * Better Auth accepts any name, of any length: the shared rule is checked here, so other members
+ * never see an oversized or disguised name (invites, members, history). The app sets no profile
+ * image through Better Auth (avatars have their own route), so `image` is refused outright.
+ */
+function checkName(ctx: { path: string; body?: unknown }) {
+  if (ctx.path !== '/sign-up/email' && ctx.path !== '/update-user') return;
+  const body = (ctx.body ?? {}) as Record<string, unknown>;
+  if ('image' in body && body.image !== undefined) {
+    throw APIError.from('BAD_REQUEST', {
+      code: 'IMAGE_NOT_ALLOWED',
+      message: 'Use the avatar upload',
+    });
+  }
+  if (ctx.path === '/update-user' && body.name === undefined) return;
+  const parsed = nameSchema.safeParse(body.name);
+  if (!parsed.success) {
+    throw APIError.from('BAD_REQUEST', {
+      code: 'INVALID_NAME',
+      message: parsed.error.issues[0]?.message ?? 'Enter your name',
     });
   }
 }

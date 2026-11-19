@@ -418,6 +418,11 @@ export const twoFactors = pgTable('two_factors', {
   verified: boolean('verified').notNull().default(false),
   failedVerificationCount: integer('failed_verification_count').notNull().default(0),
   lockedUntil: timestamp('locked_until', { withTimezone: true }),
+  // Our own budget for the checks anyone can reach without being signed in (reset by code) or
+  // that guard account links (Connect/Disconnect Google). Kept apart from Better Auth's sign-in
+  // lock, so spending it never locks the user out of signing in (totp-reset.ts).
+  resetFailedCount: integer('reset_failed_count').notNull().default(0),
+  resetLockedUntil: timestamp('reset_locked_until', { withTimezone: true }),
 });
 
 // Spec §5: moving 2FA to a new phone. The new authenticator secret waits here, encrypted exactly

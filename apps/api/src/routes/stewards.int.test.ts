@@ -134,6 +134,21 @@ describe('GET stewards', () => {
       active: true,
     });
   });
+
+  it('shows a grant waiting for 2FA only to the owner and the grantee', async () => {
+    const { owner, treeId, robert, S3, E } = await setup();
+    await call(app, 'POST', url(treeId), {
+      jar: owner.jar,
+      body: { userId: S3.userId, anchorPersonId: robert.id },
+    });
+    const sees = async (jar: typeof E.jar) =>
+      (await call(app, 'GET', url(treeId), { jar }))
+        .json()
+        .stewards.some((s: { userId: string }) => s.userId === S3.userId) as boolean;
+    expect(await sees(owner.jar)).toBe(true);
+    expect(await sees(S3.jar)).toBe(true);
+    expect(await sees(E.jar)).toBe(false);
+  });
 });
 
 describe('DELETE stewards', () => {

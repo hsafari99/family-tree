@@ -22,7 +22,7 @@ import {
 import { userWith2fa } from '../../test/tree-helpers.js';
 import { buildApp } from '../app.js';
 import { loadConfig } from '../config.js';
-import { accounts, sessions } from '../db/schema.js';
+import { accounts, sessions, twoFactors } from '../db/schema.js';
 import { createDeps } from '../deps.js';
 import { createAuth } from './auth.js';
 
@@ -227,6 +227,24 @@ describe('Disconnect Google', () => {
     const ok = await disconnect(tf.jar, { password: TEST_PASSWORD, code: tf.backupCodes[0] });
     expect(ok.statusCode).toBe(204);
     expect(await providersOf(tf.userId)).toEqual(['credential']);
+  });
+
+  it('refuses even a correct code while the code-check lock holds', async () => {
+    const tf = await userWith2fa(app);
+    await connect(tf.jar, googleProfile(), {
+      password: TEST_PASSWORD,
+      code: await totpNow(tf.rawSecret),
+    });
+    await deps.db
+      .update(twoFactors)
+      .set({ resetFailedCount: 5, resetLockedUntil: new Date(Date.now() + 3600_000) })
+      .where(eq(twoFactors.userId, tf.userId));
+    const res = await disconnect(tf.jar, {
+      password: TEST_PASSWORD,
+      code: await totpNow(tf.rawSecret),
+    });
+    expect(res.json().error.code).toBe('INVALID_CODE');
+    expect(await providersOf(tf.userId)).toEqual(['credential', 'google']);
   });
 
   it('refuses when Google is the only way in', async () => {

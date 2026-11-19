@@ -13,6 +13,8 @@ Object.assign(process.env, {
   DATABASE_URL: process.env.TEST_DATABASE_URL ?? fileEnv.TEST_DATABASE_URL,
   S3_BUCKET: 'family-photos-test',
   LOG_LEVEL: 'silent',
+  // The suites sign up thousands of users a day; the ceiling has its own test.
+  MAX_SIGNUPS_PER_DAY: '1000000',
 });
 
 export default defineConfig({

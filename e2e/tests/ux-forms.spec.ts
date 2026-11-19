@@ -81,7 +81,7 @@ test('the reset page checks that the two new passwords match', async ({ page }) 
       )
     ).json()) as { token: string };
 
-    await page.goto(`/reset/${token}`);
+    await page.goto(`/reset#${token}`);
     // Both new-password fields have the eye toggle.
     await expect(page.getByRole('button', { name: 'Show password' })).toHaveCount(2);
     await page.getByLabel('New password', { exact: true }).fill('Brand-new-password1');
@@ -92,7 +92,8 @@ test('the reset page checks that the two new passwords match', async ({ page }) 
       page.getByLabel('Repeat new password', { exact: true }),
     ).toHaveAccessibleDescription(mismatch);
     await expect(page.getByRole('alert')).toContainText(`Repeat new password: ${mismatch}`);
-    await expect(page).toHaveURL(new RegExp(`/reset/${token}$`));
+    // The token leaves the address bar on arrival (link-token.ts); the form stays put.
+    await expect(page).toHaveURL(/\/reset$/);
   } finally {
     await ownerCtx.dispose();
     await memberCtx.dispose();

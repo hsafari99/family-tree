@@ -61,6 +61,8 @@ S3_BUCKET=family-photos
 S3_ACCESS_KEY_ID=$key
 S3_SECRET_ACCESS_KEY=$secret
 S3_FORCE_PATH_STYLE=true
+# The E2E suite signs up more than a real day's worth of people.
+MAX_SIGNUPS_PER_DAY=1000000
 AGE_RECIPIENT=
 BACKUP_ROOT=backup:/backups
 RCLONE_S3_PROVIDER=Other
