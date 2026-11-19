@@ -7,7 +7,7 @@ test.skip(PROD_LOCAL, 'dev stack only');
 
 /** Opens an invite link in a fresh page, signs up through it and joins the tree. */
 async function joinVia(page: Page, link: string, name: string, treeId: string): Promise<Account> {
-  await page.goto(new URL(link).pathname);
+  await page.goto(new URL(link).pathname + new URL(link).hash);
   await page.getByRole('link', { name: 'Create an account' }).click();
   await expect(page).toHaveURL(/\/sign-up\?next=/);
   const url = new URL(page.url());
@@ -68,7 +68,9 @@ test('two trees linked through the person in both: request, accept, unfold, end'
   const panel = olive.getByRole('complementary', { name: 'Details' });
   await expect(panel.getByRole('heading', { level: 2, name: /^Dariush Rahimi/ })).toBeVisible();
   await expect(panel.getByText('View only')).toBeVisible();
-  await expect(olive.getByRole('button', { name: 'Add a parent of Dariush Rahimi' })).toHaveCount(0);
+  await expect(olive.getByRole('button', { name: 'Add a parent of Dariush Rahimi' })).toHaveCount(
+    0,
+  );
 
   // Olive ends the link: the other tree is gone from her canvas.
   await olive.goto(`/trees/${king}/members`);

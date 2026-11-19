@@ -304,6 +304,9 @@ describe('tree links: what a visitor sees', () => {
     const dad = (await get(s.vee, url(s.dad.id))).json();
     expect(dad.tree.name).toBe('Rahimi family');
     expect(dad.view.capabilities).toEqual({ edit: false, addRelative: false, delete: false });
+    // The other tree's storage use and who made the card stay with that tree.
+    expect(dad.view.photoUsage).toEqual({ usedBytes: 0, limitBytes: 0 });
+    expect(dad.view.person.createdByName).toBeNull();
     const kids = dad.view.relations.unions[0].children.map(
       (c: { person: { id: string } }) => c.person.id,
     );

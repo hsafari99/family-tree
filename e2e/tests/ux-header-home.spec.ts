@@ -137,12 +137,12 @@ test('account menu: the picture follows an upload, Account opens, Sign out signs
   await expect(accountMenu(page).locator('img')).toHaveCount(0);
   await accountMenu(page).click();
   const menu = page.getByRole('menu', { name: 'Account menu' });
-  // The last item is the web app's version (information, not an action).
-  await expect(menu.getByRole('menuitem')).toHaveText([
-    'Account',
-    'Sign out',
-    /^Version \d+\.\d+\.\d+$/,
-  ]);
+  // "Support Family Tree" shows only where donation links are configured (apps/web/.env.local),
+  // so it may or may not be there. The last item is the web app's version, not an action.
+  const items = menu.getByRole('menuitem');
+  await expect(items.first()).toHaveText('Account');
+  await expect(items.nth(1)).toHaveText('Sign out');
+  await expect(items.last()).toHaveText(/^Version \d+\.\d+\.\d+$/);
   await expect(menu.getByRole('menuitem', { name: /^Version / })).toBeDisabled();
   await expect(menu.getByRole('menuitem', { name: 'Account' })).toBeFocused();
   await page.keyboard.press('Enter');

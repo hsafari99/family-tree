@@ -255,6 +255,10 @@ export async function linkedPerson(
     treeName,
     view: {
       ...view,
+      // A view across a link isn't the other tree's own page: its storage use and who made each
+      // card are that tree's business (a visitor isn't one of its members).
+      person: { ...view.person, createdByName: null },
+      photoUsage: { usedBytes: 0, limitBytes: 0 },
       relations: {
         parents: view.relations.parents.map((r) => ({
           ...r,
