@@ -137,7 +137,13 @@ test('account menu: the picture follows an upload, Account opens, Sign out signs
   await expect(accountMenu(page).locator('img')).toHaveCount(0);
   await accountMenu(page).click();
   const menu = page.getByRole('menu', { name: 'Account menu' });
-  await expect(menu.getByRole('menuitem')).toHaveText(['Account', 'Sign out']);
+  // The last item is the web app's version (information, not an action).
+  await expect(menu.getByRole('menuitem')).toHaveText([
+    'Account',
+    'Sign out',
+    /^Version \d+\.\d+\.\d+$/,
+  ]);
+  await expect(menu.getByRole('menuitem', { name: /^Version / })).toBeDisabled();
   await expect(menu.getByRole('menuitem', { name: 'Account' })).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/\/account$/);

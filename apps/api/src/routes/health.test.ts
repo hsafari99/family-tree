@@ -20,13 +20,21 @@ describe('GET /api/v1/health', () => {
   it('returns 200 when every check passes', async () => {
     const res = await call({ checkDb: ok, checkStorage: ok });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ status: 'ok', checks: { db: 'ok', storage: 'ok' }, version: API_VERSION });
+    expect(res.json()).toEqual({
+      status: 'ok',
+      checks: { db: 'ok', storage: 'ok' },
+      version: API_VERSION,
+    });
   });
 
   it('returns 503 and names the failing check without leaking details', async () => {
     const res = await call({ checkDb: fail, checkStorage: ok });
     expect(res.statusCode).toBe(503);
-    expect(res.json()).toEqual({ status: 'degraded', checks: { db: 'error', storage: 'ok' }, version: API_VERSION });
+    expect(res.json()).toEqual({
+      status: 'degraded',
+      checks: { db: 'error', storage: 'ok' },
+      version: API_VERSION,
+    });
     expect(res.body).not.toContain('down');
   });
 

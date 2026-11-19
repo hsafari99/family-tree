@@ -16,7 +16,11 @@ afterAll(async () => {
 describe('health against real Postgres and S3', () => {
   it('reports ok for db and storage', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/v1/health' });
-    expect(res.json()).toEqual({ status: 'ok', checks: { db: 'ok', storage: 'ok' }, version: API_VERSION });
+    expect(res.json()).toEqual({
+      status: 'ok',
+      checks: { db: 'ok', storage: 'ok' },
+      version: API_VERSION,
+    });
     expect(res.statusCode).toBe(200);
   });
 
