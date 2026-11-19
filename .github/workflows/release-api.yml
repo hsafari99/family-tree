@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Image tag (for example 2026.11.1)
+        description: Image tag, the API version in apps/api/package.json (for example 1.0.0)
         required: true
         type: string
 
@@ -22,11 +22,18 @@ jobs:
         env:
           TAG: ${{ inputs.tag }}
         run: |
-          [[ "$TAG" =~ ^[0-9]{4}\.[0-9]{1,2}\.[0-9]+$ ]] || { echo "Use a tag like 2026.11.1" >&2; exit 1; }
+          [[ "$TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Use a tag like 1.0.0" >&2; exit 1; }
       # Actions pinned to commit SHAs (tags can move).
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
+      # One number per release: the image tag is the version /api/v1/health reports.
+      - name: Check the tag matches the API version
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          VERSION=$(node -p "require('./apps/api/package.json').version")
+          [[ "$TAG" == "$VERSION" ]] || { echo "Tag $TAG is not the API version $VERSION (apps/api/package.json)" >&2; exit 1; }
       - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io

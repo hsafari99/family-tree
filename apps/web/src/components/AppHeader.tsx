@@ -249,6 +249,14 @@ export function AppHeader() {
                       },
                     ]
                   : []),
+                // Which build is running (apps/web/package.json); not an action.
+                {
+                  label: `Version ${__APP_VERSION__}`,
+                  key: 'version',
+                  separated: true,
+                  disabled: true,
+                  onSelect: () => undefined,
+                },
               ]}
             />
           </div>

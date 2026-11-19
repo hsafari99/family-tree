@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import react from '@vitejs/plugin-react';
 import type { Plugin } from 'vite';
 import { defineConfig } from 'vitest/config';
@@ -33,7 +34,13 @@ function siteHeaders(): Plugin {
   };
 }
 
+/** The web app's version (package.json), shown in the account menu. Bump it with every web change. */
+const { version } = JSON.parse(
+  readFileSync(new URL('./package.json', import.meta.url), 'utf8'),
+) as { version: string };
+
 export default defineConfig({
+  define: { __APP_VERSION__: JSON.stringify(version) },
   plugins: [react(), siteHeaders()],
   server: {
     port: 5173,

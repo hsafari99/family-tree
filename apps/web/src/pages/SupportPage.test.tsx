@@ -81,7 +81,7 @@ describe('Support', () => {
       within(screen.getByRole('menu'))
         .getAllByRole('menuitem')
         .map((m) => m.textContent),
-    ).toEqual(['Account', 'Sign out', 'Support Family Tree']);
+    ).toEqual(['Account', 'Sign out', 'Support Family Tree', `Version ${__APP_VERSION__}`]);
     fireEvent.click(screen.getByRole('menuitem', { name: 'Support Family Tree' }));
     expect(await screen.findByRole('heading', { name: 'Support Family Tree' })).toBeVisible();
     expect(r.where()).toBe('/support');
@@ -98,7 +98,7 @@ describe('Support', () => {
       within(screen.getByRole('menu'))
         .getAllByRole('menuitem')
         .map((m) => m.textContent),
-    ).toEqual(['Account', 'Sign out', 'Support Family Tree']);
+    ).toEqual(['Account', 'Sign out', 'Support Family Tree', `Version ${__APP_VERSION__}`]);
     fireEvent.click(screen.getByRole('menuitem', { name: 'Support Family Tree' }));
     expect(await screen.findByRole('heading', { name: 'Support Family Tree' })).toBeVisible();
     expect(r.where()).toBe('/support');

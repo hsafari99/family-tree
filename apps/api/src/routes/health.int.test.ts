@@ -1,3 +1,4 @@
+import { API_VERSION } from './health.js';
 import { afterAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../app.js';
 import { loadConfig } from '../config.js';
@@ -15,7 +16,7 @@ afterAll(async () => {
 describe('health against real Postgres and S3', () => {
   it('reports ok for db and storage', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/v1/health' });
-    expect(res.json()).toEqual({ status: 'ok', checks: { db: 'ok', storage: 'ok' } });
+    expect(res.json()).toEqual({ status: 'ok', checks: { db: 'ok', storage: 'ok' }, version: API_VERSION });
     expect(res.statusCode).toBe(200);
   });
 

@@ -4,11 +4,18 @@ import { apiErrorSchema, healthResponseSchema } from './api.js';
 describe('healthResponseSchema', () => {
   it('accepts ok and degraded responses', () => {
     expect(
-      healthResponseSchema.parse({ status: 'ok', checks: { db: 'ok', storage: 'ok' } }).status,
+      healthResponseSchema.parse({
+        status: 'ok',
+        checks: { db: 'ok', storage: 'ok' },
+        version: '1.0.0',
+      }).status,
     ).toBe('ok');
     expect(
-      healthResponseSchema.parse({ status: 'degraded', checks: { db: 'error', storage: 'ok' } })
-        .checks.db,
+      healthResponseSchema.parse({
+        status: 'degraded',
+        checks: { db: 'error', storage: 'ok' },
+        version: '1.0.0',
+      }).checks.db,
     ).toBe('error');
   });
 

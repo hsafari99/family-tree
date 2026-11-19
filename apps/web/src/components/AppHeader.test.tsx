@@ -80,7 +80,10 @@ describe('AppHeader', () => {
       within(menu)
         .getAllByRole('menuitem')
         .map((m) => m.textContent),
-    ).toEqual(['Account', 'Sign out']);
+    ).toEqual(['Account', 'Sign out', `Version ${__APP_VERSION__}`]);
+    // The version is information, not an action.
+    expect(within(menu).getByRole('menuitem', { name: /^Version / })).toBeDisabled();
+    expect(__APP_VERSION__).toMatch(/^\d+\.\d+\.\d+$/);
     fireEvent.click(within(menu).getByRole('menuitem', { name: 'Account' }));
     expect(await screen.findByRole('navigation', { name: 'Account settings' })).toBeVisible();
     expect(r.where()).toBe('/account');

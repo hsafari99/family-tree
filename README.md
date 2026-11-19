@@ -168,6 +168,14 @@ Playwright drives a real browser against the dev stack.
 
 Failures leave traces and screenshots in `e2e/test-results/`.
 
+## Versions
+
+The API and the web app each have a `major.minor.patch` version in their `package.json`
+(`apps/api`, `apps/web`). Bump the one you change: patch for a fix, minor for a feature, major for
+a change that breaks the other side or needs manual steps. A change in `packages/shared` bumps
+both. The API reports its version in `GET /api/v1/health`, and the API image is tagged with it;
+the web app shows its version at the bottom of the account menu.
+
 ## Production and self-hosting
 
 Nothing is deployed yet. The repository contains everything needed to run it: `compose.prod.yml`

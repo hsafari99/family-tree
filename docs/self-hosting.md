@@ -125,7 +125,8 @@ Never commit it: `.gitignore` covers `.env.production`, and CI runs gitleaks.
 
 Either:
 
-- run the **Release API image** workflow (Actions, Run workflow, with a tag like `2026.11.1`). It
+- run the **Release API image** workflow (Actions, Run workflow). The tag must be the API version
+  in `apps/api/package.json` (like `1.0.0`); the workflow refuses anything else. It
   is manual only and pushes `ghcr.io/<you>/family-tree-api:<tag>`. Then set
   `API_IMAGE=ghcr.io/<you>/family-tree-api:<tag>`. If the package is private, `docker login
 ghcr.io` on the server first; or

@@ -6,6 +6,8 @@ export type CheckStatus = z.infer<typeof checkStatusSchema>;
 export const healthResponseSchema = z.object({
   status: z.enum(['ok', 'degraded']),
   checks: z.object({ db: checkStatusSchema, storage: checkStatusSchema }),
+  /** The API's version (apps/api/package.json). */
+  version: z.string(),
 });
 export type HealthResponse = z.infer<typeof healthResponseSchema>;
 

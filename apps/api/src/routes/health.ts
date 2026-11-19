@@ -1,5 +1,17 @@
 import type { CheckStatus, HealthResponse } from '@family-tree/shared';
+import { readFileSync } from 'node:fs';
 import type { FastifyPluginAsync } from 'fastify';
+
+/**
+ * The API's version: apps/api/package.json, two levels up from both src/routes (dev) and
+ * dist/routes (the image, where pnpm deploy puts package.json at the app root). Bump it with
+ * every API change (major.minor.patch).
+ */
+export const API_VERSION: string = (
+  JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as {
+    version: string;
+  }
+).version;
 
 export interface HealthChecks {
   checkDb(): Promise<void>;
@@ -37,7 +49,11 @@ export const healthRoutes: FastifyPluginAsync<{
         probe(() => checks.checkStorage(), timeoutMs),
       ]);
       const healthy = db === 'ok' && storage === 'ok';
-      const body: HealthResponse = { status: healthy ? 'ok' : 'degraded', checks: { db, storage } };
+      const body: HealthResponse = {
+        status: healthy ? 'ok' : 'degraded',
+        checks: { db, storage },
+        version: API_VERSION,
+      };
       return reply.code(healthy ? 200 : 503).send(body);
     },
   );
