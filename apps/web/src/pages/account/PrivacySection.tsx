@@ -12,7 +12,11 @@ import { useTreesApi } from '../../trees/TreesApiContext';
 type Settings = MyPrivacy['settings'];
 
 const LEVELS: { value: PrivacyLevel; label: string; hint: string }[] = [
-  { value: 'public', label: 'Everyone in the tree', hint: 'Every member sees your details.' },
+  {
+    value: 'public',
+    label: 'Everyone in this tree and linked trees',
+    hint: 'Every member of this tree, and of trees linked to it, sees your details.',
+  },
   {
     value: 'branch',
     label: 'My branch',

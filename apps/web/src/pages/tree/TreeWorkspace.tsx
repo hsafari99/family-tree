@@ -4,6 +4,7 @@ import {
   hourglassGenerations,
   type Invite,
   type KinStep,
+  type LinkedSearchResult,
   type PersonSummary,
   type RelativeRole,
   type TreeDetail,
@@ -51,10 +52,13 @@ import { applyLineage, lineage } from '../../canvas/lineage';
 import { bandRows } from '../../canvas/generation-labels';
 import { useHiddenBranches } from '../../canvas/useHiddenBranches';
 import { useTreeGraph } from '../../canvas/useTreeGraph';
+import { useTreeLinks } from '../../canvas/useTreeLinks';
 import { personName, ROLE_LABEL } from '../../trees/format';
 import { useTreesApi } from '../../trees/TreesApiContext';
 import { AddPersonForm } from './AddPersonForm';
 import { InvitePerson } from './InvitePerson';
+import { LinkedPersonPanel } from './LinkedPersonPanel';
+import { LinkedNotice } from './LinkedNotice';
 import {
   readCollapsed,
   readWhoamiDismissed,
@@ -90,6 +94,9 @@ export function TreeWorkspace({
   const { personId, unionId } = useParams();
   const newPerson = useMatch('/trees/:treeId/people/new') !== null;
   const [params, setParams] = useSearchParams();
+  // Someone of a linked tree is open (`?linked=<link id>`): a view-only panel (tree linking spec).
+  const linkedParam = (personId && params.get('linked')) || null;
+  const ownPersonId = linkedParam ? undefined : personId;
   // "How are we related?" opens in a dialog over the page (`?tab=related`).
   const relatedOpen = params.get('tab') === 'related';
   // Inviting the open person (their card's menu or panel) opens in a dialog too (`?tab=invite`).
@@ -132,7 +139,7 @@ export function TreeWorkspace({
   );
   const anchorPending = view.view === 'tree' && !view.focus && lineStart !== null && !treeAnchor;
   const focusId = onCanvas
-    ? (view.focus ?? personId ?? detail.tree.rootPersonId)
+    ? (view.focus ?? ownPersonId ?? detail.tree.rootPersonId)
     : (view.focus ?? (view.view === 'tree' ? treeAnchor : null) ?? lineStart);
   const mode = graphModeOf(view.view);
   const query: GraphQuery =
@@ -143,6 +150,7 @@ export function TreeWorkspace({
         : { mode, ...(focusId ? { focus: focusId } : {}), generations: view.gens };
   // Collapsed branches (Task 13), remembered per tree; hiding keeps whoever links to the root.
   const branches = useHiddenBranches(treeId);
+  const treeLinks = useTreeLinks(treeId, refreshKey);
   const graph = useTreeGraph(
     treeId,
     query,
@@ -152,6 +160,9 @@ export function TreeWorkspace({
       hidden: onCanvas ? branches.hidden : NO_IDS,
       anchorId: detail.tree.rootPersonId ?? detail.me.personId,
       layout: onCanvas,
+      linked: treeLinks.graphs,
+      linkedKey: treeLinks.graphsKey,
+      markers: treeLinks.markers,
     },
     refreshKey,
   );
@@ -226,10 +237,22 @@ export function TreeWorkspace({
   // `go` reads the current URL through a ref, so `actions` never changes with the URL and a
   // navigation doesn't re-render every card.
   const meId = detail.me.personId;
-  const latest = useRef({ navigate, params, keepFocus: null as string | null, meId });
+  // Who of the drawn people is from a linked tree, and which link.
+  const linkOfPerson = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const g of treeLinks.graphs) for (const p of g.graph.persons) m.set(p.id, g.linkId);
+    return m;
+  }, [treeLinks.graphs]);
+  const latest = useRef({
+    navigate,
+    params,
+    keepFocus: null as string | null,
+    meId,
+    linkOfPerson,
+  });
   const keepFocus = view.view === 'focus' ? focusId : null;
   useEffect(() => {
-    latest.current = { navigate, params, keepFocus, meId };
+    latest.current = { navigate, params, keepFocus, meId, linkOfPerson };
   });
   const base = `/trees/${treeId}`;
   const go = useCallback((path: string, change: CanvasChange) => {
@@ -252,12 +275,23 @@ export function TreeWorkspace({
     if (v) setSheetFull(false);
   }, []);
   const toggleBranchOf = branches.toggle;
+  const toggleLinkOf = treeLinks.toggle;
   // Opening something from the canvas always shows it.
   const actions = useMemo(
     () => ({
       openPerson: (id: string) => {
         setCollapsed(false);
-        go(`${base}/people/${id}`, { focus: null, tab: null, add: null, ...NO_PAIR });
+        const linked = latest.current.linkOfPerson.get(id);
+        // A linked person never becomes the focus: the own tree's view stays as it is.
+        if (linked) {
+          go(`${base}/people/${id}`, {
+            focus: latest.current.keepFocus,
+            tab: null,
+            add: null,
+            ...NO_PAIR,
+            linked,
+          });
+        } else go(`${base}/people/${id}`, { focus: null, tab: null, add: null, ...NO_PAIR });
       },
       addRelative: (id: string, as: RelativeRole) => {
         setCollapsed(false);
@@ -269,8 +303,10 @@ export function TreeWorkspace({
       },
       howRelated: (id: string) => {
         setCollapsed(false);
+        const linked = latest.current.linkOfPerson.get(id) ?? null;
         go(`${base}/people/${id}`, {
-          focus: null,
+          focus: linked ? latest.current.keepFocus : null,
+          linked,
           tab: 'related',
           add: null,
           from: null,
@@ -283,6 +319,7 @@ export function TreeWorkspace({
         go(`${base}/people/${id}`, { focus: null, tab: 'invite', add: null, ...NO_PAIR });
       },
       toggleBranch: toggleBranchOf,
+      toggleLink: toggleLinkOf,
       openUnion: (id: string) => {
         setCollapsed(false);
         go(`${base}/unions/${id}`, {
@@ -293,7 +330,7 @@ export function TreeWorkspace({
         });
       },
     }),
-    [go, base, setCollapsed, toggleBranchOf],
+    [go, base, setCollapsed, toggleBranchOf, toggleLinkOf],
   );
   // The fan and the tree grow from someone else: their panel opens, and the picture moves.
   const recentre = useCallback(
@@ -333,6 +370,7 @@ export function TreeWorkspace({
   const hiddenBy = useRef<ReadonlyMap<string, string[]>>(new Map());
   hiddenBy.current = graph.status === 'ready' ? graph.hiddenBy : new Map();
   const showBranches = branches.show;
+  const showLink = treeLinks.show;
   const flyToChosen = useCallback(
     (personId: string) => {
       // Inside a collapsed branch: expand it, and fly once the new layout is drawn.
@@ -341,6 +379,22 @@ export function TreeWorkspace({
       setFlyRequest((r) => ({ personId, seq: (r?.seq ?? 0) + 1 }));
     },
     [showBranches],
+  );
+  // A match in a linked tree: unfold it, open them, and fly there once drawn.
+  const chooseLinked = useCallback(
+    (r: LinkedSearchResult) => {
+      showLink(r.linkId);
+      setCollapsed(false);
+      go(`${base}/people/${r.id}`, {
+        focus: latest.current.keepFocus,
+        tab: null,
+        add: null,
+        ...NO_PAIR,
+        linked: r.linkId,
+      });
+      setFlyRequest((f) => ({ personId: r.id, seq: (f?.seq ?? 0) + 1 }));
+    },
+    [showLink, setCollapsed, go, base],
   );
   const returnFocusTo = useRef<{ id: string | null } | null>(null);
   // Escape collapses the panel and gives focus back to the card (the URL keeps the selection, so
@@ -409,6 +463,11 @@ export function TreeWorkspace({
     [setParams],
   );
   const toggle = useRef<HTMLButtonElement>(null);
+  // "How are we related?" can reach people of the unfolded linked trees too (tree linking spec L8).
+  const withLinked = useMemo(
+    () => [...persons, ...treeLinks.graphs.flatMap((g) => g.graph.persons)],
+    [persons, treeLinks.graphs],
+  );
   const nameOf = (id: string) => {
     const p = persons.find((x) => x.id === id);
     return p ? personName(p) : 'someone';
@@ -616,6 +675,7 @@ export function TreeWorkspace({
           persons={persons}
           meId={detail.me.personId}
           onChoose={flyToChosen}
+          onChooseLinked={chooseLinked}
         />
         <ViewLinks params={view} />
       </div>
@@ -656,7 +716,15 @@ export function TreeWorkspace({
               </button>
             )}
             <div className="panel-selection" ref={selection}>
-              {personId ? (
+              {personId && linkedParam ? (
+                <LinkedPersonPanel
+                  key={`${linkedParam}/${personId}`}
+                  treeId={treeId}
+                  linkId={linkedParam}
+                  personId={personId}
+                  onOpen={actions.openPerson}
+                />
+              ) : personId ? (
                 <PersonPanel
                   key={personId}
                   treeId={treeId}
@@ -766,6 +834,12 @@ export function TreeWorkspace({
                 {notice}
               </p>
             )}
+            <LinkedNotice
+              treeId={treeId}
+              links={treeLinks.links}
+              ended={treeLinks.ended}
+              onDismissEnded={treeLinks.dismissEnded}
+            />
             <section
               className="canvas-area"
               aria-label="Family tree view"
@@ -872,7 +946,12 @@ export function TreeWorkspace({
       </PhotoRefreshContext.Provider>
       {relatedOpen && (
         <SectionDialog title="How are we related?" onClose={() => setRelated(false)}>
-          <RelationshipPanel treeId={treeId} detail={detail} persons={persons} onShow={showPath} />
+          <RelationshipPanel
+            treeId={treeId}
+            detail={detail}
+            persons={withLinked}
+            onShow={showPath}
+          />
         </SectionDialog>
       )}
       {inviteOpen && personId && (
@@ -907,6 +986,7 @@ export function TreeWorkspace({
               onChanged={() => {
                 onDetailChanged();
                 reloadInvites();
+                treeLinks.reload();
               }}
             />
           )}

@@ -156,6 +156,11 @@ export const ACTION_LABEL: Record<AuditAction, string> = {
   'steward.revoke': 'Branch stewardship revoked',
   'invite.create': 'Invite created',
   'invite.revoke': 'Invite revoked',
+  'treeLink.propose': 'Link with another tree proposed',
+  'treeLink.accept': 'Link with another tree accepted',
+  'treeLink.decline': 'Link with another tree declined',
+  'treeLink.cancel': 'Link request cancelled',
+  'treeLink.end': 'Link with another tree ended',
 };
 /** A History value as text: dates formatted, booleans as Yes/No (Status as Living/Deceased),
  *  empty as "(empty)". */

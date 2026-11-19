@@ -1,4 +1,11 @@
-import type { ActivityEntry, HomeSummary, HomeTree, Today, TodayPerson } from '@family-tree/shared';
+import type {
+  ActivityEntry,
+  HomeSummary,
+  HomeTree,
+  LinkRequest,
+  Today,
+  TodayPerson,
+} from '@family-tree/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
@@ -12,6 +19,7 @@ import { ACTION_LABEL, countPeople, ROLE_LABEL, timeAgo } from '../trees/format'
 import { useTreesApi } from '../trees/TreesApiContext';
 import { hasSupport, SUPPORT_PATH } from '../support/config';
 import { useSupport } from '../support/SupportContext';
+import { LINK_SUMMARY } from './members/LinkedTreesSection';
 
 const firstName = (name: string) => name.trim().split(/\s+/)[0] ?? name;
 
@@ -81,6 +89,65 @@ function TodayCard() {
 }
 
 /**
+ * Requests to link one of the user's trees with another, waiting for them as its owner (tree
+ * linking spec, Web: Home page). Accept and Decline right here; Review opens the Members dialog.
+ */
+function LinkRequests() {
+  const api = useTreesApi();
+  const [requests, setRequests] = useState<LinkRequest[]>([]);
+  const [done, setDone] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const load = useCallback(async () => {
+    const r = await api.linkRequests();
+    if (r.ok) setRequests(r.data);
+  }, [api]);
+  useEffect(() => {
+    void load();
+  }, [load]);
+  const act = async (r: LinkRequest, accept: boolean) => {
+    setError(null);
+    const res = accept
+      ? await api.acceptLink(r.treeId, r.linkId)
+      : await api.declineLink(r.treeId, r.linkId);
+    if (!res.ok) return setError(res.error.message);
+    setDone(
+      accept
+        ? `Accepted. ${r.treeName} and ${r.otherTreeName} are linked once both owners agree.`
+        : 'Request declined.',
+    );
+    await load();
+  };
+  if (requests.length === 0 && !done && !error) return null;
+  return (
+    <section className="card link-requests" aria-labelledby="home-link-requests">
+      <h2 id="home-link-requests">Link requests</h2>
+      <FormError>{error}</FormError>
+      {done && <p role="status">{done}</p>}
+      <ul>
+        {requests.map((r) => (
+          <li key={`${r.linkId}/${r.treeId}`}>
+            <p>
+              {r.bridgeName} wants to link <strong>{r.treeName}</strong> with{' '}
+              <strong>{r.otherTreeName}</strong> ({countPeople(r.otherPeopleCount)}).
+            </p>
+            <p className="hint">{LINK_SUMMARY}</p>
+            <p className="link-request-actions">
+              <button type="button" onClick={() => void act(r, true)}>
+                Accept
+              </button>{' '}
+              <button type="button" className="secondary" onClick={() => void act(r, false)}>
+                Decline
+              </button>{' '}
+              <Link to={`/trees/${r.treeId}?tab=members`}>Review</Link>
+            </p>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/**
  * Home: a welcome, the user's trees as cards, recent changes across them, and the deleted trees
  * they can restore; a short guide for a first-time user. RequireAuth sends everyone else to sign
  * in. One summary request (GET /api/v1/home) feeds the whole page.
@@ -141,6 +208,7 @@ export function HomePage() {
       ) : (
         <>
           <p className="home-lead">Pick up where you left off, or start another tree.</p>
+          <LinkRequests />
           <TodayCard />
           <section aria-labelledby="home-trees">
             <div className="section-head">

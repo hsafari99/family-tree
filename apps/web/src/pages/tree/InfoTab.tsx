@@ -34,6 +34,7 @@ import {
 import { type MyPrivacyState, useMyPrivacy } from './useMyPrivacy';
 import { DeletePerson } from './DeletePerson';
 import { MainPhoto } from './MainPhoto';
+import { useTreesApi } from '../../trees/TreesApiContext';
 import { type TabProps, usePersonSave } from './usePersonSave';
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
@@ -50,7 +51,9 @@ const LEVEL_LABEL = { public: 'Everyone', branch: 'My branch', private: 'Only me
 const LEVEL_TEXT = (level: keyof typeof LEVEL_LABEL, steps: number | null) =>
   level === 'branch'
     ? `My branch (within ${steps ?? 2} ${steps === 1 ? 'step' : 'steps'})`
-    : LEVEL_LABEL[level];
+    : level === 'public'
+      ? 'Everyone in this tree and linked trees'
+      : LEVEL_LABEL[level];
 
 /** Who sees my details and whether the year shows, as one editable choice (privacy spec R8). */
 function PrivacyFields({
@@ -100,13 +103,16 @@ function PrivacyFields({
   );
 }
 
-function Details({
+export function Details({
   person,
   privacy,
+  linkedTrees = [],
 }: {
   person: PersonView['person'];
   /** Set on the signed-in member's own card only. */
   privacy: MyPrivacyState | null;
+  /** The trees linked to this one, named on the privacy line (tree linking spec V7). */
+  linkedTrees?: readonly string[];
 }) {
   // The person's privacy hides everything but the names from this viewer (privacy spec R2).
   if (person.restricted) {
@@ -150,10 +156,31 @@ function Details({
       {privacy && (
         <Row label="Who can see my details">
           {LEVEL_TEXT(privacy.settings.level, privacy.settings.steps)}
+          {privacy.settings.level !== 'private' && linkedTrees.length > 0 && (
+            <span className="hint"> (linked trees: {linkedTrees.join(', ')})</span>
+          )}
         </Row>
       )}
     </dl>
   );
+}
+
+/** The names of the tree's live links, read only when `want` (your own card). */
+function useLinkedTreeNames(treeId: string, want: boolean): string[] {
+  const api = useTreesApi();
+  const [names, setNames] = useState<string[]>([]);
+  useEffect(() => {
+    if (!want) return;
+    let active = true;
+    void api.listLinks(treeId).then((r) => {
+      if (active && r.ok)
+        setNames(r.data.filter((l) => l.status === 'live').map((l) => l.otherTree.name));
+    });
+    return () => {
+      active = false;
+    };
+  }, [api, treeId, want]);
+  return names;
 }
 
 export function InfoTab(props: TabProps) {
@@ -164,6 +191,7 @@ export function InfoTab(props: TabProps) {
   const deleteButton = useRef<HTMLButtonElement>(null);
   const { edit, delete: canDelete } = view.capabilities;
   const privacy = useMyPrivacy(treeId, view.person.id);
+  const linkedTrees = useLinkedTreeNames(treeId, privacy !== null);
 
   return (
     <div className="info-tab">
@@ -172,7 +200,7 @@ export function InfoTab(props: TabProps) {
           instead of above them; in the narrow side panel it stays on top. */}
       <div className="info-top">
         <MainPhoto {...props} />
-        <Details person={view.person} privacy={privacy} />
+        <Details person={view.person} privacy={privacy} linkedTrees={linkedTrees} />
       </div>
       {/* One row: Edit on the left, Delete… on the right; each only when allowed. */}
       {!editing && (edit || canDelete) && (

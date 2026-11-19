@@ -1,4 +1,4 @@
-import type { GraphQuery, TreeGraph } from '@family-tree/shared';
+import type { GraphQuery, LinkedGraph, TreeGraph } from '@family-tree/shared';
 import type { Edge } from '@xyflow/react';
 import { useEffect, useRef, useState } from 'react';
 import { MESSAGES } from '../auth/api';
@@ -11,6 +11,7 @@ import type { Couple } from './couples';
 import { type CanvasNode, type Family, type Flow, graphToFlow } from './graph-to-flow';
 import { useLayoutEngine } from './LayoutEngineContext';
 import { LayoutTimeoutError } from './layout-engine';
+import { type BridgeMarker, mergeLinked } from './linked';
 
 export type TreeGraphState =
   | { status: 'loading' }
@@ -34,6 +35,7 @@ export type TreeGraphState =
     };
 
 const NONE: ReadonlySet<string> = new Set();
+const NO_MARKERS: ReadonlyMap<string, BridgeMarker[]> = new Map();
 
 /** Fetches the graph, maps it, lays it out. Stale responses are dropped. */
 export function useTreeGraph(
@@ -47,6 +49,12 @@ export function useTreeGraph(
     anchorId?: string | null;
     /** False for the fan and the tree, which draw the graph themselves: no layout, no nodes. */
     layout?: boolean;
+    /** Unfolded linked trees (tree linking spec), drawn off their bridge cards; `linkedKey`
+     *  changes whenever they do. */
+    linked?: readonly LinkedGraph[];
+    linkedKey?: string;
+    /** Linked-tree markers per bridge card. */
+    markers?: ReadonlyMap<string, BridgeMarker[]>;
   },
   refreshKey: number,
 ): TreeGraphState {
@@ -56,6 +64,16 @@ export function useTreeGraph(
   const layouts = useRef(0);
   const { mode, focus, depth, generations, branch } = query;
   const { focusId, meId, hidden = NONE, anchorId = null, layout = true } = ctx;
+  // Read through refs: the keys below say when they changed.
+  const linked = useRef(ctx.linked ?? []);
+  linked.current = ctx.linked ?? [];
+  const markers = useRef(ctx.markers ?? NO_MARKERS);
+  markers.current = ctx.markers ?? NO_MARKERS;
+  const linkedKey = layout ? (ctx.linkedKey ?? '') : '';
+  const markersKey = [...(ctx.markers ?? NO_MARKERS).values()]
+    .flat()
+    .map((m) => `${m.linkId}:${m.open}:${m.count}`)
+    .join(',');
   // A string, so a new Set with the same ids doesn't lay out again.
   const hiddenKey = [...hidden].sort().join('\n');
   // The last response: collapsing or expanding a branch lays out again without fetching.
@@ -82,9 +100,15 @@ export function useTreeGraph(
         fetched.current = { key, data };
       }
       const shut = new Set(hiddenKey ? hiddenKey.split('\n') : []);
-      const cut = collapseGraph(data, shut, focusId ?? anchorId);
+      const joined = layout ? mergeLinked(data, linked.current) : data;
+      const cut = collapseGraph(joined, shut, focusId ?? anchorId);
       const flow = graphToFlow(cut.graph, { focusId, meId });
       markBranches(flow, shut, cut.hiddenCount);
+      for (const n of flow.nodes) {
+        if (n.type === 'person' && !n.data.person.linkedTree) {
+          n.data.links = markers.current.get(n.data.person.id) ?? [];
+        }
+      }
       if (!active) return;
       if (!layout) {
         return setState({
@@ -147,6 +171,8 @@ export function useTreeGraph(
     hiddenKey,
     layout,
     anchorId,
+    linkedKey,
+    markersKey,
   ]);
 
   // The first render after a tree change must not show the previous tree's drawing.

@@ -33,6 +33,17 @@ import {
   relationshipSchema,
   type ResidenceInput,
   type SearchQuery,
+  type LinkCandidate,
+  linkCandidatesSchema,
+  type LinkedGraph,
+  linkedGraphSchema,
+  type LinkedPerson,
+  linkedPersonSchema,
+  type LinkRequest,
+  linkRequestsSchema,
+  type TreeLink,
+  treeLinksSchema,
+  type LinkedSearchResult,
   type SearchResult,
   searchResponseSchema,
   type UploadedPhoto,
@@ -152,9 +163,25 @@ export interface TreesApi {
   uploadPhoto(treeId: string, personId: string, file: Blob): Promise<Result<UploadedPhoto>>;
   setPrimaryPhoto(treeId: string, photoId: string): Promise<Result<void>>;
   deletePhoto(treeId: string, photoId: string): Promise<Result<void>>;
-  search(treeId: string, query: SearchQuery, signal?: AbortSignal): Promise<Result<SearchResult[]>>;
+  search(
+    treeId: string,
+    query: SearchQuery,
+    signal?: AbortSignal,
+  ): Promise<Result<{ results: SearchResult[]; inLinkedTrees: LinkedSearchResult[] }>>;
   relationship(treeId: string, from: string, to: string): Promise<Result<Relationship>>;
   exportTree(treeId: string): Promise<Result<{ url: string }>>;
+  /** Tree linking (tree linking spec): the tree's live links, and pending ones for its owner. */
+  listLinks(treeId: string): Promise<Result<TreeLink[]>>;
+  linkCandidates(treeId: string): Promise<Result<LinkCandidate[]>>;
+  proposeLink(treeId: string, otherTreeId: string): Promise<Result<{ id: string }>>;
+  acceptLink(treeId: string, linkId: string): Promise<Result<void>>;
+  declineLink(treeId: string, linkId: string): Promise<Result<void>>;
+  /** Cancels a pending link (its bridge) or ends a live one. */
+  endLink(treeId: string, linkId: string): Promise<Result<void>>;
+  linkedGraph(treeId: string, linkId: string): Promise<Result<LinkedGraph>>;
+  linkedPerson(treeId: string, linkId: string, personId: string): Promise<Result<LinkedPerson>>;
+  /** Proposals waiting for the signed-in user as an owner (Home page). */
+  linkRequests(): Promise<Result<LinkRequest[]>>;
 }
 
 /** Every TreesApi method; the Record type makes the compiler flag a missing one. */
@@ -216,6 +243,15 @@ export const TREES_API_METHODS = Object.keys({
   search: true,
   relationship: true,
   exportTree: true,
+  listLinks: true,
+  linkCandidates: true,
+  proposeLink: true,
+  acceptLink: true,
+  declineLink: true,
+  endLink: true,
+  linkedGraph: true,
+  linkedPerson: true,
+  linkRequests: true,
 } satisfies Record<keyof TreesApi, true>) as (keyof TreesApi)[];
 
 /** The part of a Zod schema `request` uses (keeps zod out of this package's dependencies). */
@@ -502,8 +538,48 @@ export function createTreesApi({ baseUrl }: { baseUrl: string }): TreesApi {
           undefined,
           signal,
         ),
-        (d) => d.results,
+        (d) => ({ results: d.results, inLinkedTrees: d.inLinkedTrees ?? [] }),
       ),
+    listLinks: (id) =>
+      map(request('GET', `${t(id)}/links`, undefined, treeLinksSchema), (d) => d.links),
+    linkCandidates: (id) =>
+      map(
+        request('GET', `${t(id)}/links/candidates`, undefined, linkCandidatesSchema),
+        (d) => d.candidates,
+      ),
+    proposeLink: (id, otherTreeId) =>
+      request('POST', `${t(id)}/links`, { otherTreeId }, createdIdSchema, 'session', {
+        LINK_EXISTS: MESSAGES.linkExists,
+        LINK_LIMIT: MESSAGES.linkLimit,
+        NOT_LINKED: MESSAGES.linkNeedsCards,
+      }),
+    acceptLink: (id, l) =>
+      request('POST', `${t(id)}/links/${enc(l)}/accept`, {}, undefined, 'session', {
+        NOT_FOUND: MESSAGES.linkGone,
+      }),
+    declineLink: (id, l) =>
+      request('POST', `${t(id)}/links/${enc(l)}/decline`, {}, undefined, 'session', {
+        NOT_FOUND: MESSAGES.linkGone,
+      }),
+    endLink: (id, l) =>
+      request('DELETE', `${t(id)}/links/${enc(l)}`, undefined, undefined, 'session', {
+        NOT_FOUND: MESSAGES.linkGone,
+      }),
+    linkedGraph: (id, l) =>
+      request('GET', `${t(id)}/links/${enc(l)}/graph`, undefined, linkedGraphSchema, 'session', {
+        NOT_FOUND: MESSAGES.linkGone,
+      }),
+    linkedPerson: (id, l, p) =>
+      request(
+        'GET',
+        `${t(id)}/links/${enc(l)}/persons/${enc(p)}`,
+        undefined,
+        linkedPersonSchema,
+        'session',
+        { NOT_FOUND: MESSAGES.linkGone },
+      ),
+    linkRequests: () =>
+      map(request('GET', '/home/link-requests', undefined, linkRequestsSchema), (d) => d.requests),
     // The preflight (?check=1) does the access, busy, size and rate-limit checks and returns a
     // one-time ticket; the download itself is a browser navigation, not a fetch (review fix I1).
     exportTree: async (treeId) => {

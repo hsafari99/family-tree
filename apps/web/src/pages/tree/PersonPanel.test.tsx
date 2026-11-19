@@ -59,7 +59,7 @@ describe('PersonPanel', () => {
     s.trees.trees.get(s.id)!.detail.me.personId = ada.id;
     renderAt(at(s, '?tab=info'), s);
     // Read mode: a plain line, no controls.
-    expect(await screen.findByText('Everyone')).toBeInTheDocument();
+    expect(await screen.findByText('Everyone in this tree and linked trees')).toBeInTheDocument();
     expect(screen.queryByRole('radiogroup', { name: 'Who can see my details' })).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit details' }));

@@ -653,3 +653,69 @@ export const auditLog = pgTable(
     index('audit_log_entity_idx').on(t.entityId),
   ],
 );
+
+// ---------------------------------------------------------------------------------------------
+// Tree linking (tree linking spec).
+
+export const treeLinkEndReasonEnum = pgEnum('tree_link_end_reason', [
+  'ended',
+  'cancelled',
+  'declined',
+  'bridge_left',
+  'card_unlinked',
+  'tree_deleted',
+  'expired',
+]);
+
+/**
+ * One proposal or link between two trees, through a user who has their own card in both. The
+ * pair is stored in id order. Live: both sides accepted and not ended. An ended row is history
+ * and never comes back.
+ */
+export const treeLinks = pgTable(
+  'tree_links',
+  {
+    id: id(),
+    treeAId: uuid('tree_a_id')
+      .notNull()
+      .references(() => trees.id, { onDelete: 'cascade' }),
+    treeBId: uuid('tree_b_id')
+      .notNull()
+      .references(() => trees.id, { onDelete: 'cascade' }),
+    bridgeUserId: uuid('bridge_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    bridgePersonAId: uuid('bridge_person_a_id').notNull(),
+    bridgePersonBId: uuid('bridge_person_b_id').notNull(),
+    proposedByUserId: uuid('proposed_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    aAcceptedAt: timestamp('a_accepted_at', { withTimezone: true }),
+    bAcceptedAt: timestamp('b_accepted_at', { withTimezone: true }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    endedAt: timestamp('ended_at', { withTimezone: true }),
+    endedByUserId: uuid('ended_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+    endReason: treeLinkEndReasonEnum('end_reason'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check('tree_links_ordered', sql`${t.treeAId} < ${t.treeBId}`),
+    check('tree_links_end_reason', sql`(${t.endedAt} is null) = (${t.endReason} is null)`),
+    // Cascade: a hard-deleted (purged) tree takes its persons and its links in one statement.
+    foreignKey({
+      name: 'tree_links_bridge_a_fk',
+      columns: [t.treeAId, t.bridgePersonAId],
+      foreignColumns: [persons.treeId, persons.id],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'tree_links_bridge_b_fk',
+      columns: [t.treeBId, t.bridgePersonBId],
+      foreignColumns: [persons.treeId, persons.id],
+    }).onDelete('cascade'),
+    // At most one pending or live link per pair.
+    uniqueIndex('tree_links_open_pair_uq')
+      .on(t.treeAId, t.treeBId)
+      .where(sql`${t.endedAt} is null`),
+    index('tree_links_tree_b_idx').on(t.treeBId),
+  ],
+);

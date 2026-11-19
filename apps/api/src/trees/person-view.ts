@@ -14,7 +14,13 @@ import type { ObjectStore } from '../storage/objects.js';
 import { can } from '../permissions/can.js';
 import type { Access } from './access.js';
 import { isLivePerson, summaryColumns, toPersonDetail } from './people.js';
-import { loadVisibility, maskDetail, maskSummary, unionDatesVisible } from './privacy.js';
+import {
+  loadVisibility,
+  maskDetail,
+  maskSummary,
+  unionDatesVisible,
+  type Visibility,
+} from './privacy.js';
 
 type OrderedUnion = {
   id: string;
@@ -49,6 +55,8 @@ export async function loadPersonView(
   personId: string,
   store: ObjectStore,
   limitBytes: number,
+  /** A visitor from a linked tree (tree linking spec V3); else the member's own rules. */
+  visibility?: Visibility,
 ): Promise<PersonView> {
   const { treeId } = access;
   const [row] = await db
@@ -57,7 +65,7 @@ export async function loadPersonView(
     .leftJoin(users, eq(users.id, persons.createdBy))
     .where(isLivePerson(treeId, personId));
   if (!row) throw notFound();
-  const vis = await loadVisibility(db, access);
+  const vis = visibility ?? (await loadVisibility(db, access));
   const full = vis.full(personId);
 
   const homes = await db

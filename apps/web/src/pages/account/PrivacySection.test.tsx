@@ -21,7 +21,9 @@ describe('Account > Privacy', () => {
     const s = setup();
     renderAt('/account/privacy', s);
     const king = await screen.findByRole('region', { name: 'King family' });
-    expect(await within(king).findByLabelText('Everyone in the tree')).toBeChecked();
+    expect(
+      await within(king).findByLabelText('Everyone in this tree and linked trees'),
+    ).toBeChecked();
 
     fireEvent.click(within(king).getByLabelText('My branch'));
     fireEvent.change(within(king).getByLabelText('How close'), { target: { value: '3' } });

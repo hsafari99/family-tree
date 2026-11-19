@@ -487,7 +487,7 @@ describe('graph, disconnected, similar and child-order', () => {
     const results = [{ ...summary, photoThumbUrl: null, relation: [] }];
     const mock = stubFetch({ status: 200, body: { results } });
     const res = await api().search('t', { q: 'ann', status: 'living', bornFrom: undefined });
-    expect(res).toEqual({ ok: true, data: results });
+    expect(res).toEqual({ ok: true, data: { results, inLinkedTrees: [] } });
     expect(urlOf(mock.mock.calls[0]!)).toBe(`${BASE}/api/v1/trees/t/search?q=ann&status=living`);
   });
 

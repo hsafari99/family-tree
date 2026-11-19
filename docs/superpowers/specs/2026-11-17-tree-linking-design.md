@@ -1,6 +1,6 @@
 # Tree linking (design)
 
-Status: approved in discussion, 2026-11-17. Spec written for review. This covers feedback item 5.
+Status: approved and implemented, 2026-11-17. This covers feedback item 5.
 It builds on the person privacy design (`2026-11-17-person-privacy.md`).
 
 ## Goal
@@ -74,20 +74,23 @@ the caller owns both trees, the link is live immediately.
 
 **End.** Either owner or the bridge user ends a live link (`ended`).
 
-**Automatic end.** These existing writes call one helper, `endLinksFor(tx, …)`, in their own
-transaction:
+**Automatic end.** One helper, `reconcileLinks(tx, treeIds)`, ends every open link of those trees
+whose bridge no longer holds, with the reason below. The writes that can break a bridge (member
+removal, relinking a card, deleting people, deleting a tree) call it in their own transaction, and
+every link read calls it first, so an ended link is never shown and a later restore never revives
+it:
 
 | Event | Ends | Reason |
 |---|---|---|
 | Bridge user leaves T or L, or is removed | Links where they are the bridge, in that tree | `bridge_left` |
 | Bridge user's card is unlinked from them, relinked to another card (`POST /me/person`), or soft-deleted | Links using that card | `card_unlinked` |
 | Tree soft-deleted | All links of that tree | `tree_deleted` |
-| Account deleted | All links where they are the bridge | `bridge_left` |
+| Account deleted | All links where they are the bridge | The rows go with the account (FK cascade) |
 
 Restoring a card or a tree from Trash does not revive a link.
 
-**Audit.** Proposed, accepted, declined, cancelled and ended (with reason) are written to the audit
-log of both trees.
+**Audit.** Proposed, accepted, declined, cancelled and ended are written to the audit log of both
+trees. Automatic ends are not audited separately: the write that caused them is.
 
 ## Visibility across a link
 
@@ -144,8 +147,8 @@ All under `/api/v1/trees/:treeId`, with the usual access checks. Shapes go in
 The read routes return 404 unless the link is live and involves T. New error codes: `LINK_EXISTS`,
 `LINK_LIMIT`. Existing `NOT_LINKED` covers "you have no card in one of these trees".
 
-`GET /api/v1/home` (existing) adds pending requests that wait for the caller as owner, for the
-Home page notice.
+`GET /api/v1/home/link-requests` lists pending requests that wait for the caller as an owner, for
+the Home page notice.
 
 ## Web
 

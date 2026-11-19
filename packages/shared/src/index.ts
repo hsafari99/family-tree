@@ -17,3 +17,4 @@ export * from './search.js';
 export * from './export.js';
 export * from './home.js';
 export * from './privacy.js';
+export * from './links.js';

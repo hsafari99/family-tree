@@ -7,6 +7,7 @@ import { useHeaderTree } from '../components/AppHeader';
 import { BackLink, Page } from '../components/Page';
 import { useTreesApi } from '../trees/TreesApiContext';
 import { InvitesSection } from './members/InvitesSection';
+import { LinkedTreesSection } from './members/LinkedTreesSection';
 import { MembersSection } from './members/MembersSection';
 import { StewardsSection } from './members/StewardsSection';
 import type { Acted, Part } from './members/types';
@@ -157,6 +158,7 @@ function useMembers(treeId: string, onChanged?: () => void) {
         <MembersSection {...props} />
         <StewardsSection {...props} />
         {detail.capabilities.invite && <InvitesSection {...props} invites={invites} />}
+        <LinkedTreesSection treeId={treeId} onChanged={() => changedRef.current?.()} />
       </>
     ),
   };

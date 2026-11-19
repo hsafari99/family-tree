@@ -17,6 +17,7 @@ import { can, inScope } from '../permissions/can.js';
 import { type Access, authorize, loadAccess } from '../trees/access.js';
 import { audit } from '../trees/audit.js';
 import { applyPlan, createBatch } from '../trees/deletion.js';
+import { reconcileLinks } from '../trees/links.js';
 import { loadLiveGraph, lockTreeGraph } from '../trees/graph.js';
 import { fullName, requireLivePerson, summaryColumns } from '../trees/people.js';
 import { loadVisibility, maskSummary } from '../trees/privacy.js';
@@ -38,6 +39,8 @@ async function commit(
 ) {
   const batchId = await createBatch(tx, access, batch);
   await applyPlan(tx, access.treeId, batchId, plan);
+  // A deleted bridge card ends its links, and a later restore doesn't revive them (tree linking spec).
+  if (plan.personIds.length > 0) await reconcileLinks(tx, [access.treeId]);
   await audit(tx, access, {
     action:
       batch.mode === 'relation'

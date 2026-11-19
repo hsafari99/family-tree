@@ -414,14 +414,16 @@ describe('FakeTreesApi photos, search and relationships', () => {
   it('searches by words, years and status, and relates results to me', async () => {
     const { trees, treeId } = hale();
     const r = await trees.search(treeId, { q: 'lau' });
-    expect(r.ok && r.data.map((x) => x.givenName)).toEqual(['Laura']);
-    expect(r.ok && r.data[0]!.relation).toMatchObject([{ move: 'parent', personId: 'laura' }]);
+    expect(r.ok && r.data.results.map((x) => x.givenName)).toEqual(['Laura']);
+    expect(r.ok && r.data.results[0]!.relation).toMatchObject([
+      { move: 'parent', personId: 'laura' },
+    ]);
     const me = await trees.search(treeId, { q: 'leo' });
-    expect(me.ok && me.data[0]!.relation).toEqual([]);
+    expect(me.ok && me.data.results[0]!.relation).toEqual([]);
     const born = await trees.search(treeId, { bornFrom: 1990, bornTo: 1999 });
-    expect(born.ok && born.data.map((x) => x.givenName)).toContain('Leo');
+    expect(born.ok && born.data.results.map((x) => x.givenName)).toContain('Leo');
     const dead = await trees.search(treeId, { status: 'deceased' });
-    expect(dead.ok && dead.data.every((x) => !x.isLiving)).toBe(true);
+    expect(dead.ok && dead.data.results.every((x) => !x.isLiving)).toBe(true);
     await trees.search(treeId, { q: 'x', place: 'Leeds', branch: 'leo' });
     expect(trees.callsTo('search').at(-1)).toMatchObject({
       query: { place: 'Leeds', branch: 'leo' },

@@ -24,7 +24,7 @@ export interface Visibility {
 
 export const SEES_ALL: Visibility = { full: () => true, birthYear: () => true, restricts: false };
 
-type Graph = {
+export type Graph = {
   unions: readonly { id: string; partnerAId: string | null; partnerBId: string | null }[];
   parentChild: readonly { id: string; unionId: string; childId: string }[];
 };
@@ -40,6 +40,28 @@ export async function loadVisibility(
   graph?: Graph,
 ): Promise<Visibility> {
   if (access.role === 'owner' || access.role === 'editor') return SEES_ALL;
+  return visibilityOf(db, {
+    treeId: access.treeId,
+    exempt: (id) => id === access.personId || inScope(access, id),
+    from: access.personId,
+    graph: () => (graph ? Promise.resolve(graph) : loadLiveLinks(db, access.treeId)),
+  });
+}
+
+/**
+ * The rules for the people of `treeId`, for a viewer standing on `from` (their own card, or null)
+ * in `graph`. A visitor from a linked tree (tree linking spec V3) has no exemptions, and stands
+ * on their card in their own tree, in the joined graph.
+ */
+export async function visibilityOf(
+  db: Queryable,
+  v: {
+    treeId: string;
+    exempt: (personId: string) => boolean;
+    from: string | null;
+    graph: () => Promise<Graph>;
+  },
+): Promise<Visibility> {
   const rows = await db
     .select({
       id: persons.id,
@@ -54,20 +76,17 @@ export async function loadVisibility(
     )
     .where(
       and(
-        eq(persons.treeId, access.treeId),
+        eq(persons.treeId, v.treeId),
         isNull(persons.deletedAt),
         or(ne(persons.privacyLevel, 'public'), eq(persons.hideBirthYear, true)),
       ),
     );
-  const exempt = (id: string) => id === access.personId || inScope(access, id);
-  const settings = new Map(rows.filter((r) => !exempt(r.id)).map((r) => [r.id, r]));
+  const settings = new Map(rows.filter((r) => !v.exempt(r.id)).map((r) => [r.id, r]));
   if (settings.size === 0) return SEES_ALL;
 
   let dist = new Map<string, number>();
   const reach = Math.max(0, ...[...settings.values()].map((r) => r.steps ?? 0));
-  if (reach > 0 && access.personId !== null) {
-    dist = stepDistances(graph ?? (await loadLiveLinks(db, access.treeId)), access.personId, reach);
-  }
+  if (reach > 0 && v.from !== null) dist = stepDistances(await v.graph(), v.from, reach);
   const full = (id: string) => {
     const s = settings.get(id);
     if (!s || s.level === 'public') return true;
@@ -84,7 +103,7 @@ export async function loadVisibility(
 }
 
 /** Live unions and links, enough to count steps. */
-async function loadLiveLinks(db: Queryable, treeId: string): Promise<Graph> {
+export async function loadLiveLinks(db: Queryable, treeId: string): Promise<Graph> {
   const live = new Set(
     (
       await db

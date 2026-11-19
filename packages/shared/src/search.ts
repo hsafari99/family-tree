@@ -66,7 +66,19 @@ export const searchResultSchema = personSummarySchema.extend({
   relation: z.array(kinStepSchema).nullable(),
 });
 export type SearchResult = z.infer<typeof searchResultSchema>;
-export const searchResponseSchema = z.object({ results: z.array(searchResultSchema) });
+/** A match in a directly linked tree (tree linking spec L8): masked, tagged with its tree. */
+export const linkedSearchResultSchema = searchResultSchema.extend({
+  linkId: z.uuid(),
+  treeId: z.uuid(),
+  treeName: z.string(),
+});
+export type LinkedSearchResult = z.infer<typeof linkedSearchResultSchema>;
+export const searchResponseSchema = z.object({
+  results: z.array(searchResultSchema),
+  /** Present when the tree has live links. */
+  inLinkedTrees: z.array(linkedSearchResultSchema).optional(),
+});
+export type SearchResponse = z.infer<typeof searchResponseSchema>;
 
 /** GET /trees/:id/relationship (decision 20). */
 export const relationshipQuerySchema = z.object({ from: z.uuid(), to: z.uuid() });

@@ -1,4 +1,10 @@
 import {
+  type LinkCandidate,
+  type LinkedGraph,
+  type LinkedPerson,
+  type LinkedSearchResult,
+  type LinkRequest,
+  type TreeLink,
   type Today,
   type MyPrivacy,
   type PrivacySettingsInput,
@@ -207,6 +213,15 @@ export class FakeTreesApi implements TreesApi {
   todayList: Today = { birthdays: [], remembering: [] };
   /** What homeSummary returns as recent activity, newest first. */
   activity: ActivityEntry[] = [];
+  /** Tree linking: each tree's links, candidates and search matches, and each link's graph and people. */
+  links = new Map<string, TreeLink[]>();
+  candidates = new Map<string, LinkCandidate[]>();
+  linkedGraphs = new Map<string, LinkedGraph>();
+  /** Keyed `${linkId}/${personId}`. */
+  linkedPeople = new Map<string, LinkedPerson>();
+  linkedSearch = new Map<string, LinkedSearchResult[]>();
+  /** What linkRequests returns. */
+  requests: LinkRequest[] = [];
   calls: { method: Method; input: unknown }[] = [];
   private forced = new Map<Method, AuthError>();
   private pending = new Set<Method>();
@@ -1470,7 +1485,137 @@ export class FakeTreesApi implements TreesApi {
         photoThumbUrl: t.graph?.persons.find((g) => g.id === p.id)?.photoThumbUrl ?? null,
         relation: pathTo ? pathTo(p.id) : null,
       }));
-    return ok(results);
+    return ok({ results, inLinkedTrees: this.linkedSearch.get(treeId) ?? [] });
+  }
+
+  // ---- tree linking (tree linking spec) ----
+
+  /** Adds a live link from `treeId` (its graph too, when given); returns the link id. */
+  addLink(
+    treeId: string,
+    partial: Partial<TreeLink> & { graph?: Omit<LinkedGraph, 'linkId'> } = {},
+  ): string {
+    const id = partial.id ?? crypto.randomUUID();
+    const { graph, ...rest } = partial;
+    const link: TreeLink = {
+      id,
+      status: 'live',
+      otherTree: { id: crypto.randomUUID(), name: 'Rahimi family' },
+      bridge: {
+        userId: 'u-bridge',
+        name: 'Sara',
+        personId: crypto.randomUUID(),
+        otherPersonId: crypto.randomUUID(),
+      },
+      otherPeopleCount: 3,
+      acceptedHere: true,
+      acceptedThere: true,
+      canAccept: false,
+      canEnd: false,
+      createdAt: '2026-11-17T00:00:00.000Z',
+      expiresAt: '2026-12-17T00:00:00.000Z',
+      ...rest,
+    };
+    this.links.set(treeId, [...(this.links.get(treeId) ?? []), link]);
+    if (graph) this.linkedGraphs.set(id, { ...graph, linkId: id });
+    return id;
+  }
+
+  async listLinks(treeId: string) {
+    const forced = await this.enter('listLinks', treeId);
+    if (forced) return { ok: false as const, error: forced };
+    if (!this.find(treeId)) return notFound();
+    return ok((this.links.get(treeId) ?? []).map((l) => ({ ...l })));
+  }
+
+  async linkCandidates(treeId: string) {
+    const forced = await this.enter('linkCandidates', treeId);
+    if (forced) return { ok: false as const, error: forced };
+    if (!this.find(treeId)) return notFound();
+    return ok(this.candidates.get(treeId) ?? []);
+  }
+
+  async proposeLink(treeId: string, otherTreeId: string) {
+    const forced = await this.enter('proposeLink', { treeId, otherTreeId });
+    if (forced) return { ok: false as const, error: forced };
+    const c = (this.candidates.get(treeId) ?? []).find((x) => x.treeId === otherTreeId);
+    if (!c) return fail('NOT_LINKED', MESSAGES.linkNeedsCards);
+    this.candidates.set(
+      treeId,
+      (this.candidates.get(treeId) ?? []).filter((x) => x !== c),
+    );
+    const id = this.addLink(treeId, {
+      status: 'pending',
+      otherTree: { id: c.treeId, name: c.name },
+      otherPeopleCount: c.peopleCount,
+      acceptedHere: false,
+      acceptedThere: true,
+      canEnd: true,
+      bridge: { userId: this.meUserId ?? 'me', name: 'You', personId: 'me', otherPersonId: 'me2' },
+    });
+    return ok({ id });
+  }
+
+  private linkOf(treeId: string, linkId: string) {
+    return (this.links.get(treeId) ?? []).find((l) => l.id === linkId);
+  }
+
+  async acceptLink(treeId: string, linkId: string) {
+    const forced = await this.enter('acceptLink', { treeId, linkId });
+    if (forced) return { ok: false as const, error: forced };
+    const l = this.linkOf(treeId, linkId);
+    if (!l) return fail('NOT_FOUND', MESSAGES.linkGone);
+    l.acceptedHere = true;
+    l.canAccept = false;
+    if (l.acceptedThere) l.status = 'live';
+    this.requests = this.requests.filter((r) => r.linkId !== linkId);
+    return ok(undefined);
+  }
+
+  async declineLink(treeId: string, linkId: string) {
+    const forced = await this.enter('declineLink', { treeId, linkId });
+    if (forced) return { ok: false as const, error: forced };
+    if (!this.linkOf(treeId, linkId)) return fail('NOT_FOUND', MESSAGES.linkGone);
+    this.links.set(
+      treeId,
+      (this.links.get(treeId) ?? []).filter((l) => l.id !== linkId),
+    );
+    this.requests = this.requests.filter((r) => r.linkId !== linkId);
+    return ok(undefined);
+  }
+
+  async endLink(treeId: string, linkId: string) {
+    const forced = await this.enter('endLink', { treeId, linkId });
+    if (forced) return { ok: false as const, error: forced };
+    if (!this.linkOf(treeId, linkId)) return fail('NOT_FOUND', MESSAGES.linkGone);
+    this.links.set(
+      treeId,
+      (this.links.get(treeId) ?? []).filter((l) => l.id !== linkId),
+    );
+    return ok(undefined);
+  }
+
+  async linkedGraph(treeId: string, linkId: string) {
+    const forced = await this.enter('linkedGraph', { treeId, linkId });
+    if (forced) return { ok: false as const, error: forced };
+    const l = this.linkOf(treeId, linkId);
+    const g = this.linkedGraphs.get(linkId);
+    if (!l || l.status !== 'live' || !g) return fail('NOT_FOUND', MESSAGES.linkGone);
+    return ok(structuredClone(g));
+  }
+
+  async linkedPerson(treeId: string, linkId: string, personId: string) {
+    const forced = await this.enter('linkedPerson', { treeId, linkId, personId });
+    if (forced) return { ok: false as const, error: forced };
+    const p = this.linkedPeople.get(`${linkId}/${personId}`);
+    if (!this.linkOf(treeId, linkId) || !p) return fail('NOT_FOUND', MESSAGES.linkGone);
+    return ok(structuredClone(p));
+  }
+
+  async linkRequests() {
+    const forced = await this.enter('linkRequests', undefined);
+    if (forced) return { ok: false as const, error: forced };
+    return ok(this.requests.map((r) => ({ ...r })));
   }
 
   async exportTree(treeId: string) {

@@ -351,6 +351,11 @@ export const AUDIT_ACTIONS = [
   'steward.revoke',
   'invite.create',
   'invite.revoke',
+  'treeLink.propose',
+  'treeLink.accept',
+  'treeLink.decline',
+  'treeLink.cancel',
+  'treeLink.end',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 export const AUDIT_ENTITIES = [
@@ -364,6 +369,7 @@ export const AUDIT_ENTITIES = [
   'member',
   'grant',
   'invite',
+  'treeLink',
 ] as const;
 export type AuditEntity = (typeof AUDIT_ENTITIES)[number];
 

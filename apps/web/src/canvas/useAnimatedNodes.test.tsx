@@ -15,6 +15,7 @@ const node = (id: string, x: number, className?: string): CanvasNode => ({
     reorderUnionId: null,
     coupleDrag: false,
     branch: null,
+    links: [],
   },
   ...(className ? { className } : {}),
 });

@@ -105,6 +105,10 @@ export const MESSAGES = {
   notFound: 'This tree doesn’t exist or you don’t have access to it',
   conflict: 'That already exists',
   itemGone: 'That item no longer exists. Refresh and try again.',
+  linkExists: 'These trees are already linked, or a request is waiting.',
+  linkLimit: 'A tree can have at most 10 links.',
+  linkNeedsCards: 'You need your own card in both trees to link them.',
+  linkGone: 'This link has ended.',
   staleEdit:
     'Someone else changed this person while you were editing. Load the latest version and make your change again.',
   restoreConflict:

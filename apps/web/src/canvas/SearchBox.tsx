@@ -1,6 +1,7 @@
 import {
   kinshipChain,
   kinshipTerm,
+  type LinkedSearchResult,
   type PersonSummary,
   type SearchQuery,
   type SearchResult,
@@ -54,12 +55,15 @@ export function SearchBox({
   persons,
   meId,
   onChoose,
+  onChooseLinked,
 }: {
   treeId: string;
   persons: PersonSummary[];
   meId: string | null;
   /** A result was chosen (the canvas flies to it). */
   onChoose?: (personId: string) => void;
+  /** A match in a linked tree was chosen (tree linking spec L8): unfold it and fly there. */
+  onChooseLinked?: (result: LinkedSearchResult) => void;
 }) {
   const api = useTreesApi();
   const navigate = useNavigate();
@@ -68,6 +72,7 @@ export function SearchBox({
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const [open, setOpen] = useState(false);
   const [results, setResults] = useState<SearchResult[] | null>(null);
+  const [linked, setLinked] = useState<LinkedSearchResult[]>([]);
   const [error, setError] = useState<string | null>(null);
   const seq = useRef(0);
   const searchInput = useRef<HTMLInputElement>(null);
@@ -88,19 +93,21 @@ export function SearchBox({
   const key = parsed?.success
     ? JSON.stringify({ ...parsed.data, ...(filters.branch ? { branch: filters.branch } : {}) })
     : '';
+  const found = results ? results.length + linked.length : 0;
   const countText = !results
     ? ''
-    : results.length === 0
+    : found === 0
       ? 'No one found'
-      : results.length === 1
+      : found === 1
         ? '1 person found'
-        : `${results.length} people found`;
+        : `${found} people found`;
   const active = Object.values(filters).filter((v) => v !== '').length;
 
   useEffect(() => {
     const id = ++seq.current;
     if (!key) {
       setResults(null);
+      setLinked([]);
       setError(null);
       return;
     }
@@ -110,10 +117,12 @@ export function SearchBox({
       const res = await api.search(treeId, JSON.parse(key) as SearchQuery, controller.signal);
       if (id !== seq.current || controller.signal.aborted) return; // a newer search started
       if (res.ok) {
-        setResults(res.data);
+        setResults(res.data.results);
+        setLinked(res.data.inLinkedTrees);
         setError(null);
       } else {
         setResults(null);
+        setLinked([]);
         setError(res.error.message);
       }
     }, 250);
@@ -129,6 +138,7 @@ export function SearchBox({
   const close = () => {
     setQ('');
     setResults(null);
+    setLinked([]);
     setError(null);
     setOpen(false);
   };
@@ -263,6 +273,37 @@ export function SearchBox({
               </li>
             ))}
           </ul>
+          {linked.length > 0 && (
+            <>
+              <h3 className="search-group">In linked trees</h3>
+              <ul aria-label="Search results in linked trees">
+                {linked.map((r) => (
+                  <li key={`${r.linkId}/${r.id}`}>
+                    <button
+                      type="button"
+                      className="search-result"
+                      onClick={() => {
+                        close();
+                        onChooseLinked?.(r);
+                      }}
+                    >
+                      <PersonPhoto
+                        url={r.photoThumbUrl}
+                        person={r}
+                        className="result-photo"
+                        tone={avatarTone(r.id)}
+                      />
+                      <span className="result-name">{personName(r)}</span>{' '}
+                      <span className="result-years">{personYears(r)}</span>{' '}
+                      <span className="result-relation">
+                        {[r.treeName, relationLabel(r, meId)].filter(Boolean).join(' · ')}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </div>
       )}
     </div>

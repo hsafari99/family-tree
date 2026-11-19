@@ -49,6 +49,8 @@ export const graphPersonSchema = personSummarySchema.extend({
   canAddRelative: z.boolean(),
   /** Signed URL of the primary photo's thumbnail (decision 17). */
   photoThumbUrl: z.string().nullable(),
+  /** Set by the web app on people of a linked tree drawn on this canvas (tree linking spec). */
+  linkedTree: z.object({ linkId: z.uuid(), name: z.string() }).optional(),
 });
 export type GraphPerson = z.infer<typeof graphPersonSchema>;
 

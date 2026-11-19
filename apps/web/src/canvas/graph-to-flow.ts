@@ -8,6 +8,7 @@ import {
 import type { Edge, Node } from '@xyflow/react';
 import { personName, UNION_STATUS_LABEL } from '../trees/format';
 import type { Couple } from './couples';
+import type { BridgeMarker } from './linked';
 
 export const CARD_WIDTH = 200;
 export const CARD_HEIGHT = 72;
@@ -24,6 +25,8 @@ export type PersonNodeData = {
   coupleDrag: boolean;
   /** Collapse state (Task 13): open when they have children shown, collapsed with a count. */
   branch: { collapsed: false } | { collapsed: true; hidden: number } | null;
+  /** On a bridge card: the linked trees that can unfold from it (tree linking spec). */
+  links: BridgeMarker[];
 };
 export type PersonFlowNode = Node<PersonNodeData, 'person'>;
 export type UnionNodeData = { union: GraphUnionView; ended: boolean; label: string };
@@ -73,6 +76,7 @@ export function graphToFlow(
       reorderUnionId: null,
       coupleDrag: false,
       branch: null,
+      links: [],
     },
   }));
   const edges: Edge[] = [];

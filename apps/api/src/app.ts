@@ -24,6 +24,7 @@ import { photosRoutes } from './routes/photos.js';
 import { trashRoutes } from './routes/trash.js';
 import type { limiter } from './photos/limiter.js';
 import { graphRoutes } from './routes/graph.js';
+import { linksRoutes } from './routes/links.js';
 import { searchRoutes } from './routes/search.js';
 import { exportRoutes } from './routes/export.js';
 import { deletionRoutes } from './routes/deletion.js';
@@ -159,6 +160,7 @@ export function buildApp({
     app.register(trashRoutes, { auth, db, config, storage: store! });
     app.register(graphRoutes, { auth, db, config, storage: store! });
     app.register(searchRoutes, { auth, db, config, storage: store! });
+    app.register(linksRoutes, { auth, db, config, storage: store! });
     app.register(exportRoutes, {
       auth,
       db,

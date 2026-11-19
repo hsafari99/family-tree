@@ -42,6 +42,13 @@ export function cardMenuItems(
   const id = person.id;
   const given = person.givenName || personName(person);
   const invitePerson = a.invitePerson;
+  // Someone of a linked tree: view-only here (tree linking spec L8).
+  if (person.linkedTree) {
+    return [
+      { label: 'Open details', onSelect: () => a.openPerson(id) },
+      { label: 'How are we related?', onSelect: () => a.howRelated(id) },
+    ];
+  }
   return [
     { label: 'Open details', onSelect: () => a.openPerson(id) },
     { label: 'Focus on this person', onSelect: () => a.focusPerson(id) },

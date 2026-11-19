@@ -43,6 +43,10 @@ export const ERROR_CODES = [
   /** "This is me" from a member who already has a card. */
   'ALREADY_LINKED',
   'NOT_LINKED',
+  /** The two trees already have a pending or live link. */
+  'LINK_EXISTS',
+  /** A tree already has TREE_LINKS_MAX pending or live links. */
+  'LINK_LIMIT',
   'INTERNAL',
 ] as const;
 

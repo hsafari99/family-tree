@@ -19,6 +19,7 @@ import { extraLimit } from '../security/limits.js';
 import { authorize, loadAccess } from '../trees/access.js';
 import { audit } from '../trees/audit.js';
 import { grantClosure } from '../trees/grants.js';
+import { reconcileLinks } from '../trees/links.js';
 import { lockUserTrees, ownedLiveTreeCount } from '../trees/quota.js';
 import type { TreeRouteOptions } from './trees.js';
 
@@ -67,6 +68,8 @@ async function linkPerson(
     if (isUniqueViolation(e)) throw personClaimed();
     throw e;
   }
+  // A bridge moved to another card (or none) ends its links (tree linking spec, Lifecycle).
+  await reconcileLinks(tx, [treeId]);
 }
 
 /** The member row of `userId` in `treeId`, with their 2FA status, or 404. */
@@ -253,6 +256,7 @@ export const membersRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
       await tx
         .delete(treeMembers)
         .where(and(eq(treeMembers.treeId, access.treeId), eq(treeMembers.userId, target.userId)));
+      await reconcileLinks(tx, [access.treeId]);
       await audit(tx, access, {
         action: 'member.remove',
         entityType: 'member',

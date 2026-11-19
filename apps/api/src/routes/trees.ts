@@ -19,6 +19,7 @@ import { can, TREE } from '../permissions/can.js';
 import { authorize, loadAccess } from '../trees/access.js';
 import { audit } from '../trees/audit.js';
 import { lockTreeGraph } from '../trees/graph.js';
+import { reconcileLinks } from '../trees/links.js';
 import { personFieldsOf } from '../trees/people.js';
 import type { ObjectStore } from '../storage/objects.js';
 import { loadVisibility, maskSummary } from '../trees/privacy.js';
@@ -231,6 +232,8 @@ export const treesRoutes: FastifyPluginAsync<TreeRouteOptions> = async (
         .update(trees)
         .set({ deletedAt: sql`now()` })
         .where(eq(trees.id, access.treeId));
+      // Its links end for good (tree linking spec, Lifecycle).
+      await reconcileLinks(tx, [access.treeId]);
       await audit(tx, access, {
         action: 'tree.delete',
         entityType: 'tree',

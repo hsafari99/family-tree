@@ -11,6 +11,8 @@ export interface CanvasActions extends CardMenuActions {
   openUnion(unionId: string): void;
   /** Hides or shows the person's descendants (Task 13). */
   toggleBranch(personId: string): void;
+  /** Unfolds or folds a linked tree on its bridge card (tree linking spec L7). */
+  toggleLink?(linkId: string): void;
   /** Pans so the card is on screen (keyboard focus). */
   reveal(personId: string): void;
   /** Pans and zooms so the card is in the middle (search, "Centre on me"). */

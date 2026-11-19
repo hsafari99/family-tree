@@ -44,6 +44,8 @@ export function PersonCardView({
   branch = null,
   onToggleBranch,
   linkedTo = null,
+  links = [],
+  onToggleLink,
 }: {
   person: GraphPerson;
   detail: CardDetail;
@@ -64,6 +66,9 @@ export function PersonCardView({
   onToggleBranch?: () => void;
   /** The member whose account this person is (not you: your card says "You"). */
   linkedTo?: string | null;
+  /** On a bridge card: linked trees that unfold from it (tree linking spec L7). */
+  links?: PersonNodeData['links'];
+  onToggleLink?: (linkId: string) => void;
 }) {
   const openButton = useRef<HTMLButtonElement>(null);
   const cardMenu = useCardMenu(() => openButton.current);
@@ -77,6 +82,7 @@ export function PersonCardView({
     deceased && 'deceased',
     isMe && 'you',
     !isMe && linkedTo && `linked to ${linkedTo}`,
+    person.linkedTree && `in ${person.linkedTree.name}, view only`,
     person.hiddenRelatives && 'more relatives not shown',
   ]
     .filter(Boolean)
@@ -87,6 +93,7 @@ export function PersonCardView({
     deceased && 'is-deceased',
     isFocus && 'is-focus',
     isSelected && 'is-selected',
+    person.linkedTree && 'is-linked-tree',
   ]
     .filter(Boolean)
     .join(' ');
@@ -209,6 +216,27 @@ export function PersonCardView({
             <ChevronIcon direction="up" />
           </button>
         )}
+      {detail !== 'dot' && onToggleLink && links.length > 0 && (
+        <span className="card-links nodrag">
+          {links.map((l) => (
+            <button
+              key={l.linkId}
+              type="button"
+              className={l.open ? 'card-link is-open' : 'card-link'}
+              aria-expanded={l.open}
+              aria-label={
+                l.open
+                  ? `Fold away ${l.treeName}`
+                  : `Show ${l.treeName}, ${l.count} ${l.count === 1 ? 'person' : 'people'}`
+              }
+              data-tip={l.open ? `Fold away ${l.treeName}` : `Show ${l.treeName}`}
+              onClick={() => onToggleLink(l.linkId)}
+            >
+              {l.open ? '−' : '⊕'} {detail === 'full' ? `${l.treeName} · ${l.count}` : l.count}
+            </button>
+          ))}
+        </span>
+      )}
       {menu && cardMenu.at && (
         <CardMenu
           label={`Actions for ${name}`}
@@ -255,11 +283,17 @@ export function PersonNode({ data }: NodeProps<PersonFlowNode>) {
         onOpen={() => actions.openPerson(id)}
         onAdd={(as) => actions.addRelative(id, as)}
         onFocus={() => actions.reveal(id)}
-        menu={cardMenuItems(data.person, actions, links.inviteState(data.person))}
+        menu={cardMenuItems(
+          data.person,
+          actions,
+          data.person.linkedTree ? null : links.inviteState(data.person),
+        )}
         onNavigate={(dir) => actions.move(id, dir)}
         branch={data.branch}
-        onToggleBranch={() => actions.toggleBranch(id)}
-        linkedTo={links.linkedName(id)}
+        onToggleBranch={data.person.linkedTree ? undefined : () => actions.toggleBranch(id)}
+        linkedTo={data.person.linkedTree ? null : links.linkedName(id)}
+        links={data.links}
+        onToggleLink={actions.toggleLink}
       />
       {/* Bottom: children's and elbow partner lines; the sides: straight partner lines (Task 6). */}
       {(['bottom', 'left', 'right'] as const).map((id) => (
